@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import RichTextEditor from './RichTextEditor';
-import { generateId, sanitizePositiveNumber, formatBytes, saveFile, getMasterPassword } from '../utils/storage';
+import { generateId, sanitizePositiveNumber, formatBytes, saveFile, getMasterPassword, PACKAGES, ADDONS } from '../utils/storage';
 
 const STATUSES = [
     { value: 'prospect', label: 'Prospect' },
@@ -9,34 +9,14 @@ const STATUSES = [
     { value: 'completed', label: 'Completato' },
 ];
 
-const PACKAGES = [
-    { id: 'base', label: 'Base' },
-    { id: 'pro', label: 'Pro' },
-    { id: 'premium', label: 'Premium' },
-];
 
-const ADDONS = [
-    { id: 'logo', label: 'Design Logo Professionale' },
-    { id: 'brand', label: 'Brand Identity (Colori/Font)' },
-    { id: 'brochure', label: 'Brochure / Catalogo PDF' },
-    { id: 'seo_base', label: 'SEO Base (Indicizzazione)' },
-    { id: 'seo_adv', label: 'SEO Avanzata (Parole chiave)' },
-    { id: 'ecommerce', label: 'E-commerce (Shop Online)' },
-    { id: 'membership', label: 'Area Riservata Utenti' },
-    { id: 'newsletter', label: 'Sistema Newsletter / Automazioni' },
-    { id: 'social', label: 'Gestione Social Media' },
-    { id: 'copy', label: 'Copywriting / Scrittura Testi' },
-    { id: 'maintenance', label: 'Manutenzione Mensile' },
-    { id: 'hosting', label: 'Hosting & Dominio (Rinnovo)' },
-    { id: 'multilingua', label: 'Sito Multilingua' },
-    { id: 'google_ads', label: 'Campagne Google Ads' },
-    { id: 'analytics', label: 'Tracking & Analytics' },
-];
 
 /* ── TO-DO SECTION ── */
 function TodoSection({ form, update, confirmDelete }) {
     const todos = form.todo || [];
     const [newTask, setNewTask] = useState('');
+    const [draftSubtask, setDraftSubtask] = useState({});
+    const [openSubtask, setOpenSubtask] = useState({});
     const [priority, setPriority] = useState('Media');
     const [dueDate, setDueDate] = useState('');
 
@@ -51,7 +31,9 @@ function TodoSection({ form, update, confirmDelete }) {
             priority,
             dueDate,
             completed: false,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            readAt: null,
+            subtasks: []
         };
 
         update('todo', [...todos, todo]);
@@ -61,7 +43,145 @@ function TodoSection({ form, update, confirmDelete }) {
     };
 
     const toggleTodo = (id) => {
-        update('todo', todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+        const toggleRecursive = (items) => items.map(t => {
+            if (t.id !== id) {
+                return t.subtasks && t.subtasks.length > 0
+                    ? { ...t, subtasks: toggleRecursive(t.subtasks) }
+                    : t;
+            }
+
+            const nextCompleted = !t.completed;
+            const setAll = (arr, val) => (arr || []).map(st => ({
+                ...st,
+                completed: val,
+                subtasks: setAll(st.subtasks || [], val)
+            }));
+
+            return {
+                ...t,
+                completed: nextCompleted,
+                subtasks: setAll(t.subtasks || [], nextCompleted)
+            };
+        });
+
+        update('todo', toggleRecursive(todos));
+    };
+
+    const addSubtask = (parentId, level) => {
+        if (level >= 2) return;
+        const text = (draftSubtask[parentId] || '').trim();
+        if (!text) return;
+
+        const newSub = {
+            id: generateId(),
+            text,
+            priority: 'Media',
+            dueDate: '',
+            completed: false,
+            createdAt: new Date().toISOString(),
+            readAt: null,
+            subtasks: []
+        };
+
+        const insertRecursive = (items) => items.map(t => {
+            if (t.id === parentId) {
+                return { ...t, readAt: null, subtasks: [...(t.subtasks || []), newSub] };
+            }
+            if (t.subtasks && t.subtasks.length > 0) {
+                return { ...t, subtasks: insertRecursive(t.subtasks) };
+            }
+            return t;
+        });
+
+        update('todo', insertRecursive(todos));
+        setDraftSubtask(prev => ({ ...prev, [parentId]: '' }));
+        setOpenSubtask(prev => ({ ...prev, [parentId]: false }));
+    };
+
+    const renderTodoItem = (t, level = 0) => {
+        const hasChildren = (t.subtasks || []).length > 0;
+        const padLeft = level === 0 ? 0 : level === 1 ? 22 : 44;
+
+        return (
+            <div key={t.id} style={{ paddingLeft: padLeft }}>
+                <div className="todo-item-card" style={{ borderColor: !t.readAt ? 'var(--primary-light)' : 'var(--border-light)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                        <input type="checkbox" checked={t.completed} onChange={() => toggleTodo(t.id)} className="todo-checkbox" />
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.95rem', textDecoration: t.completed ? 'line-through' : 'none', opacity: t.completed ? 0.6 : 1 }}>
+                                {t.text}
+                            </span>
+                            {level === 0 && (
+                                <div style={{ display: 'flex', gap: '12px', fontSize: '0.75rem', marginTop: '4px' }}>
+                                    <span style={{ color: getPriorityColor(t.priority), fontWeight: 600 }}>{t.priority}</span>
+                                    {t.dueDate && (
+                                        <span style={{ color: isOverdue(t.dueDate) ? 'var(--danger)' : 'var(--text-secondary)' }}>
+                                            {isOverdue(t.dueDate) ? '⚠️ Scaduto il ' : 'Scadenza: '}
+                                            {new Date(t.dueDate).toLocaleDateString('it-IT')}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {level < 2 && (
+                        <button
+                            className="btn btn-ghost btn-icon-sm"
+                            onClick={() => setOpenSubtask(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
+                            title="Aggiungi sotto-task"
+                        >
+                            ＋
+                        </button>
+                    )}
+                    <button
+                        className="btn btn-ghost btn-icon-sm"
+                        title={t.readAt ? 'Segna come non letto' : 'Segna come letto'}
+                        onClick={() => {
+                            const toggleRead = (items) => (items || []).map(x => {
+                                if (x.id === t.id) {
+                                    return { ...x, readAt: x.readAt ? null : new Date().toISOString() };
+                                }
+                                if (x.subtasks && x.subtasks.length > 0) {
+                                    return { ...x, subtasks: toggleRead(x.subtasks) };
+                                }
+                                return x;
+                            });
+                            update('todo', toggleRead(todos));
+                        }}
+                        style={{ fontSize: '0.75rem' }}
+                    >
+                        {t.readAt ? '👁️' : '🔵'}
+                    </button>
+                    <button className="btn btn-ghost btn-icon-sm" onClick={() => confirmDelete('todo', t.id)}>✕</button>
+                </div>
+
+                {level < 2 && openSubtask[t.id] && (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', marginBottom: hasChildren ? '10px' : '16px', paddingLeft: '6px' }}>
+                        <input
+                            className="input"
+                            placeholder={level === 0 ? 'Nuovo sotto-task...' : 'Nuovo sotto-sotto-task...'}
+                            value={draftSubtask[t.id] || ''}
+                            onChange={e => setDraftSubtask(prev => ({ ...prev, [t.id]: e.target.value }))}
+                            style={{ flex: 1 }}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addSubtask(t.id, level);
+                                }
+                            }}
+                        />
+                        <button className="btn btn-secondary btn-sm" onClick={() => addSubtask(t.id, level)}>Aggiungi</button>
+                    </div>
+                )}
+
+                {hasChildren && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', marginBottom: '14px' }}>
+                        {(t.subtasks || []).map(st => renderTodoItem(st, level + 1))}
+                    </div>
+                )}
+            </div>
+        );
     };
 
     const getPriorityColor = (p) => {
@@ -112,41 +232,14 @@ function TodoSection({ form, update, confirmDelete }) {
             <label className="input-label">Da fare ({pending.length})</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
                 {pending.length === 0 && <span style={{ color: 'var(--text-tertiary)', fontSize: '0.9rem' }}>Nessuna attività pendente.</span>}
-                {pending.map(t => (
-                    <div key={t.id} className="todo-item-card" style={{ borderColor: isOverdue(t.dueDate) ? 'var(--danger-light)' : 'var(--border-light)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-                            <input type="checkbox" checked={t.completed} onChange={() => toggleTodo(t.id)} className="todo-checkbox" />
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{t.text}</span>
-                                <div style={{ display: 'flex', gap: '12px', fontSize: '0.75rem', marginTop: '4px' }}>
-                                    <span style={{ color: getPriorityColor(t.priority), fontWeight: 600 }}>{t.priority}</span>
-                                    {t.dueDate && (
-                                        <span style={{ color: isOverdue(t.dueDate) ? 'var(--danger)' : 'var(--text-secondary)' }}>
-                                            {isOverdue(t.dueDate) ? '⚠️ Scaduto il ' : 'Scadenza: '}
-                                            {new Date(t.dueDate).toLocaleDateString('it-IT')}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        <button className="btn btn-ghost btn-icon-sm" onClick={() => confirmDelete('todo', t.id)}>✕</button>
-                    </div>
-                ))}
+                {pending.map(t => renderTodoItem(t, 0))}
             </div>
 
             {completed.length > 0 && (
                 <>
                     <label className="input-label">Completate ({completed.length})</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: 0.6 }}>
-                        {completed.map(t => (
-                            <div key={t.id} className="todo-item-card" style={{ background: 'var(--bg-app)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-                                    <input type="checkbox" checked={t.completed} onChange={() => toggleTodo(t.id)} className="todo-checkbox" />
-                                    <span style={{ textDecoration: 'line-through', color: 'var(--text-secondary)', fontSize: '0.95rem' }}>{t.text}</span>
-                                </div>
-                                <button className="btn btn-ghost btn-icon-sm" onClick={() => confirmDelete('todo', t.id)}>✕</button>
-                            </div>
-                        ))}
+                        {completed.map(t => renderTodoItem(t, 0))}
                     </div>
                 </>
             )}
@@ -196,7 +289,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         links: [],
         files: [],
         notes: [],
-        logo: null
+        logo: null,
+        createdAt: new Date().toISOString()
     });
 
     const snapshot = useRef(JSON.stringify({ ...form, newNote: '', newTag: '' }));
@@ -207,6 +301,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
     const [isClosing, setIsClosing] = useState(false);
     const [showPaymentWarning, setShowPaymentWarning] = useState(false);
     const [pendingStatus, setPendingStatus] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
@@ -241,14 +336,51 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [hasChanges, showUnsavedConfirm, showDeleteConfirm, deleteTarget]);
 
+    // Auto-calculate total price based on package and selected addons
+    useEffect(() => {
+        let total = 0;
+        const pkg = PACKAGES.find(p => p.id === form.packageType);
+        if (pkg) total += pkg.price;
+
+        (form.addons || []).forEach(addonId => {
+            const addon = ADDONS.find(a => a.id === addonId);
+            if (addon) total += addon.price;
+        });
+
+        if (total > 0 && total !== parseFloat(form.quoteAmount)) {
+            update('quoteAmount', total.toString());
+        }
+    }, [form.packageType, form.addons]);
+
     const handleSave = () => {
         if (!form.name.trim()) {
             alert('Il nome è obbligatorio');
             return;
         }
-        onSave(form);
-        setIsClosing(true);
-        setTimeout(onClose, 150);
+        
+        setIsSaving(true);
+        
+        try {
+            // Salva i dati immediatamente
+            onSave(form);
+            
+            // Aggiorna lo snapshot per riflettere il salvataggio
+            snapshot.current = JSON.stringify({ ...form, newNote: '', newTag: '' });
+            
+            // Chiudi la modal dopo un breve delay per assicurare il salvataggio
+            setIsClosing(true);
+            setTimeout(() => {
+                onClose();
+            }, 200);
+        } catch (error) {
+            console.error('Errore durante il salvataggio:', error);
+            alert('Errore durante il salvataggio. Riprova.');
+        } finally {
+            // Resetta lo stato di salvataggio dopo un delay
+            setTimeout(() => {
+                setIsSaving(false);
+            }, 300);
+        }
     };
 
     const confirmDelete = (type, id) => {
@@ -270,12 +402,25 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         } else if (type === 'note') {
             update('notes', form.notes.filter(n => n.id !== id));
         } else if (type === 'todo') {
-            update('todo', form.todo.filter(t => t.id !== id));
+            const removeRecursive = (items) => (items || []).filter(t => t.id !== id).map(t => {
+                if (t.subtasks && t.subtasks.length > 0) {
+                    return { ...t, subtasks: removeRecursive(t.subtasks) };
+                }
+                return t;
+            });
+
+            update('todo', removeRecursive(form.todo));
         }
         setDeleteTarget(null);
     };
 
     const getUnread = (arr) => (arr || []).filter(item => !item.readAt).length;
+
+    const getUnreadTodos = (items) => (items || []).reduce((count, t) => {
+        const selfUnread = t.readAt ? 0 : 1;
+        const childrenUnread = t.subtasks && t.subtasks.length > 0 ? getUnreadTodos(t.subtasks) : 0;
+        return count + selfUnread + childrenUnread;
+    }, 0);
 
     const tabs = [
         { id: 'general', label: 'Generale', icon: '👤' },
@@ -283,9 +428,9 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         { id: 'finance', label: 'Pagamenti', icon: '💶' },
         { id: 'credentials', label: 'Accessi', icon: '🔐', unread: getUnread(form.credentials) },
         { id: 'links', label: 'Link', icon: '🔗', unread: getUnread(form.links) },
-        { id: 'files', label: 'File', icon: '📁', unread: getUnread(form.files) },
+        { id: 'files', label: 'File', icon: '📁' },
         { id: 'notes', label: 'Note', icon: '📝', unread: getUnread(form.notes) },
-        { id: 'todo', label: 'To-Do', icon: '☑️' },
+        { id: 'todo', label: 'To-Do', icon: '☑️', unread: getUnreadTodos(form.todo) },
     ];
 
     return (
@@ -460,8 +605,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                         </div>
                     )}
                     <button className="btn btn-secondary" onClick={handleClose}>Annulla</button>
-                    <button className="btn btn-primary" onClick={handleSave}>
-                        {isNew ? '+ Aggiungi Cliente' : 'Salva Modifiche'}
+                    <button className="btn btn-primary" onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? 'Salvataggio...' : (isNew ? '+ Aggiungi Cliente' : 'Salva Modifiche')}
                     </button>
                 </div>
             </div>

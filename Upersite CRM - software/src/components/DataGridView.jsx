@@ -120,19 +120,20 @@ export default function DataGridView({ customers, onClose }) {
                     left: 0;
                     right: 0;
                     bottom: 0;
-                    background: rgba(0,0,0,0.85);
+                    background: rgba(45, 52, 54, 0.4);
                     backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
                     z-index: 5000;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    padding: 40px;
+                    padding: 16px;
                 }
                 .data-grid-container {
                     background: var(--bg);
-                    width: 100%;
-                    height: 100%;
-                    max-width: 1400px;
+                    width: min(98vw, 1800px);
+                    height: 92vh;
+                    max-width: 98vw;
                     border-radius: var(--radius-xl);
                     display: flex;
                     flex-direction: column;

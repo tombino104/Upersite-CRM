@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getMasterPassword, setMasterPassword, exportData, importData, loadData } from '../utils/storage';
+import { getMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem } from '../utils/storage';
 
 export default function SettingsModal({ settings, updateSettings, onClose, setCustomers }) {
     const [currentPassword, setCurrentPassword] = useState('');
@@ -7,6 +7,11 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [clearPassword, setClearPassword] = useState('');
+    const [clearError, setClearError] = useState('');
+    const [isClearing, setIsClearing] = useState(false);
 
     const handleChangePassword = (e) => {
         e.preventDefault();
@@ -41,13 +46,16 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = (ev) => {
-                if (importData(ev.target.result)) {
-                    const data = loadData();
-                    setCustomers(data.customers || []);
-                    // We also need to reload settings if they were in the backup
-                    if (data.settings) updateSettings(data.settings);
-                    setSuccess('Dati importati con successo!');
+            reader.onload = async (ev) => {
+                const ok = await importData(ev.target.result);
+                if (ok) {
+                    syncWithFileSystem().then((data) => {
+                        setCustomers(data.customers || []);
+                        if (data.settings) updateSettings(data.settings);
+                        setSuccess('Dati importati con successo!');
+                    }).catch(() => {
+                        setError('Import riuscito ma sincronizzazione fallita. Riprova.');
+                    });
                 } else {
                     setError('File non valido');
                 }
@@ -58,11 +66,40 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
     };
 
     const handleClearData = () => {
-        if (confirm('Sei SICURO di voler cancellare TUTTI i dati? Questa operazione non è reversibile (a meno che tu non abbia un backup).')) {
-            const empty = { customers: [] };
-            importData(JSON.stringify(empty));
-            setCustomers([]);
+        setError('');
+        setSuccess('');
+        setClearError('');
+        setClearPassword('');
+        setShowClearConfirm(true);
+    };
+
+    const executeClearData = async () => {
+        setClearError('');
+        setError('');
+        setSuccess('');
+
+        if (clearPassword !== getMasterPassword()) {
+            setClearError('Password errata');
+            return;
+        }
+
+        setIsClearing(true);
+        try {
+            const empty = { customers: [], tags: [], settings: settings || {} };
+            const ok = await importData(JSON.stringify(empty));
+            if (!ok) {
+                setClearError('Impossibile cancellare i dati');
+                return;
+            }
+            const data = await syncWithFileSystem();
+            setCustomers(data.customers || []);
+            if (data.settings) updateSettings(data.settings);
             setSuccess('Tutti i dati sono stati cancellati.');
+            setShowClearConfirm(false);
+        } catch {
+            setError('Errore durante la cancellazione dati.');
+        } finally {
+            setIsClearing(false);
         }
     };
 
@@ -136,6 +173,40 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                     Upersite CRM v1.0.0 — Sviluppato per Loren
                 </div>
             </div>
+
+            {showClearConfirm && (
+                <div className="modal-overlay animate-fade-in" style={{ zIndex: 2100 }} onClick={() => !isClearing && setShowClearConfirm(false)}>
+                    <div className="modal-content animate-scale-in" style={{ maxWidth: '420px', padding: '28px', borderTop: '4px solid var(--danger)' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ fontSize: '2.5rem', textAlign: 'center', marginBottom: '8px' }}>🗑️</div>
+                        <h3 style={{ textAlign: 'center', color: 'var(--danger)', margin: '0 0 12px 0', fontSize: '1.05rem' }}>
+                            Cancellare TUTTI i dati?
+                        </h3>
+                        <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+                            Per confermare inserisci la <strong>password master</strong>.
+                        </p>
+
+                        <div className="detail-group" style={{ marginBottom: '10px' }}>
+                            <label className="input-label">Password master</label>
+                            <input
+                                type="password"
+                                className="input"
+                                value={clearPassword}
+                                onChange={e => setClearPassword(e.target.value)}
+                                placeholder="••••••••"
+                                disabled={isClearing}
+                            />
+                            {clearError && <div style={{ color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 600, marginTop: '6px' }}>⚠ {clearError}</div>}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '14px' }}>
+                            <button className="btn btn-secondary" onClick={() => setShowClearConfirm(false)} disabled={isClearing}>Annulla</button>
+                            <button className="btn btn-danger" onClick={executeClearData} disabled={isClearing}>
+                                {isClearing ? 'Cancellazione...' : 'Conferma e Cancella'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

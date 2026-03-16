@@ -10,7 +10,7 @@ import ClientListModal from './components/ClientListModal';
 import SettingsModal from './components/SettingsModal';
 import DataGridView from './components/DataGridView';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
-import { exportData, importData, loadData, saveData, hasMasterPassword } from './utils/storage';
+import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem } from './utils/storage';
 
 /* ── Tag Manager Modal ── */
 function TagManagerModal({ allTags, customers, updateTags, updateCustomer, onClose }) {
@@ -213,11 +213,17 @@ export default function App() {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (ev) => {
-        if (importData(ev.target.result)) {
-          const data = loadData();
-          setCustomers(data.customers || []);
-          setShowExportMenu(false);
+      reader.onload = async (ev) => {
+        const ok = await importData(ev.target.result);
+        if (ok) {
+          syncWithFileSystem().then((data) => {
+            setCustomers(data.customers || []);
+            setShowExportMenu(false);
+          }).catch(() => {
+            const data = loadData();
+            setCustomers(data.customers || []);
+            setShowExportMenu(false);
+          });
         } else {
           alert('File non valido');
         }
@@ -290,9 +296,10 @@ export default function App() {
                         e.preventDefault();
                         setSearchQuery(prev => {
                           const currentQuery = prev.trim();
-                          if (!currentQuery) return tag;
-                          if (currentQuery.toLowerCase().includes(tag.toLowerCase())) return currentQuery;
-                          return `${currentQuery} ${tag}`;
+                          const tagWithHash = `#${tag}`;
+                          if (!currentQuery) return tagWithHash;
+                          if (currentQuery.toLowerCase().includes(tagWithHash.toLowerCase())) return currentQuery;
+                          return `${currentQuery} ${tagWithHash}`;
                         });
                         searchInputRef.current?.focus();
                       }}
@@ -449,6 +456,7 @@ export default function App() {
         .app-header {
           display: flex;
           align-items: center;
+          justify-content: space-between;
           gap: 16px;
           padding: 14px 24px;
           background: rgba(255,255,255,0.85);
@@ -545,11 +553,14 @@ export default function App() {
         }
 
         .app-header-center {
-          flex: 1;
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
           display: flex;
           justify-content: center;
           max-width: 440px;
           margin: 0 auto;
+          width: 100%;
         }
 
         .app-search {
@@ -720,6 +731,8 @@ export default function App() {
           }
 
           .app-header-center {
+            position: static;
+            transform: none;
             order: 3;
             max-width: 100%;
             width: 100%;

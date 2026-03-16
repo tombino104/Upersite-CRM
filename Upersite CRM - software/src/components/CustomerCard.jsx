@@ -22,12 +22,17 @@ export default function CustomerCard({ customer, onClick, index = 0 }) {
 
   const hasOverdue = installments.some(i => !i.paid && i.dueDate && new Date(i.dueDate) < new Date());
 
+  const getUnreadTodos = (items) => (items || []).reduce((count, t) => {
+    const selfUnread = t.readAt ? 0 : 1;
+    const childrenUnread = t.subtasks && t.subtasks.length > 0 ? getUnreadTodos(t.subtasks) : 0;
+    return count + selfUnread + childrenUnread;
+  }, 0);
+
   const totalUnread = [
     ...(customer.credentials || []),
     ...(customer.links || []),
-    ...(customer.files || []),
     ...(customer.notes || [])
-  ].filter(item => !item.readAt).length;
+  ].filter(item => !item.readAt).length + getUnreadTodos(customer.todo);
 
   const formatCurrency = (n) =>
     new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(n);

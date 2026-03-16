@@ -3,6 +3,16 @@
 const STORAGE_KEY = 'upersite_crm_data';
 const MASTER_KEY = 'upersite_crm_master';
 
+function trySetLocalStorage(key, value) {
+    try {
+        localStorage.setItem(key, value);
+        return true;
+    } catch (err) {
+        console.warn('localStorage write failed:', err);
+        return false;
+    }
+}
+
 export const defaultData = {
     customers: [],
     tags: [],
@@ -29,9 +39,9 @@ export async function syncWithFileSystem() {
         const response = await fetch('/api/storage');
         const data = await response.json();
         if (data && Object.keys(data).length > 0) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            trySetLocalStorage(STORAGE_KEY, JSON.stringify(data));
             if (data.masterPassword) {
-                localStorage.setItem(MASTER_KEY, data.masterPassword);
+                trySetLocalStorage(MASTER_KEY, data.masterPassword);
             }
             return data;
         }
@@ -42,10 +52,11 @@ export async function syncWithFileSystem() {
 }
 
 export function saveData(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    // Async persist to file
+    const serialized = JSON.stringify(data);
+    trySetLocalStorage(STORAGE_KEY, serialized);
+
     const masterPassword = localStorage.getItem(MASTER_KEY);
-    fetch('/api/storage', {
+    return fetch('/api/storage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...data, masterPassword })
@@ -57,7 +68,7 @@ export function getMasterPassword() {
 }
 
 export function setMasterPassword(password) {
-    localStorage.setItem(MASTER_KEY, password);
+    trySetLocalStorage(MASTER_KEY, password);
     const data = loadData();
     saveData(data); // This will trigger file write
 }
@@ -72,26 +83,69 @@ export function resetMasterPassword() {
     saveData(data);
 }
 
-export function exportData() {
-    const data = loadData();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+export async function exportData() {
+    let data;
+    try {
+        const response = await fetch('/api/storage');
+        const fileData = await response.json();
+        data = (fileData && Object.keys(fileData).length > 0) ? fileData : loadData();
+    } catch {
+        data = loadData();
+    }
+
+    let totalFiles = 0;
+    if (data.customers && Array.isArray(data.customers)) {
+        data.customers.forEach(customer => {
+            if (customer.files && Array.isArray(customer.files)) {
+                totalFiles += customer.files.length;
+            }
+        });
+    }
+
+    const completeBackup = {
+        version: "1.0.0",
+        exportDate: new Date().toISOString(),
+        data: data,
+        metadata: {
+            totalCustomers: data.customers ? data.customers.length : 0,
+            totalFiles: totalFiles,
+            totalTags: data.tags ? data.tags.length : 0,
+            includesFiles: true,
+            includesFileStructure: true,
+            includesFolderStructure: true,
+            note: "Backup completo con tutti i file e strutture delle cartelle incluse"
+        }
+    };
+
+    const blob = new Blob([JSON.stringify(completeBackup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `upersite-crm-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `upersite-crm-backup-completo-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
 }
 
-export function importData(jsonString) {
+export async function importData(jsonString) {
     try {
-        const data = JSON.parse(jsonString);
-        if (data.customers && Array.isArray(data.customers)) {
-            saveData(data);
-            return true;
+        const backup = JSON.parse(jsonString);
+
+        // Gestisce sia il nuovo formato completo che il vecchio formato
+        let data;
+        if (backup.data && backup.metadata) {
+            data = backup.data;
+            console.log(`Importato backup completo: ${backup.metadata.totalCustomers} clienti, ${backup.metadata.totalFiles} file`);
+        } else if (backup.customers && Array.isArray(backup.customers)) {
+            data = backup;
+            console.log('Importato backup in formato legacy');
+        } else {
+            return false;
         }
-        return false;
-    } catch {
+
+        await saveData(data);
+        return true;
+    } catch (error) {
+        console.error('Errore durante l\'importazione:', error);
         return false;
     }
 }
