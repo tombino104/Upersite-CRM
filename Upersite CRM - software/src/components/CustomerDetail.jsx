@@ -54,12 +54,14 @@ function TodoSection({ form, update, confirmDelete }) {
             const setAll = (arr, val) => (arr || []).map(st => ({
                 ...st,
                 completed: val,
+                readAt: val ? (st.readAt || new Date().toISOString()) : st.readAt,
                 subtasks: setAll(st.subtasks || [], val)
             }));
 
             return {
                 ...t,
                 completed: nextCompleted,
+                readAt: nextCompleted ? (t.readAt || new Date().toISOString()) : t.readAt,
                 subtasks: setAll(t.subtasks || [], nextCompleted)
             };
         });
@@ -293,15 +295,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         createdAt: new Date().toISOString()
     });
 
-    const getStrippedForm = (f, note, tag) => {
-        const stripped = { ...f, newNote: note, newTag: tag };
-        if (stripped.files) {
-            stripped.files = stripped.files.map(file => ({ ...file, data: undefined }));
-        }
-        return JSON.stringify(stripped);
-    };
-
-    const snapshot = useRef(getStrippedForm(form, '', ''));
+    const snapshot = useRef(JSON.stringify({ ...form, newNote: '', newTag: '' }));
 
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState(null);
@@ -313,7 +307,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
     const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
-    const hasChanges = getStrippedForm(form, newNote, newTag) !== snapshot.current;
+    const hasChanges = JSON.stringify({ ...form, newNote, newTag }) !== snapshot.current;
 
     const handleClose = () => {
         if (hasChanges) {
@@ -344,19 +338,30 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [hasChanges, showUnsavedConfirm, showDeleteConfirm, deleteTarget]);
 
+    const prevConfig = useRef({ pkg: form.packageType, addons: JSON.stringify(form.addons) });
+
     // Auto-calculate total price based on package and selected addons
     useEffect(() => {
-        let total = 0;
-        const pkg = PACKAGES.find(p => p.id === form.packageType);
-        if (pkg) total += pkg.price;
+        const pkgChanged = prevConfig.current.pkg !== form.packageType;
+        const addonsChanged = prevConfig.current.addons !== JSON.stringify(form.addons);
 
-        (form.addons || []).forEach(addonId => {
-            const addon = ADDONS.find(a => a.id === addonId);
-            if (addon) total += addon.price;
-        });
+        if (pkgChanged || addonsChanged) {
+            let total = 0;
+            const pkg = PACKAGES.find(p => p.id === form.packageType);
+            if (pkg) total += pkg.price;
 
-        if (total > 0 && total !== parseFloat(form.quoteAmount)) {
-            update('quoteAmount', total.toString());
+            (form.addons || []).forEach(addonId => {
+                const addon = ADDONS.find(a => a.id === addonId);
+                if (addon) total += addon.price;
+            });
+
+            // Only auto-update if quoteAmount is empty or we just changed the selection
+            // This prevents overwriting manual overrides when just opening the modal
+            if (total > 0) {
+                update('quoteAmount', total.toString());
+            }
+
+            prevConfig.current = { pkg: form.packageType, addons: JSON.stringify(form.addons) };
         }
     }, [form.packageType, form.addons]);
 
@@ -365,16 +370,16 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
             alert('Il nome è obbligatorio');
             return;
         }
-
+        
         setIsSaving(true);
-
+        
         try {
             // Salva i dati immediatamente
             onSave(form);
-
+            
             // Aggiorna lo snapshot per riflettere il salvataggio
-            snapshot.current = getStrippedForm(form, '', '');
-
+            snapshot.current = JSON.stringify({ ...form, newNote: '', newTag: '' });
+            
             // Chiudi la modal dopo un breve delay per assicurare il salvataggio
             setIsClosing(true);
             setTimeout(() => {
@@ -891,10 +896,10 @@ function FinanceSection({ form, update, settings, confirmDelete, showAdvancedFin
                 </div>
             </div>
 
-            {totalAmount > 0 && (
+            {parseFloat(form.quoteAmount) > 0 && (
                 <div className="progress-bar" style={{ height: '8px' }}>
-                    <div className={`progress-bar-fill ${paidAmount >= totalAmount ? 'success' : ''}`}
-                        style={{ width: `${totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0}%` }} />
+                    <div className={`progress-bar-fill ${paidAmount >= parseFloat(form.quoteAmount) ? 'success' : ''}`}
+                        style={{ width: `${Math.min(100, (paidAmount / parseFloat(form.quoteAmount)) * 100)}%` }} />
                 </div>
             )}
 
@@ -1066,7 +1071,7 @@ function LinksSection({ form, update, confirmDelete }) {
     const links = form.links || [];
 
     const addLink = () => {
-        update('links', [...links, { id: generateId(), label: '', url: '' }]);
+        update('links', [...links, { id: generateId(), label: '', url: '', note: '' }]);
     };
 
     const updateLink = (id, key, val) => {
@@ -1094,6 +1099,9 @@ function LinksSection({ form, update, confirmDelete }) {
                             onChange={e => updateLink(link.id, 'label', e.target.value)} />
                         <input className="link-url-input" placeholder="https://..." value={link.url}
                             onChange={e => updateLink(link.id, 'url', e.target.value)} />
+                        <input className="link-note-input" placeholder="Nota..." value={link.note || ''}
+                            onChange={e => updateLink(link.id, 'note', e.target.value)} 
+                            style={{ fontSize: '0.7rem', height: '28px', gridColumn: 'span 2' }} />
                     </div>
                     {link.url && (
                         <a href={link.url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-icon-sm"

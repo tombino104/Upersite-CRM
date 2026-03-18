@@ -4,7 +4,11 @@ const STORAGE_KEY = 'upersite_crm_data';
 const MASTER_KEY = 'upersite_crm_master';
 
 function trySetLocalStorage(key, value) {
-    if (key === STORAGE_KEY) return true; // Don't write main data to localStorage
+    // Only allow small keys in localStorage (master password, settings)
+    if (key === STORAGE_KEY && value.length > 1000000) {
+        console.warn('Skipping localStorage for large data object');
+        return false;
+    }
     try {
         localStorage.setItem(key, value);
         return true;
@@ -25,17 +29,33 @@ export const defaultData = {
 };
 
 export function loadData() {
-    // Only return whatever is in memory or default, the main sync happens in useCustomers
-    return { ...defaultData };
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { ...defaultData };
+        let data = JSON.parse(raw);
+        // Unwrap logic per il caricamento legacy da localStorage
+        if (data && data.data && data.metadata && data.data.customers) {
+            data = data.data;
+        }
+        return data;
+    } catch {
+        return { ...defaultData };
+    }
 }
 
 // Initial sync with file system
 export async function syncWithFileSystem() {
     try {
         const response = await fetch('/api/storage');
-        const data = await response.json();
+        let data = await response.json();
+        
+        // Unwrap data if it comes in the "backup" format
+        if (data && data.data && data.metadata && data.data.customers) {
+            data = data.data;
+        }
+
         if (data && Object.keys(data).length > 0) {
-            // We no longer save to localStorage here
+            // Non salviamo più l'intero dataset in localStorage per evitare limiti di 5MB
             if (data.masterPassword) {
                 trySetLocalStorage(MASTER_KEY, data.masterPassword);
             }
@@ -44,11 +64,13 @@ export async function syncWithFileSystem() {
     } catch (err) {
         console.error('Failed to sync with file system:', err);
     }
-    return loadData();
+    return loadData(); // Fallback legacy se necessario
 }
 
 export function saveData(data) {
-    // Skip localStorage write for main data
+    // Saltiamo il salvataggio in localStorage per i dati pesanti
+    // trySetLocalStorage(STORAGE_KEY, JSON.stringify(data)); // RIMOSSO
+
     const masterPassword = localStorage.getItem(MASTER_KEY);
     return fetch('/api/storage', {
         method: 'POST',
@@ -78,68 +100,29 @@ export function resetMasterPassword() {
 }
 
 export async function exportData() {
-    let data;
-    try {
-        const response = await fetch('/api/storage');
-        const fileData = await response.json();
-        data = (fileData && Object.keys(fileData).length > 0) ? fileData : loadData();
-    } catch {
-        data = loadData();
-    }
-
-    let totalFiles = 0;
-    if (data.customers && Array.isArray(data.customers)) {
-        data.customers.forEach(customer => {
-            if (customer.files && Array.isArray(customer.files)) {
-                totalFiles += customer.files.length;
-            }
-        });
-    }
-
-    const completeBackup = {
-        version: "1.0.0",
-        exportDate: new Date().toISOString(),
-        data: data,
-        metadata: {
-            totalCustomers: data.customers ? data.customers.length : 0,
-            totalFiles: totalFiles,
-            totalTags: data.tags ? data.tags.length : 0,
-            includesFiles: true,
-            includesFileStructure: true,
-            includesFolderStructure: true,
-            note: "Backup completo con tutti i file e strutture delle cartelle incluse"
-        }
-    };
-
-    const blob = new Blob([JSON.stringify(completeBackup, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `upersite-crm-backup-completo-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Invece di creare un blob in memoria nel browser (che può fallire con 40MB+),
+    // usiamo l'endpoint del server che streamma il file direttamente.
+    window.location.href = '/api/backup/export';
 }
 
 export async function importData(jsonString) {
     try {
-        const backup = JSON.parse(jsonString);
-
-        // Gestisce sia il nuovo formato completo che il vecchio formato
-        let data;
-        if (backup.data && backup.metadata) {
-            data = backup.data;
-            console.log(`Importato backup completo: ${backup.metadata.totalCustomers} clienti, ${backup.metadata.totalFiles} file`);
-        } else if (backup.customers && Array.isArray(backup.customers)) {
-            data = backup;
-            console.log('Importato backup in formato legacy');
-        } else {
-            return false;
+        // Inviamo il file al server per il salvataggio diretto
+        const response = await fetch('/api/backup/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: jsonString
+        });
+        
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Errore server durante l\'importazione');
         }
 
-        await saveData(data);
         return true;
     } catch (error) {
         console.error('Errore durante l\'importazione:', error);
+        alert('Errore: ' + error.message);
         return false;
     }
 }
@@ -199,6 +182,17 @@ export function getTotalStorageUsed() {
 export function getAppDataSize() {
     const data = localStorage.getItem(STORAGE_KEY);
     return data ? data.length * 2 : 0;
+}
+
+export async function getStorageInfo() {
+    try {
+        const response = await fetch('/api/storage-info');
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('Failed to get storage info:', err);
+        return null;
+    }
 }
 
 // Sanitize number: no negatives

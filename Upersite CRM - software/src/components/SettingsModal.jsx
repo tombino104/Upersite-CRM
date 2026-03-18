@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { getMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem, formatBytes } from '../utils/storage';
+import { useMemo, useState, useEffect } from 'react';
+import { getMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem, formatBytes, getStorageInfo } from '../utils/storage';
 
 export default function SettingsModal({ settings, updateSettings, onClose, setCustomers, customers }) {
     const [currentPassword, setCurrentPassword] = useState('');
@@ -7,11 +7,18 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [realSize, setRealSize] = useState(null);
 
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [clearPassword, setClearPassword] = useState('');
     const [clearError, setClearError] = useState('');
     const [isClearing, setIsClearing] = useState(false);
+
+    useEffect(() => {
+        getStorageInfo().then(info => {
+            if (info && info.size) setRealSize(info.size);
+        });
+    }, []);
 
     const handleChangePassword = (e) => {
         e.preventDefault();
@@ -172,7 +179,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
 
                     <div style={{ background: 'var(--bg-hover)', borderRadius: 'var(--radius-lg)', padding: '16px', border: '1px solid var(--border-light)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '0.85rem' }}>
-                            <span style={{ color: 'var(--text-secondary)' }}>Spazio usato (stima)</span>
+                            <span style={{ color: 'var(--text-secondary)' }}>Spazio usato</span>
                             <strong>{formatBytes(totalUsed)}</strong>
                         </div>
 
