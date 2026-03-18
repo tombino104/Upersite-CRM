@@ -4,6 +4,7 @@ const STORAGE_KEY = 'upersite_crm_data';
 const MASTER_KEY = 'upersite_crm_master';
 
 function trySetLocalStorage(key, value) {
+    if (key === STORAGE_KEY) return true; // Don't write main data to localStorage
     try {
         localStorage.setItem(key, value);
         return true;
@@ -24,13 +25,8 @@ export const defaultData = {
 };
 
 export function loadData() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return { ...defaultData };
-        return JSON.parse(raw);
-    } catch {
-        return { ...defaultData };
-    }
+    // Only return whatever is in memory or default, the main sync happens in useCustomers
+    return { ...defaultData };
 }
 
 // Initial sync with file system
@@ -39,7 +35,7 @@ export async function syncWithFileSystem() {
         const response = await fetch('/api/storage');
         const data = await response.json();
         if (data && Object.keys(data).length > 0) {
-            trySetLocalStorage(STORAGE_KEY, JSON.stringify(data));
+            // We no longer save to localStorage here
             if (data.masterPassword) {
                 trySetLocalStorage(MASTER_KEY, data.masterPassword);
             }
@@ -52,9 +48,7 @@ export async function syncWithFileSystem() {
 }
 
 export function saveData(data) {
-    const serialized = JSON.stringify(data);
-    trySetLocalStorage(STORAGE_KEY, serialized);
-
+    // Skip localStorage write for main data
     const masterPassword = localStorage.getItem(MASTER_KEY);
     return fetch('/api/storage', {
         method: 'POST',
@@ -155,10 +149,19 @@ export function generateId() {
 }
 
 // File storage using base64 in localStorage
-export function saveFile(customerId, file) {
+export function saveFile(customerId, file, onProgress) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
+        reader.onprogress = (e) => {
+            if (typeof onProgress === 'function' && e && e.lengthComputable) {
+                onProgress(e.loaded, e.total);
+            }
+        };
         reader.onload = () => {
+            if (typeof onProgress === 'function') {
+                const total = file?.size || 0;
+                onProgress(total, total);
+            }
             const fileData = {
                 id: generateId(),
                 name: file.name,

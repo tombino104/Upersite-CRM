@@ -21,7 +21,7 @@ export function useCustomers() {
 
     // Debounced auto-save
     useEffect(() => {
-        if (!hasSynced) return;
+        if (!hasSynced || customers.length === 0) return;
 
         const timer = setTimeout(() => {
             saveData({
@@ -29,7 +29,7 @@ export function useCustomers() {
                 settings,
                 tags,
             });
-        }, 1000); // Save after 1 second of inactivity
+        }, 5000); // Save after 5 seconds of inactivity to reduce UI lag
 
         return () => clearTimeout(timer);
     }, [customers, settings, tags, hasSynced]);
@@ -111,8 +111,8 @@ export function useSearch(customers, query) {
         const tagsOk = tagTerms.every(matchTagTerm);
 
         // General terms (match text OR tags)
-        const textOk = textTerms.every(term => 
-            allText.includes(term.toLowerCase()) || 
+        const textOk = textTerms.every(term =>
+            allText.includes(term.toLowerCase()) ||
             matchTagTerm(term)
         );
 

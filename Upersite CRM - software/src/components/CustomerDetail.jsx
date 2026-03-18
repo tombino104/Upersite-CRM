@@ -293,7 +293,15 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         createdAt: new Date().toISOString()
     });
 
-    const snapshot = useRef(JSON.stringify({ ...form, newNote: '', newTag: '' }));
+    const getStrippedForm = (f, note, tag) => {
+        const stripped = { ...f, newNote: note, newTag: tag };
+        if (stripped.files) {
+            stripped.files = stripped.files.map(file => ({ ...file, data: undefined }));
+        }
+        return JSON.stringify(stripped);
+    };
+
+    const snapshot = useRef(getStrippedForm(form, '', ''));
 
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState(null);
@@ -305,7 +313,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
     const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
-    const hasChanges = JSON.stringify({ ...form, newNote, newTag }) !== snapshot.current;
+    const hasChanges = getStrippedForm(form, newNote, newTag) !== snapshot.current;
 
     const handleClose = () => {
         if (hasChanges) {
@@ -357,16 +365,16 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
             alert('Il nome è obbligatorio');
             return;
         }
-        
+
         setIsSaving(true);
-        
+
         try {
             // Salva i dati immediatamente
             onSave(form);
-            
+
             // Aggiorna lo snapshot per riflettere il salvataggio
-            snapshot.current = JSON.stringify({ ...form, newNote: '', newTag: '' });
-            
+            snapshot.current = getStrippedForm(form, '', '');
+
             // Chiudi la modal dopo un breve delay per assicurare il salvataggio
             setIsClosing(true);
             setTimeout(() => {
@@ -387,6 +395,34 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         setDeleteTarget({ type, id });
     };
 
+    const formatPhone = (input) => {
+        const raw = (input || '').toString().trim();
+        if (!raw) return '';
+
+        const hasPlus = raw.startsWith('+');
+        const digits = raw.replace(/\D/g, '');
+        if (!digits) return hasPlus ? '+' : '';
+
+        const ccLen = hasPlus ? (digits.startsWith('39') ? 2 : Math.min(3, Math.max(1, digits.length - 7))) : 0;
+        const cc = hasPlus ? digits.slice(0, ccLen) : '';
+        let rest = hasPlus ? digits.slice(ccLen) : digits;
+
+        const groups = [];
+        if (rest.length <= 3) {
+            if (rest) groups.push(rest);
+        } else {
+            groups.push(rest.slice(0, 3));
+            rest = rest.slice(3);
+            while (rest.length > 4) {
+                groups.push(rest.slice(0, 3));
+                rest = rest.slice(3);
+            }
+            if (rest) groups.push(rest);
+        }
+
+        return `${hasPlus ? '+' + cc : ''}${hasPlus ? ' ' : ''}${groups.join(' ')}`.trim();
+    };
+
     const executeDelete = () => {
         if (!deleteTarget) return;
         const { type, id } = deleteTarget;
@@ -399,6 +435,20 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
             update('links', form.links.filter(l => l.id !== id));
         } else if (type === 'file') {
             update('files', form.files.filter(f => f.id !== id));
+        } else if (type === 'folder') {
+            const folderPath = (typeof id === 'string')
+                ? id
+                : (id && typeof id === 'object' ? (id.folderPath || '') : '');
+
+            if (!folderPath) {
+                setDeleteTarget(null);
+                return;
+            }
+
+            update('files', (form.files || []).filter(f => {
+                const fullPath = (f.path || f.name || '');
+                return !fullPath.startsWith(folderPath);
+            }));
         } else if (type === 'note') {
             update('notes', form.notes.filter(n => n.id !== id));
         } else if (type === 'todo') {
@@ -677,7 +727,13 @@ function GeneralSection({ form, update, allTags, newTag, setNewTag }) {
                 </div>
                 <div className="detail-group">
                     <label className="input-label">Telefono</label>
-                    <input className="input" value={form.phone || ''} onChange={e => update('phone', e.target.value)} placeholder="+39 333 1234567" />
+                    <input
+                        className="input"
+                        value={form.phone || ''}
+                        onChange={e => update('phone', e.target.value)}
+                        onBlur={() => update('phone', formatPhone(form.phone || ''))}
+                        placeholder="+39 333 1234567"
+                    />
                 </div>
             </div>
             <div className="detail-row">
@@ -1063,6 +1119,7 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes }) {
     const folderRef = useRef(null);
     const [previewFile, setPreviewFile] = useState(null);
     const [currentPath, setCurrentPath] = useState('');
+    const [uploadProgress, setUploadProgress] = useState(null);
 
     const handleUploadMultiple = async (e) => {
         const selectedFiles = Array.from(e.target.files);
@@ -1072,7 +1129,7 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes }) {
         let oversized = 0;
 
         for (const file of selectedFiles) {
-            if (file.size > 5 * 1024 * 1024) {
+            if (file.size > 100 * 1024 * 1024) {
                 oversized++;
             } else {
                 validFiles.push(file);
@@ -1080,14 +1137,25 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes }) {
         }
 
         if (oversized > 0) {
-            alert(`${oversized} file superano i 5MB e sono stati ignorati.`);
+            alert(`${oversized} file superano i 100MB e sono stati ignorati.`);
         }
 
         try {
-            const savedFiles = await Promise.all(validFiles.map(f => saveFile(form.id, f)));
+            const totalBytes = validFiles.reduce((sum, f) => sum + (f.size || 0), 0);
+            const loadedByIndex = new Array(validFiles.length).fill(0);
+            setUploadProgress({ loaded: 0, total: totalBytes });
+
+            const savedFiles = await Promise.all(validFiles.map((f, idx) => saveFile(form.id, f, (loaded, total) => {
+                const capped = Math.min(loaded, total || 0);
+                loadedByIndex[idx] = capped;
+                const sumLoaded = loadedByIndex.reduce((s, v) => s + v, 0);
+                setUploadProgress({ loaded: sumLoaded, total: totalBytes });
+            })));
             update('files', [...allFiles, ...savedFiles]);
         } catch {
             alert('Errore durante il caricamento');
+        } finally {
+            setTimeout(() => setUploadProgress(null), 400);
         }
         e.target.value = '';
     };
@@ -1147,6 +1215,18 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes }) {
                 <input ref={folderRef} type="file" webkitdirectory="true" hidden onChange={handleUploadMultiple} />
             </div>
 
+            {uploadProgress && (
+                <div style={{ marginBottom: '14px', background: 'var(--bg-hover)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                        <span>Caricamento…</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>{formatBytes(uploadProgress.loaded)} / {formatBytes(uploadProgress.total)}</strong>
+                    </div>
+                    <div style={{ height: 10, borderRadius: 999, background: 'rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${uploadProgress.total > 0 ? Math.min(100, (uploadProgress.loaded / uploadProgress.total) * 100) : 0}%`, background: 'var(--primary)', transition: 'width 120ms linear' }} />
+                    </div>
+                </div>
+            )}
+
             {/* Folder Navigation */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', background: 'var(--bg-input)', padding: '8px 12px', borderRadius: 'var(--radius-md)' }}>
                 <button
@@ -1178,6 +1258,19 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes }) {
                     >
                         <div className="file-card-icon">📁</div>
                         <div className="file-card-name">{folder.replace('/', '')}</div>
+                        <div className="file-card-actions">
+                            <button
+                                className="btn btn-ghost btn-icon-sm"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const folderPath = currentPath + folder;
+                                    confirmDelete('folder', { folderPath });
+                                }}
+                                title="Elimina cartella"
+                            >
+                                ✕
+                            </button>
+                        </div>
                     </div>
                 ))}
 
@@ -1616,8 +1709,8 @@ function QuoteFileUpload({ form, update }) {
     const handleUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 5 * 1024 * 1024) {
-            alert('File troppo grande (max 5MB)');
+        if (file.size > 100 * 1024 * 1024) {
+            alert('File troppo grande (max 100MB)');
             return;
         }
 

@@ -168,14 +168,6 @@ export default function App() {
 
   const allTags = tags.length > 0 ? tags : [...new Set(customers.flatMap(c => c.tags || []))];
 
-  // Sync back derived tags to global state once if empty
-  useEffect(() => {
-    if (hasSynced && tags.length === 0) {
-      const derived = [...new Set(customers.flatMap(c => c.tags || []))];
-      if (derived.length > 0) updateTags(derived);
-    }
-  }, [hasSynced, tags.length, customers, updateTags]);
-
   const handleLogout = useCallback(() => {
     setIsLoggedIn(false);
   }, []);
@@ -430,6 +422,7 @@ export default function App() {
           settings={settings}
           updateSettings={updateSettings}
           setCustomers={setCustomers}
+          customers={customers}
         />
       )}
 

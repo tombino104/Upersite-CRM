@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { getMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem } from '../utils/storage';
+import { useMemo, useState } from 'react';
+import { getMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem, formatBytes } from '../utils/storage';
 
-export default function SettingsModal({ settings, updateSettings, onClose, setCustomers }) {
+export default function SettingsModal({ settings, updateSettings, onClose, setCustomers, customers }) {
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -37,6 +37,41 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
         setNewPassword('');
         setConfirmPassword('');
     };
+
+    const { totalUsed, appUsed, filesUsed, pctApp, pctFiles } = useMemo(() => {
+        const list = Array.isArray(customers) ? customers : [];
+
+        const files = list.flatMap(c => (c.files || []));
+        const filesSize = files.reduce((sum, f) => sum + (Number(f.size) || 0), 0);
+
+        const customersLite = list.map(c => {
+            const { files: _files, ...rest } = (c || {});
+            if (!_files) return rest;
+            return {
+                ...rest,
+                files: (_files || []).map(f => {
+                    const { data: _data, ...fRest } = (f || {});
+                    return fRest;
+                })
+            };
+        });
+
+        const appJson = JSON.stringify({ customers: customersLite });
+        const appSize = appJson.length * 2;
+
+        const total = appSize + filesSize;
+        const safeTotal = Math.max(total, 1);
+        const pApp = (appSize / safeTotal) * 100;
+        const pFiles = (filesSize / safeTotal) * 100;
+
+        return {
+            totalUsed: total,
+            appUsed: appSize,
+            filesUsed: filesSize,
+            pctApp: Math.min(100, pApp),
+            pctFiles: Math.min(100, pFiles)
+        };
+    }, [customers]);
 
     const handleImport = () => {
         const input = document.createElement('input');
@@ -128,6 +163,38 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                 value={settings.defaultInstallments || 3}
                                 onChange={e => updateSettings({ defaultInstallments: parseInt(e.target.value) || 1 })}
                                 min="1" max="24" />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="settings-section" style={{ marginBottom: '32px' }}>
+                    <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Memoria</h3>
+
+                    <div style={{ background: 'var(--bg-hover)', borderRadius: 'var(--radius-lg)', padding: '16px', border: '1px solid var(--border-light)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '0.85rem' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Spazio usato (stima)</span>
+                            <strong>{formatBytes(totalUsed)}</strong>
+                        </div>
+
+                        <div style={{ height: '14px', borderRadius: '999px', background: 'rgba(0,0,0,0.06)', overflow: 'hidden', border: '1px solid var(--border-light)' }}>
+                            <div style={{ display: 'flex', width: '100%', height: '100%' }}>
+                                <div style={{ width: `${pctApp}%`, background: 'var(--primary)', height: '100%' }} />
+                                <div style={{ width: `${pctFiles}%`, background: 'var(--warning)', height: '100%' }} />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: 'var(--primary)', marginRight: 6 }} />App/Dati</span>
+                            <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: 'var(--warning)', marginRight: 6 }} />File</span>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '0.8rem' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>App/Dati: <strong style={{ color: 'var(--text-primary)' }}>{formatBytes(appUsed)}</strong></span>
+                            <span style={{ color: 'var(--text-secondary)' }}>File: <strong style={{ color: 'var(--text-primary)' }}>{formatBytes(filesUsed)}</strong></span>
+                        </div>
+
+                        <div style={{ marginTop: '8px', fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                            Totale = dimensione dati CRM (senza base64) + somma reale dei file caricati.
                         </div>
                     </div>
                 </div>
