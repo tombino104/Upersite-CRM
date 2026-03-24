@@ -18,6 +18,7 @@ export default function FilePreviewModal({ file, onClose }) {
     const [docxHtml, setDocxHtml] = useState('');
     const [sheets, setSheets] = useState([]);
     const [activeSheet, setActiveSheet] = useState('');
+    const [textContent, setTextContent] = useState('');
 
     const dataUrlToArrayBuffer = (dataUrl) => {
         const comma = dataUrl.indexOf(',');
@@ -38,6 +39,25 @@ export default function FilePreviewModal({ file, onClose }) {
 
         const run = async () => {
             if (!file?.data) return;
+
+            if (isText) {
+                try {
+                    const comma = file.data.indexOf(',');
+                    const isBase64 = comma > -1 && file.data.substring(0, comma).includes(';base64');
+                    const content = comma === -1 ? file.data : file.data.slice(comma + 1);
+                    
+                    if (!isBase64 && content) {
+                        setTextContent(decodeURIComponent(content));
+                    } else {
+                        const buffer = dataUrlToArrayBuffer(file.data);
+                        const text = new TextDecoder('utf-8').decode(buffer);
+                        setTextContent(text);
+                    }
+                } catch (e) {
+                    if (!cancelled) setTextContent('Errore nel caricamento del testo: formattazione non supportata o file corrotto.');
+                }
+                return;
+            }
 
             if (!isDocx && !isXlsx) return;
 
@@ -63,7 +83,7 @@ export default function FilePreviewModal({ file, onClose }) {
                 }
             } catch (err) {
                 if (cancelled) return;
-                setOfficeError('Anteprima non disponibile per questo file.');
+                setOfficeError(`Anteprima non disponibile: ${err.message || 'Errore di conversione'}`);
                 console.error(err);
             } finally {
                 if (!cancelled) setOfficeLoading(false);
@@ -119,7 +139,9 @@ export default function FilePreviewModal({ file, onClose }) {
                     )}
 
                     {isText && (
-                        <iframe src={file.data} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 'var(--radius-md)', background: 'white', padding: '16px' }} title={file.name} />
+                        <div style={{ width: '100%', height: '100%', background: 'white', color: 'black', borderRadius: 'var(--radius-md)', padding: '16px', overflow: 'auto', whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.9rem', textAlign: 'left', wordBreak: 'break-word' }}>
+                            {textContent}
+                        </div>
                     )}
 
                     {isDocx && (

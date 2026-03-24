@@ -5,19 +5,38 @@ const BASIC_COLORS = [
   '#3498DB', '#9B59B6', '#34495E', '#95A5A6', '#FFFFFF'
 ];
 
-export default function RichTextEditor({ value, onChange }) {
+export default function RichTextEditor({ value, onChange, onDirtyChange, onInternalLinkClick, allFiles, allNotes }) {
   const editorRef = useRef(null);
   const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
   const [showColors, setShowColors] = useState(false);
   const [showHeadings, setShowHeadings] = useState(false);
   const [showAlignment, setShowAlignment] = useState(false);
   const [slashMenuParams, setSlashMenuParams] = useState(null); // { top, left, filter }
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
+  const [showInternalLinkMenu, setShowInternalLinkMenu] = useState(null); // 'file' | 'note' | null
   const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Track the initial value to detect dirty state
+  const initialValueRef = useRef(value || '');
+  const isDirtyRef = useRef(false);
+  const isComposingRef = useRef(false);
+  const debounceTimerRef = useRef(null);
+  const pendingHtmlRef = useRef(null);
+
+  // Reset initial value when the component receives a fundamentally new value
+  // (e.g. switching notes)
+  useEffect(() => {
+    initialValueRef.current = value || '';
+    isDirtyRef.current = false;
+    if (onDirtyChange) onDirtyChange(false);
+  }, []); // Only on mount
 
   // Only update innerHTML if it completely differs from the external value AND we are not actively typing in it.
   // This prevents React from resetting the text cursor on every keystroke.
   useEffect(() => {
+    if (pendingHtmlRef.current !== null) return;
+    
     if (editorRef.current && value !== editorRef.current.innerHTML) {
       // Don't overwrite if the user is currently focused/typing in the editor
       if (document.activeElement !== editorRef.current) {
@@ -42,7 +61,21 @@ export default function RichTextEditor({ value, onChange }) {
   const handleInput = () => {
     if (!editorRef.current) return;
     const html = editorRef.current.innerHTML;
-    onChange(html);
+    
+    pendingHtmlRef.current = html;
+
+    // Update dirty state
+    const dirty = html !== initialValueRef.current;
+    if (dirty !== isDirtyRef.current) {
+      isDirtyRef.current = dirty;
+      if (onDirtyChange) onDirtyChange(dirty);
+    }
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      onChange(html);
+      pendingHtmlRef.current = null;
+    }, 400);
 
     // Slash menu logic
     const sel = window.getSelection();
@@ -53,7 +86,7 @@ export default function RichTextEditor({ value, onChange }) {
 
       if (node && node.nodeType === Node.TEXT_NODE) {
         const textParam = node.textContent.substring(0, range.startOffset);
-        const match = textParam.match(/(?:^|\n)(?:\/)([\w]*)$/);
+        const match = textParam.match(/(?:^|\n)(?:\/)([\\w]*)$/);
         if (match) {
           const rect = range.getBoundingClientRect();
           // Use the relative wrapper for accurate positioning
@@ -82,7 +115,7 @@ export default function RichTextEditor({ value, onChange }) {
       const range = sel.getRangeAt(0);
       const textNode = sel.anchorNode;
       const textParam = textNode.textContent.substring(0, range.startOffset);
-      const match = textParam.match(/(?:^|\n)(?:\/)([\w]*)$/);
+      const match = textParam.match(/(?:^|\n)(?:\/)([\\w]*)$/);
       if (match) {
         range.setStart(textNode, range.startOffset - match[0].length);
         range.deleteContents();
@@ -96,7 +129,15 @@ export default function RichTextEditor({ value, onChange }) {
     else if (cmd === 'divider') insertHtml('<hr><br>');
     else if (cmd === 'link') {
       const url = prompt('Inserisci URL:');
-      if (url) exec('createLink', url);
+      if (url) {
+        insertHtml(`<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>&nbsp;`);
+      }
+    } else if (cmd === 'link_file') {
+      setShowInternalLinkMenu('file');
+    } else if (cmd === 'link_note') {
+      setShowInternalLinkMenu('note');
+    } else if (cmd === 'image') {
+      imageInputRef.current?.click();
     }
   };
 
@@ -106,7 +147,10 @@ export default function RichTextEditor({ value, onChange }) {
       { cmd: 'highlight', label: 'Evidenzia', icon: '🖍' },
       { cmd: 'code', label: 'Blocco Codice', icon: '💻' },
       { cmd: 'divider', label: 'Separatore', icon: '➖' },
-      { cmd: 'link', label: 'Link', icon: '🔗' }
+      { cmd: 'link', label: 'Link Esterno', icon: '🔗' },
+      { cmd: 'link_file', label: 'Collega File', icon: '📁' },
+      { cmd: 'link_note', label: 'Collega Nota', icon: '📝' },
+      { cmd: 'image', label: 'Immagine', icon: '🖼️' }
     ].filter(o => o.label.toLowerCase().includes(slashMenuParams.filter) || o.cmd.includes(slashMenuParams.filter));
   };
 
@@ -169,6 +213,103 @@ export default function RichTextEditor({ value, onChange }) {
     e.target.value = '';
   };
 
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Seleziona un file immagine.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Immagine troppo grande (max 10MB).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Auto-resize if the image is very large
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height = Math.round(height * (MAX_WIDTH / width));
+          width = MAX_WIDTH;
+        }
+        if (height > MAX_HEIGHT) {
+          width = Math.round(width * (MAX_HEIGHT / height));
+          height = MAX_HEIGHT;
+        }
+
+        // Use canvas to resize
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        editorRef.current?.focus();
+        insertHtml(`<img src="${resizedDataUrl}" alt="Immagine" style="max-width:100%;height:auto;border-radius:6px;margin:8px 0;cursor:pointer;" class="rte-resizable-img" /><br>`);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Make links clickable (open in new tab) and handle image resizing on click
+  const handleEditorClick = (e) => {
+    const target = e.target;
+
+    // Handle internal link clicks
+    if (target.tagName === 'A' && target.classList.contains('internal-link')) {
+      e.preventDefault();
+      const id = target.getAttribute('data-internal-id');
+      const type = target.getAttribute('data-internal-type');
+      if (onInternalLinkClick && id && type) {
+        onInternalLinkClick(id, type);
+      }
+      return;
+    }
+
+    // Handle link clicks - open in new tab
+    if (target.tagName === 'A' && target.href) {
+      e.preventDefault();
+      window.open(target.href, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // Handle image resize on click
+    if (target.tagName === 'IMG' && target.classList.contains('rte-resizable-img')) {
+      e.preventDefault();
+      const currentWidth = target.style.maxWidth || '100%';
+      // Cycle through sizes: 100% -> 75% -> 50% -> 25% -> 100%
+      const sizes = ['100%', '75%', '50%', '25%'];
+      const currentIndex = sizes.indexOf(currentWidth);
+      const nextIndex = (currentIndex + 1) % sizes.length;
+      target.style.maxWidth = sizes[nextIndex];
+      handleInput(); // trigger save
+    }
+  };
+
+  // Make sure all <a> tags created by createLink have target="_blank"
+  const handlePaste = useCallback((e) => {
+    // After paste, fix any links without target
+    setTimeout(() => {
+      if (!editorRef.current) return;
+      const links = editorRef.current.querySelectorAll('a:not([target])');
+      links.forEach(link => {
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+      });
+      handleInput();
+    }, 0);
+  }, []);
+
   return (
     <div className={`rte-container ${isFullScreen ? 'rte-fullscreen' : ''}`}>
       <div className="rte-toolbar">
@@ -201,7 +342,11 @@ export default function RichTextEditor({ value, onChange }) {
         <button type="button" className="rte-btn" onClick={() => applySlashCommand('highlight')} title="Evidenzia">🖍</button>
         <button type="button" className="rte-btn" onClick={() => applySlashCommand('code')} title="Blocco Codice">💻</button>
         <button type="button" className="rte-btn" onClick={() => applySlashCommand('divider')} title="Separatore">➖</button>
-        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link')} title="Inserisci Link">🔗</button>
+        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link')} title="Inserisci Link Esterno">🔗</button>
+        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link_file')} title="Collega File Interno">📁</button>
+        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link_note')} title="Collega Nota Interna">📝</button>
+        <button type="button" className="rte-btn" onClick={() => imageInputRef.current?.click()} title="Inserisci Immagine">🖼️</button>
+        <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
 
         <div className="rte-separator" />
 
@@ -277,8 +422,49 @@ export default function RichTextEditor({ value, onChange }) {
           contentEditable
           onInput={handleInput}
           onKeyDown={handleKeyDown}
+          onBlur={() => {
+            if (debounceTimerRef.current) {
+              clearTimeout(debounceTimerRef.current);
+              debounceTimerRef.current = null;
+              onChange(editorRef.current.innerHTML);
+              pendingHtmlRef.current = null;
+            }
+          }}
+          onClick={handleEditorClick}
+          onPaste={handlePaste}
           data-placeholder="Scrivi una nota... (premi '/' per comandi)"
         />
+
+        {showInternalLinkMenu === 'file' && (
+          <div className="rte-dropdown" style={{ position: 'absolute', top: '40px', left: '10px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
+            <div style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Seleziona File da collegare</div>
+            {allFiles && allFiles.length > 0 ? allFiles.map(f => (
+              <button key={f.id} type="button" onClick={() => {
+                editorRef.current?.focus();
+                insertHtml(`<a href="#" data-internal-id="${f.id}" data-internal-type="file" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📄 ${f.name}</a>&nbsp;`);
+                setShowInternalLinkMenu(null);
+              }}>📄 {f.name}</button>
+            )) : <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Nessun file disponibile</div>}
+            <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => setShowInternalLinkMenu(null)}>Annulla</button>
+          </div>
+        )}
+
+        {showInternalLinkMenu === 'note' && (
+          <div className="rte-dropdown" style={{ position: 'absolute', top: '40px', left: '10px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
+            <div style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Seleziona Nota da collegare</div>
+            {allNotes && allNotes.length > 0 ? allNotes.map(n => {
+              const snippet = (n.text || '').replace(/<[^>]*>/g, '').trim().substring(0, 30) + '...';
+              return (
+                <button key={n.id} type="button" onClick={() => {
+                  editorRef.current?.focus();
+                  insertHtml(`<a href="#" data-internal-id="${n.id}" data-internal-type="note" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📝 ${snippet}</a>&nbsp;`);
+                  setShowInternalLinkMenu(null);
+                }}>📝 {snippet}</button>
+              );
+            }) : <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Nessuna nota disponibile</div>}
+            <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => setShowInternalLinkMenu(null)}>Annulla</button>
+          </div>
+        )}
 
         {slashMenuParams && (() => {
           const options = getSlashOptions();
@@ -322,6 +508,7 @@ export default function RichTextEditor({ value, onChange }) {
           padding: 6px 8px;
           background: var(--bg-input);
           border-bottom: 1px solid var(--border-light);
+          flex-wrap: wrap;
         }
 
         .rte-btn {
@@ -408,6 +595,27 @@ export default function RichTextEditor({ value, onChange }) {
           background: var(--bg-card);
           text-align: left;
           direction: ltr;
+        }
+
+        .rte-editor a {
+          color: var(--primary);
+          text-decoration: underline;
+          cursor: pointer;
+        }
+
+        .rte-editor a:hover {
+          color: var(--primary-light);
+        }
+
+        .rte-editor .rte-resizable-img {
+          transition: max-width 0.2s ease;
+          border: 2px solid transparent;
+          border-radius: 6px;
+        }
+
+        .rte-editor .rte-resizable-img:hover {
+          border-color: var(--primary-light);
+          box-shadow: 0 0 0 3px var(--primary-ghost);
         }
 
         .rte-fullscreen {

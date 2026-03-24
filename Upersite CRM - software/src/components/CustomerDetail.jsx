@@ -10,13 +10,35 @@ const STATUSES = [
 ];
 
 
+/* ── DEBOUNCED TEXTAREA ── */
+function DebouncedTextarea({ value, onChange, ...props }) {
+    const [localValue, setLocalValue] = useState(value || '');
+
+    useEffect(() => {
+        setLocalValue(value || '');
+    }, [value]);
+
+    const handleChange = (e) => setLocalValue(e.target.value);
+
+    const handleBlur = (e) => {
+        if (localValue !== (value || '')) {
+            onChange(localValue);
+        }
+        if (props.onBlur) props.onBlur(e);
+    };
+
+    return <textarea {...props} value={localValue} onChange={handleChange} onBlur={handleBlur} />;
+}
 
 /* ── TO-DO SECTION ── */
-function TodoSection({ form, update, confirmDelete }) {
+function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
     const todos = form.todo || [];
+    const allFiles = form.files || [];
+    const allNotes = form.notes || [];
     const [newTask, setNewTask] = useState('');
     const [draftSubtask, setDraftSubtask] = useState({});
     const [openSubtask, setOpenSubtask] = useState({});
+    const [openDetails, setOpenDetails] = useState({});
     const [priority, setPriority] = useState('Media');
     const [dueDate, setDueDate] = useState('');
 
@@ -33,7 +55,10 @@ function TodoSection({ form, update, confirmDelete }) {
             completed: false,
             createdAt: new Date().toISOString(),
             readAt: null,
-            subtasks: []
+            subtasks: [],
+            description: '',
+            linkedFiles: [],
+            linkedNotes: []
         };
 
         update('todo', [...todos, todo]);
@@ -82,7 +107,10 @@ function TodoSection({ form, update, confirmDelete }) {
             completed: false,
             createdAt: new Date().toISOString(),
             readAt: null,
-            subtasks: []
+            subtasks: [],
+            description: '',
+            linkedFiles: [],
+            linkedNotes: []
         };
 
         const insertRecursive = (items) => items.map(t => {
@@ -100,9 +128,71 @@ function TodoSection({ form, update, confirmDelete }) {
         setOpenSubtask(prev => ({ ...prev, [parentId]: false }));
     };
 
+    const updateTodoField = (id, field, value) => {
+        const updateRecursive = (items) => items.map(t => {
+            if (t.id === id) return { ...t, [field]: value };
+            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
+            return t;
+        });
+        update('todo', updateRecursive(todos));
+    };
+
+    const linkFileToTodo = (todoId, fileId) => {
+        const updateRecursive = (items) => items.map(t => {
+            if (t.id === todoId) {
+                const current = t.linkedFiles || [];
+                if (current.includes(fileId)) return t;
+                return { ...t, linkedFiles: [...current, fileId] };
+            }
+            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
+            return t;
+        });
+        update('todo', updateRecursive(todos));
+    };
+
+    const unlinkFileFromTodo = (todoId, fileId) => {
+        const updateRecursive = (items) => items.map(t => {
+            if (t.id === todoId) return { ...t, linkedFiles: (t.linkedFiles || []).filter(f => f !== fileId) };
+            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
+            return t;
+        });
+        update('todo', updateRecursive(todos));
+    };
+
+    const linkNoteToTodo = (todoId, noteId) => {
+        const updateRecursive = (items) => items.map(t => {
+            if (t.id === todoId) {
+                const current = t.linkedNotes || [];
+                if (current.includes(noteId)) return t;
+                return { ...t, linkedNotes: [...current, noteId] };
+            }
+            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
+            return t;
+        });
+        update('todo', updateRecursive(todos));
+    };
+
+    const unlinkNoteFromTodo = (todoId, noteId) => {
+        const updateRecursive = (items) => items.map(t => {
+            if (t.id === todoId) return { ...t, linkedNotes: (t.linkedNotes || []).filter(n => n !== noteId) };
+            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
+            return t;
+        });
+        update('todo', updateRecursive(todos));
+    };
+
+    const getNoteSnippet = (html) => {
+        const text = (html || '').replace(/<[^>]*>/g, '').trim();
+        return text.length > 40 ? text.substring(0, 40) + '...' : text;
+    };
+
     const renderTodoItem = (t, level = 0) => {
         const hasChildren = (t.subtasks || []).length > 0;
         const padLeft = level === 0 ? 0 : level === 1 ? 22 : 44;
+        const isDetailsOpen = openDetails[t.id];
+        const linkedFileObjects = (t.linkedFiles || []).map(fid => allFiles.find(f => f.id === fid)).filter(Boolean);
+        const linkedNoteObjects = (t.linkedNotes || []).map(nid => allNotes.find(n => n.id === nid)).filter(Boolean);
+        const hasDetails = (t.description || '').trim() || linkedFileObjects.length > 0 || linkedNoteObjects.length > 0;
 
         return (
             <div key={t.id} style={{ paddingLeft: padLeft }}>
@@ -122,11 +212,20 @@ function TodoSection({ form, update, confirmDelete }) {
                                             {new Date(t.dueDate).toLocaleDateString('it-IT')}
                                         </span>
                                     )}
+                                    {hasDetails && <span style={{ color: 'var(--text-tertiary)' }}>📎</span>}
                                 </div>
                             )}
                         </div>
                     </div>
 
+                    <button
+                        className="btn btn-ghost btn-icon-sm"
+                        onClick={() => setOpenDetails(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
+                        title="Dettagli"
+                        style={{ fontSize: '0.7rem', color: isDetailsOpen ? 'var(--primary)' : 'var(--text-tertiary)' }}
+                    >
+                        {isDetailsOpen ? '▼' : '▶'}
+                    </button>
                     {level < 2 && (
                         <button
                             className="btn btn-ghost btn-icon-sm"
@@ -157,6 +256,79 @@ function TodoSection({ form, update, confirmDelete }) {
                     </button>
                     <button className="btn btn-ghost btn-icon-sm" onClick={() => confirmDelete('todo', t.id)}>✕</button>
                 </div>
+
+                {/* Collapsible Details Accordion */}
+                {isDetailsOpen && (
+                    <div className="todo-details-accordion">
+                        <div className="todo-details-section">
+                            <label className="todo-details-label">📝 Descrizione</label>
+                            <DebouncedTextarea
+                                className="input"
+                                placeholder="Aggiungi una descrizione..."
+                                value={t.description || ''}
+                                onChange={newVal => updateTodoField(t.id, 'description', newVal)}
+                                rows={3}
+                                style={{ resize: 'vertical', fontSize: '0.85rem' }}
+                            />
+                        </div>
+
+                        {/* Linked Files */}
+                        <div className="todo-details-section">
+                            <label className="todo-details-label">📁 File collegati</label>
+                            {linkedFileObjects.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                                    {linkedFileObjects.map(f => (
+                                        <span key={f.id} className="todo-linked-badge clickable" onClick={() => onOpenFile && onOpenFile(f.id)}>
+                                            📄 {f.name}
+                                            <span className="todo-linked-remove" onClick={(e) => { e.stopPropagation(); unlinkFileFromTodo(t.id, f.id); }}>✕</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            {allFiles.filter(f => !f.isQuote && !(t.linkedFiles || []).includes(f.id)).length > 0 && (
+                                <select
+                                    className="input"
+                                    style={{ fontSize: '0.8rem' }}
+                                    value=""
+                                    onChange={e => { if (e.target.value) linkFileToTodo(t.id, e.target.value); }}
+                                >
+                                    <option value="">+ Collega un file...</option>
+                                    {allFiles.filter(f => !f.isQuote && !(t.linkedFiles || []).includes(f.id)).map(f => (
+                                        <option key={f.id} value={f.id}>{f.name}</option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+
+                        {/* Linked Notes */}
+                        <div className="todo-details-section">
+                            <label className="todo-details-label">📝 Note collegate</label>
+                            {linkedNoteObjects.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                                    {linkedNoteObjects.map(n => (
+                                        <span key={n.id} className="todo-linked-badge clickable" onClick={() => onOpenNote && onOpenNote(n.id)}>
+                                            📝 {getNoteSnippet(n.text)}
+                                            <span className="todo-linked-remove" onClick={(e) => { e.stopPropagation(); unlinkNoteFromTodo(t.id, n.id); }}>✕</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            {allNotes.filter(n => !(t.linkedNotes || []).includes(n.id)).length > 0 && (
+                                <select
+                                    className="input"
+                                    style={{ fontSize: '0.8rem' }}
+                                    value=""
+                                    onChange={e => { if (e.target.value) linkNoteToTodo(t.id, e.target.value); }}
+                                >
+                                    <option value="">+ Collega una nota...</option>
+                                    {allNotes.filter(n => !(t.linkedNotes || []).includes(n.id)).map(n => (
+                                        <option key={n.id} value={n.id}>{getNoteSnippet(n.text)}</option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {level < 2 && openSubtask[t.id] && (
                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px', marginBottom: hasChildren ? '10px' : '16px', paddingLeft: '6px' }}>
@@ -197,7 +369,14 @@ function TodoSection({ form, update, confirmDelete }) {
         return new Date(dateStr) < new Date(new Date().setHours(0, 0, 0, 0));
     };
 
+    const priorityOrder = { 'Alta': 0, 'Media': 1, 'Bassa': 2 };
+
     const pending = todos.filter(t => !t.completed).sort((a, b) => {
+        // First sort by priority (Alta > Media > Bassa)
+        const pa = priorityOrder[a.priority] ?? 1;
+        const pb = priorityOrder[b.priority] ?? 1;
+        if (pa !== pb) return pa - pb;
+        // Then by due date
         if (a.dueDate && b.dueDate) return new Date(a.dueDate) - new Date(b.dueDate);
         if (a.dueDate) return -1;
         if (b.dueDate) return 1;
@@ -267,6 +446,54 @@ function TodoSection({ form, update, confirmDelete }) {
                     cursor: pointer;
                     accent-color: var(--primary);
                 }
+                .todo-details-accordion {
+                    margin: 8px 0 12px 30px;
+                    padding: 14px 16px;
+                    background: var(--bg-input);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-md);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    animation: fade-in 0.2s ease-out;
+                }
+                .todo-details-section {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
+                .todo-details-label {
+                    font-size: 0.7rem;
+                    font-weight: 600;
+                    color: var(--text-tertiary);
+                    text-transform: uppercase;
+                }
+                .todo-linked-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    background: var(--bg-card);
+                    border: 1px solid var(--border-light);
+                    border-radius: 20px;
+                    padding: 4px 10px;
+                    font-size: 0.75rem;
+                    color: var(--text-primary);
+                    max-width: 200px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+                .todo-linked-remove {
+                    cursor: pointer;
+                    color: var(--danger);
+                    font-weight: 700;
+                    font-size: 0.65rem;
+                    margin-left: 2px;
+                    flex-shrink: 0;
+                }
+                .todo-linked-remove:hover {
+                    opacity: 0.7;
+                }
             `}</style>
         </div>
     );
@@ -304,6 +531,24 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
     const [showPaymentWarning, setShowPaymentWarning] = useState(false);
     const [pendingStatus, setPendingStatus] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [initialPreviewFile, setInitialPreviewFile] = useState(null);
+    const [initialSelectedNote, setInitialSelectedNote] = useState(null);
+
+    const handleOpenFile = (fileId) => {
+        const f = form.files?.find(x => x.id === fileId);
+        if (f) {
+            setInitialPreviewFile(f);
+            setActiveTab('files');
+        }
+    };
+
+    const handleOpenNote = (noteId) => {
+        const n = form.notes?.find(x => x.id === noteId);
+        if (n) {
+            setInitialSelectedNote(n);
+            setActiveTab('notes');
+        }
+    };
 
     const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
@@ -370,16 +615,16 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
             alert('Il nome è obbligatorio');
             return;
         }
-        
+
         setIsSaving(true);
-        
+
         try {
             // Salva i dati immediatamente
             onSave(form);
-            
+
             // Aggiorna lo snapshot per riflettere il salvataggio
             snapshot.current = JSON.stringify({ ...form, newNote: '', newTag: '' });
-            
+
             // Chiudi la modal dopo un breve delay per assicurare il salvataggio
             setIsClosing(true);
             setTimeout(() => {
@@ -573,10 +818,12 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                             update={update}
                             confirmDelete={confirmDelete}
                             filterOutQuotes={true}
+                            initialPreviewFile={initialPreviewFile}
+                            clearInitialPreviewFile={() => setInitialPreviewFile(null)}
                         />
                     )}
-                    {activeTab === 'notes' && <NotesSection form={form} update={update} confirmDelete={confirmDelete} newNote={newNote} setNewNote={setNewNote} />}
-                    {activeTab === 'todo' && <TodoSection form={form} update={update} confirmDelete={confirmDelete} />}
+                    {activeTab === 'notes' && <NotesSection form={form} update={update} confirmDelete={confirmDelete} newNote={newNote} setNewNote={setNewNote} onOpenFile={handleOpenFile} onOpenNote={handleOpenNote} initialSelectedNote={initialSelectedNote} clearInitialSelectedNote={() => setInitialSelectedNote(null)} />}
+                    {activeTab === 'todo' && <TodoSection form={form} update={update} confirmDelete={confirmDelete} onOpenFile={handleOpenFile} onOpenNote={handleOpenNote} />}
                 </div>
 
                 {/* Unsaved Changes Confirmation overlay */}
@@ -1071,12 +1318,19 @@ function LinksSection({ form, update, confirmDelete }) {
     const links = form.links || [];
 
     const addLink = () => {
-        update('links', [...links, { id: generateId(), label: '', url: '', note: '' }]);
+        update('links', [{ id: generateId(), label: '', url: '', note: '', createdAt: new Date().toISOString() }, ...links]);
     };
 
     const updateLink = (id, key, val) => {
         update('links', links.map(l => l.id === id ? { ...l, [key]: val } : l));
     };
+
+    // Display most recent first
+    const sortedLinks = [...links].sort((a, b) => {
+        const da = a.createdAt ? new Date(a.createdAt) : new Date(0);
+        const db = b.createdAt ? new Date(b.createdAt) : new Date(0);
+        return db - da;
+    });
 
     return (
         <div className="detail-section">
@@ -1092,7 +1346,7 @@ function LinksSection({ form, update, confirmDelete }) {
                 </div>
             )}
 
-            {links.map((link, idx) => (
+            {sortedLinks.map((link, idx) => (
                 <div key={link.id} className="link-item" style={{ animationDelay: `${idx * 30}ms`, borderLeft: !link.readAt ? '3px solid var(--primary)' : '3px solid transparent' }}>
                     <div className="link-fields">
                         <input className="link-label-input" placeholder="Etichetta" value={link.label}
@@ -1100,7 +1354,7 @@ function LinksSection({ form, update, confirmDelete }) {
                         <input className="link-url-input" placeholder="https://..." value={link.url}
                             onChange={e => updateLink(link.id, 'url', e.target.value)} />
                         <input className="link-note-input" placeholder="Nota..." value={link.note || ''}
-                            onChange={e => updateLink(link.id, 'note', e.target.value)} 
+                            onChange={e => updateLink(link.id, 'note', e.target.value)}
                             style={{ fontSize: '0.7rem', height: '28px', gridColumn: 'span 2' }} />
                     </div>
                     {link.url && (
@@ -1120,7 +1374,7 @@ function LinksSection({ form, update, confirmDelete }) {
 }
 
 /* ── FILES ── */
-function FilesSection({ form, update, confirmDelete, filterOutQuotes }) {
+function FilesSection({ form, update, confirmDelete, filterOutQuotes, initialPreviewFile, clearInitialPreviewFile }) {
     const allFiles = form.files || [];
     const files = filterOutQuotes ? allFiles.filter(f => !f.isQuote) : allFiles;
     const fileRef = useRef(null);
@@ -1128,6 +1382,13 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes }) {
     const [previewFile, setPreviewFile] = useState(null);
     const [currentPath, setCurrentPath] = useState('');
     const [uploadProgress, setUploadProgress] = useState(null);
+
+    useEffect(() => {
+        if (initialPreviewFile) {
+            setPreviewFile(initialPreviewFile);
+            clearInitialPreviewFile();
+        }
+    }, [initialPreviewFile, clearInitialPreviewFile]);
 
     const handleUploadMultiple = async (e) => {
         const selectedFiles = Array.from(e.target.files);
@@ -1283,10 +1544,13 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes }) {
                 ))}
 
                 {visibleFiles.map((file, idx) => {
+                    const lowerName = (file.name || '').toLowerCase();
                     const isImage = file.type && file.type.startsWith('image/');
                     const isPdf = file.type === 'application/pdf';
                     const isText = file.type && file.type.startsWith('text/');
-                    const canPreview = isImage || isPdf || isText;
+                    const isDocx = lowerName.endsWith('.docx');
+                    const isXlsx = lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls');
+                    const canPreview = isImage || isPdf || isText || isDocx || isXlsx;
 
                     return (
                         <div key={file.id} className="file-card" style={{ animationDelay: `${idx * 20}ms` }}>
@@ -1408,9 +1672,19 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes }) {
 }
 
 /* ── NOTES (Rich Text) ── */
-function NotesSection({ form, update, confirmDelete, newNote, setNewNote }) {
+function NotesSection({ form, update, confirmDelete, newNote, setNewNote, onOpenFile, onOpenNote, initialSelectedNote, clearInitialSelectedNote }) {
     const notes = form.notes || [];
     const [selectedNote, setSelectedNote] = useState(null);
+    const [isEditorDirty, setIsEditorDirty] = useState(false);
+    const [showDirtyWarning, setShowDirtyWarning] = useState(false);
+    const [pendingAction, setPendingAction] = useState(null);
+
+    useEffect(() => {
+        if (initialSelectedNote) {
+            handleNoteClick(initialSelectedNote);
+            clearInitialSelectedNote();
+        }
+    }, [initialSelectedNote, clearInitialSelectedNote]);
 
     const addNote = () => {
         const text = newNote.replace(/<[^>]*>/g, '').trim();
@@ -1422,6 +1696,16 @@ function NotesSection({ form, update, confirmDelete, newNote, setNewNote }) {
         };
         update('notes', [note, ...notes]);
         setNewNote('');
+        setIsEditorDirty(false);
+    };
+
+    const handleNoteClick = (note) => {
+        if (isEditorDirty) {
+            setPendingAction(() => () => setSelectedNote(note));
+            setShowDirtyWarning(true);
+        } else {
+            setSelectedNote(note);
+        }
     };
 
     const formatDate = (iso) => {
@@ -1436,8 +1720,8 @@ function NotesSection({ form, update, confirmDelete, newNote, setNewNote }) {
 
     return (
         <div className="detail-section">
-            <label className="input-label">Nuova Nota</label>
-            <RichTextEditor value={newNote} onChange={setNewNote} />
+            <label className="input-label">Nuova Nota {isEditorDirty && <span style={{ color: 'var(--warning)', fontSize: '0.7rem', marginLeft: '6px' }}>● Non salvata</span>}</label>
+            <RichTextEditor value={newNote} onChange={setNewNote} onDirtyChange={setIsEditorDirty} onInternalLinkClick={(id, type) => type === 'file' ? onOpenFile && onOpenFile(id) : onOpenNote && onOpenNote(id)} allFiles={form.files} allNotes={form.notes} />
             <button className="btn btn-primary btn-sm" onClick={addNote} style={{ alignSelf: 'flex-end', marginTop: '8px' }}>
                 + Aggiungi Nota
             </button>
@@ -1453,7 +1737,7 @@ function NotesSection({ form, update, confirmDelete, newNote, setNewNote }) {
                 {notes.map((note, idx) => (
                     <div key={note.id} className="note-item clickable"
                         style={{ animationDelay: `${idx * 30}ms`, borderLeft: !note.readAt ? '3px solid var(--primary)' : '3px solid transparent' }}
-                        onClick={() => setSelectedNote(note)}>
+                        onClick={() => handleNoteClick(note)}>
                         <div className="note-item-header">
                             <span className="note-item-time">{formatDate(note.createdAt)}</span>
                             <div style={{ display: 'flex', gap: '2px' }}>
@@ -1487,7 +1771,34 @@ function NotesSection({ form, update, confirmDelete, newNote, setNewNote }) {
                         setSelectedNote(null);
                     }}
                     onClose={() => setSelectedNote(null)}
+                    onOpenFile={onOpenFile}
+                    onOpenNote={onOpenNote}
+                    allFiles={form.files}
+                    allNotes={form.notes}
                 />
+            )}
+
+            {/* Dirty editor warning */}
+            {showDirtyWarning && (
+                <div className="detail-confirm-overlay animate-fade-in" style={{ zIndex: 2000 }}>
+                    <div className="detail-confirm-card animate-scale-in">
+                        <div className="detail-confirm-icon">⚠️</div>
+                        <p>Hai una nota non salvata nell'editor. Vuoi procedere e perdere le modifiche?</p>
+                        <div className="detail-confirm-buttons">
+                            <button className="btn btn-danger" onClick={() => {
+                                setShowDirtyWarning(false);
+                                setNewNote('');
+                                setIsEditorDirty(false);
+                                if (pendingAction) pendingAction();
+                                setPendingAction(null);
+                            }}>Procedi</button>
+                            <button className="btn btn-secondary" onClick={() => {
+                                setShowDirtyWarning(false);
+                                setPendingAction(null);
+                            }}>Annulla</button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -1682,27 +1993,50 @@ function AdvancedInstallmentModal({ quoteAmount, currentTotal, onConfirm, onClos
 }
 
 /* ── NOTE MODAL ── */
-function NoteModal({ note, onSave, onClose }) {
+function NoteModal({ note, onSave, onClose, onOpenFile, onOpenNote, allFiles, allNotes }) {
     const [text, setText] = useState(note.text);
+    const [isDirty, setIsDirty] = useState(false);
+    const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+
+    const handleClose = () => {
+        if (isDirty) {
+            setShowUnsavedWarning(true);
+        } else {
+            onClose();
+        }
+    };
 
     return (
-        <div className="modal-overlay" style={{ zIndex: 1200 }} onClick={onClose}>
+        <div className="modal-overlay" style={{ zIndex: 1200 }} onClick={handleClose}>
             <div className="modal-content animate-scale-in"
                 style={{ maxWidth: '800px', width: '90%', padding: '24px' }}
                 onClick={e => e.stopPropagation()}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h3 style={{ margin: 0 }}>Modifica Nota</h3>
-                    <button className="btn btn-ghost btn-icon" onClick={onClose}>✕</button>
+                    <h3 style={{ margin: 0 }}>Modifica Nota {isDirty && <span style={{ color: 'var(--warning)', fontSize: '0.7rem', marginLeft: '8px' }}>● Modificata</span>}</h3>
+                    <button className="btn btn-ghost btn-icon" onClick={handleClose}>✕</button>
                 </div>
 
                 <div style={{ marginBottom: '24px', minHeight: '300px' }}>
-                    <RichTextEditor value={text} onChange={setText} />
+                    <RichTextEditor value={text} onChange={setText} onDirtyChange={setIsDirty} onInternalLinkClick={(id, type) => type === 'file' ? onOpenFile && onOpenFile(id) : onOpenNote && onOpenNote(id)} allFiles={allFiles} allNotes={allNotes} />
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                    <button className="btn btn-secondary" onClick={onClose}>Annulla</button>
+                    <button className="btn btn-secondary" onClick={handleClose}>Annulla</button>
                     <button className="btn btn-primary" onClick={() => onSave(text)}>Salva Modifiche</button>
                 </div>
+
+                {showUnsavedWarning && (
+                    <div className="detail-confirm-overlay animate-fade-in" style={{ zIndex: 2100 }}>
+                        <div className="detail-confirm-card animate-scale-in">
+                            <div className="detail-confirm-icon">⚠️</div>
+                            <p>Hai modifiche non salvate. Vuoi uscire senza salvare?</p>
+                            <div className="detail-confirm-buttons">
+                                <button className="btn btn-danger" onClick={() => { setShowUnsavedWarning(false); onClose(); }}>Esci senza salvare</button>
+                                <button className="btn btn-secondary" onClick={() => setShowUnsavedWarning(false)}>Annulla</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
