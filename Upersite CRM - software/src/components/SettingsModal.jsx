@@ -230,6 +230,41 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                 <div className="settings-section" style={{ marginBottom: '32px' }}>
                     <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dati & Backup</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div className="detail-group" style={{ marginBottom: '8px' }}>
+                            <label className="input-label">Percorso Backup Generico</label>
+                            <input type="text" className="input" 
+                                value={settings.backupPath || ''} 
+                                onChange={e => updateSettings({ backupPath: e.target.value })}
+                                placeholder="C:\Users\...\Backup" />
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Cartella dove verranno creati i backup datati.</span>
+                        </div>
+
+                        <button className="btn btn-primary" 
+                            onClick={async () => {
+                                setSuccess('');
+                                setError('');
+                                if (!settings.backupPath) {
+                                    setError('Specifica prima un percorso di backup');
+                                    return;
+                                }
+                                try {
+                                    const { triggerAutoBackup } = await import('../utils/storage');
+                                    const result = await triggerAutoBackup();
+                                    if (result.success) {
+                                        setSuccess(`Backup creato: ${result.folder}`);
+                                    } else {
+                                        setError(`Errore backup: ${result.error}`);
+                                    }
+                                } catch (err) {
+                                    setError('Errore di sistema durante il backup');
+                                }
+                            }}
+                            style={{ width: '100%', justifyContent: 'center', background: 'var(--primary)', color: 'white' }}>
+                            💾 Crea Backup Ora
+                        </button>
+
+                        <div style={{ height: '1px', background: 'var(--border-light)', margin: '8px 0' }} />
+                        
                         <button className="btn btn-secondary" onClick={exportData} style={{ width: '100%', justifyContent: 'center' }}>
                             📥 Esporta Backup (JSON)
                         </button>

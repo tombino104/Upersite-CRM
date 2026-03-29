@@ -54,6 +54,49 @@ function storagePlugin() {
               res.end(JSON.stringify({ error: 'File JSON non valido' }));
             }
           });
+        } else if (req.url === '/api/backup/auto' && req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => {
+            try {
+              const { backupPath } = JSON.parse(body);
+              if (!backupPath) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'Percorso non specificato' }));
+                return;
+              }
+
+              if (!fs.existsSync(STORAGE_FILE)) {
+                res.statusCode = 404;
+                res.end(JSON.stringify({ error: 'Nessun dato da salvare' }));
+                return;
+              }
+
+              const now = new Date();
+              const day = String(now.getDate()).padStart(2, '0');
+              const month = String(now.getMonth() + 1).padStart(2, '0');
+              const year = String(now.getFullYear()).slice(-2);
+              const dateFolder = `${day}-${month}-${year}`;
+              
+              const targetDir = path.join(backupPath, dateFolder);
+              if (!fs.existsSync(targetDir)) {
+                fs.mkdirSync(targetDir, { recursive: true });
+              }
+
+              const hours = String(now.getHours()).padStart(2, '0');
+              const minutes = String(now.getMinutes()).padStart(2, '0');
+              const seconds = String(now.getSeconds()).padStart(2, '0');
+              const timeSuffix = `${hours}-${minutes}-${seconds}`;
+
+              const targetFile = path.join(targetDir, `backup_ore_${timeSuffix}.json`);
+              fs.copyFileSync(STORAGE_FILE, targetFile);
+
+              res.end(JSON.stringify({ success: true, folder: dateFolder }));
+            } catch (e) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: e.message }));
+            }
+          });
         } else if (req.url === '/api/storage' && req.method === 'POST') {
           let body = '';
           req.on('data', chunk => { body += chunk; });

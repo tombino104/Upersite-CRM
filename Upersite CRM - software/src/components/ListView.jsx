@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import CustomerCard from './CustomerCard';
 
-export default function ListView({ customers, onSelectCustomer }) {
+const ListView = memo(({ customers, onSelectCustomer }) => {
     if (customers.length === 0) {
         return (
             <div className="empty-state" style={{ padding: '60px 24px' }}>
@@ -36,4 +37,6 @@ export default function ListView({ customers, onSelectCustomer }) {
       `}</style>
         </div>
     );
-}
+});
+
+export default ListView;

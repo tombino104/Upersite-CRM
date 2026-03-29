@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 const BASIC_COLORS = [
   '#000000', '#E74C3C', '#E67E22', '#F1C40F', '#2ECC71',
@@ -33,17 +34,29 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   }, []); // Only on mount
 
   // Only update innerHTML if it completely differs from the external value AND we are not actively typing in it.
-  // This prevents React from resetting the text cursor on every keystroke.
   useEffect(() => {
     if (pendingHtmlRef.current !== null) return;
     
     if (editorRef.current && value !== editorRef.current.innerHTML) {
-      // Don't overwrite if the user is currently focused/typing in the editor
       if (document.activeElement !== editorRef.current) {
         editorRef.current.innerHTML = value || '';
       }
     }
   }, [value]);
+
+  // Sync innerHTML when toggling fullscreen to prevent content loss due to re-mounting
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.innerHTML = value || '';
+    }
+    // Lock body scroll in fullscreen
+    if (isFullScreen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isFullScreen]);
 
   const exec = (cmd, val = null) => {
     document.execCommand(cmd, false, val);
@@ -138,6 +151,12 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       setShowInternalLinkMenu('note');
     } else if (cmd === 'image') {
       imageInputRef.current?.click();
+    } else if (cmd === 'link_folder') {
+      const path = prompt('Inserisci il percorso assoluto della cartella (es: C:\\Lavori\\Cliente):');
+      if (path && path.trim()) {
+        const name = path.split(/[\\\/]/).filter(Boolean).pop() || path;
+        insertHtml(`<a href="#" onclick="event.preventDefault(); navigator.clipboard.writeText('${path.replace(/\\/g, '\\\\')}'); alert('Percorso copiato: ${path.replace(/\\/g, '\\\\')}');" class="folder-internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📁 ${name}</a>&nbsp;`);
+      }
     }
   };
 
@@ -150,6 +169,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       { cmd: 'link', label: 'Link Esterno', icon: '🔗' },
       { cmd: 'link_file', label: 'Collega File', icon: '📁' },
       { cmd: 'link_note', label: 'Collega Nota', icon: '📝' },
+      { cmd: 'link_folder', label: 'Collega Cartella Locale', icon: '🗂️' },
       { cmd: 'image', label: 'Immagine', icon: '🖼️' }
     ].filter(o => o.label.toLowerCase().includes(slashMenuParams.filter) || o.cmd.includes(slashMenuParams.filter));
   };
@@ -261,16 +281,93 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     e.target.value = '';
   };
 
+  const getFormattedText = (node) => {
+    let text = "";
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.nodeValue;
+    }
+    
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const tagName = node.tagName.toLowerCase();
+      
+      // Block level elements that should have newlines around them
+      const isBlock = ['h1', 'h2', 'h3', 'p', 'div', 'li', 'pre', 'hr'].includes(tagName);
+      
+      node.childNodes.forEach(child => {
+        text += getFormattedText(child);
+      });
+
+      if (tagName === 'br') text += "\n";
+      else if (tagName === 'p' || tagName === 'div' || tagName === 'li') text += "\n";
+      else if (['h1', 'h2', 'h3'].includes(tagName)) text += "\n\n"; // Titles get extra space
+      else if (tagName === 'hr') text += "\n-------------------\n";
+    }
+    return text;
+  };
+
+  const downloadFile = (content, filename, type) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportAsTXT = () => {
+    if (!editorRef.current) return;
+    
+    // Create a clone to manipulate if needed
+    const clone = editorRef.current.cloneNode(true);
+    
+    // Formatting titles with symbols
+    clone.querySelectorAll('h1').forEach(h => h.prepend("# "));
+    clone.querySelectorAll('h2').forEach(h => h.prepend("## "));
+    clone.querySelectorAll('h3').forEach(h => h.prepend("### "));
+    clone.querySelectorAll('li').forEach(li => li.prepend("- "));
+
+    const text = getFormattedText(clone);
+    downloadFile(text.trim(), 'nota_upersite.txt', 'text/plain');
+  };
+
+  const exportAsMD = () => {
+    if (!editorRef.current) return;
+    const html = editorRef.current.innerHTML;
+    // We already have a decent MD logic, but let's make it cleaner
+    let md = html
+      .replace(/<h1>(.*?)<\/h1>/gim, '# $1\n\n')
+      .replace(/<h2>(.*?)<\/h2>/gim, '## $1\n\n')
+      .replace(/<h3>(.*?)<\/h3>/gim, '### $1\n\n')
+      .replace(/<b>(.*?)<\/b>/gim, '**$1**')
+      .replace(/<strong>(.*?)<\/strong>/gim, '**$1**')
+      .replace(/<i>(.*?)<\/i>/gim, '*$1*')
+      .replace(/<em>(.*?)<\/em>/gim, '*$1*')
+      .replace(/<u>(.*?)<\/u>/gim, '_$1_')
+      .replace(/<li>(.*?)<\/li>/gim, '- $1\n')
+      .replace(/<br\s*\/?>/gim, '\n')
+      .replace(/<\/div>/gim, '\n')
+      .replace(/<\/p>/gim, '\n\n')
+      .replace(/<p>/gim, '')
+      .replace(/<div>/gim, '')
+      .replace(/<[^>]*>/gim, ''); // Strip remaining tags
+
+    downloadFile(md.trim(), 'nota_upersite.md', 'text/markdown');
+  };
+
   // Make links clickable (open in new tab) and handle image resizing on click
   const handleEditorClick = (e) => {
     const target = e.target;
 
     // Handle internal link clicks
-    if (target.tagName === 'A' && target.classList.contains('internal-link')) {
+    if (target.tagName === 'A' && (target.classList.contains('internal-link') || target.classList.contains('folder-internal-link'))) {
       e.preventDefault();
       const id = target.getAttribute('data-internal-id');
       const type = target.getAttribute('data-internal-type');
-      if (onInternalLinkClick && id && type) {
+      
+      // If it's a folder-internal-link with an onclick, the onclick will handle it (copying the path)
+      // If it's an internal-link with data-internal-type="folder-nav", we call the handler
+      if (onInternalLinkClick && (id || type)) {
         onInternalLinkClick(id, type);
       }
       return;
@@ -310,11 +407,17 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     }, 0);
   }, []);
 
-  return (
+  const editorContent = (
     <div className={`rte-container ${isFullScreen ? 'rte-fullscreen' : ''}`}>
       <div className="rte-toolbar">
         <button type="button" className="rte-btn" onClick={() => fileInputRef.current?.click()} title="Importa File (.txt, .md, .html, .csv)">
           📥 Importa
+        </button>
+        <button type="button" className="rte-btn" onClick={exportAsTXT} title="Esporta come .txt">
+          📄 TXT
+        </button>
+        <button type="button" className="rte-btn" onClick={exportAsMD} title="Esporta come .md">
+          Ⓜ️ MD
         </button>
         <input ref={fileInputRef} type="file" accept=".txt,.md,.html,.csv" style={{ display: 'none' }} onChange={handleFileImport} />
 
@@ -345,6 +448,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         <button type="button" className="rte-btn" onClick={() => applySlashCommand('link')} title="Inserisci Link Esterno">🔗</button>
         <button type="button" className="rte-btn" onClick={() => applySlashCommand('link_file')} title="Collega File Interno">📁</button>
         <button type="button" className="rte-btn" onClick={() => applySlashCommand('link_note')} title="Collega Nota Interna">📝</button>
+        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link_folder')} title="Collega Cartella Locale">🗂️</button>
         <button type="button" className="rte-btn" onClick={() => imageInputRef.current?.click()} title="Inserisci Immagine">🖼️</button>
         <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
 
@@ -627,16 +731,19 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           flex-direction: column;
           border: none;
           border-radius: 0;
+          overflow: hidden; /* Added to ensure only editor scrolls */
         }
 
         .rte-fullscreen .rte-editor {
           flex: 1;
-          max-height: none;
+          max-height: calc(100vh - 80px); /* Leave space for toolbar */
           padding: 40px;
           font-size: 1.125rem;
           max-width: 900px;
           margin: 0 auto;
           width: 100%;
+          overflow-y: auto !important;
+          -webkit-overflow-scrolling: touch;
         }
 
         .rte-fullscreen .rte-toolbar {
@@ -709,4 +816,38 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       `}</style>
     </div>
   );
+
+  return isFullScreen ? createPortal(editorContent, document.body) : editorContent;
 }
+
+const editorStyles = `
+  .internal-link, .folder-internal-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--primary-ghost);
+    color: var(--primary) !important;
+    border: 1px solid var(--primary-light);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-decoration: none !important;
+    margin: 0 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  .internal-link:hover, .folder-internal-link:hover {
+    background: var(--primary-light);
+    color: #fff !important;
+  }
+`;
+
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = editorStyles;
+  document.head.appendChild(style);
+}
+

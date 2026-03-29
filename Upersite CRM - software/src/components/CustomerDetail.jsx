@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import RichTextEditor from './RichTextEditor';
 import { generateId, sanitizePositiveNumber, formatBytes, saveFile, getMasterPassword, PACKAGES, ADDONS } from '../utils/storage';
 
@@ -9,6 +9,26 @@ const STATUSES = [
     { value: 'completed', label: 'Completato' },
 ];
 
+
+/* ── DEBOUNCED INPUT ── */
+function DebouncedInput({ value, onChange, ...props }) {
+    const [localValue, setLocalValue] = useState(value || '');
+
+    useEffect(() => {
+        setLocalValue(value || '');
+    }, [value]);
+
+    const handleChange = (e) => setLocalValue(e.target.value);
+
+    const handleBlur = (e) => {
+        if (localValue !== (value || '')) {
+            onChange(localValue);
+        }
+        if (props.onBlur) props.onBlur(e);
+    };
+
+    return <input {...props} value={localValue} onChange={handleChange} onBlur={handleBlur} />;
+}
 
 /* ── DEBOUNCED TEXTAREA ── */
 function DebouncedTextarea({ value, onChange, ...props }) {
@@ -30,8 +50,29 @@ function DebouncedTextarea({ value, onChange, ...props }) {
     return <textarea {...props} value={localValue} onChange={handleChange} onBlur={handleBlur} />;
 }
 
+/* ── RECURRENCE HELPER ── */
+const calculateNextDueDate = (currentDateStr, frequency) => {
+    if (!currentDateStr || frequency === 'none') return '';
+    try {
+        const date = new Date(currentDateStr);
+        if (isNaN(date.getTime())) return '';
+        
+        switch (frequency) {
+            case 'Settimanale': date.setDate(date.getDate() + 7); break;
+            case 'Mensile': date.setMonth(date.getMonth() + 1); break;
+            case 'Trimestrale': date.setMonth(date.getMonth() + 3); break;
+            case 'Semestrale': date.setMonth(date.getMonth() + 6); break;
+            case 'Annuale': date.setFullYear(date.getFullYear() + 1); break;
+            default: return '';
+        }
+        return date.toISOString().split('T')[0];
+    } catch {
+        return '';
+    }
+};
+
 /* ── TO-DO SECTION ── */
-function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
+const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, onOpenFile, onOpenNote }) => {
     const todos = form.todo || [];
     const allFiles = form.files || [];
     const allNotes = form.notes || [];
@@ -41,6 +82,7 @@ function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
     const [openDetails, setOpenDetails] = useState({});
     const [priority, setPriority] = useState('Media');
     const [dueDate, setDueDate] = useState('');
+    const [recurrence, setRecurrence] = useState('none');
 
     const addTodo = (e) => {
         e.preventDefault();
@@ -58,7 +100,8 @@ function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
             subtasks: [],
             description: '',
             linkedFiles: [],
-            linkedNotes: []
+            linkedNotes: [],
+            recurrence: recurrence
         };
 
         update('todo', [...todos, todo]);
@@ -82,6 +125,16 @@ function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
                 readAt: val ? (st.readAt || new Date().toISOString()) : st.readAt,
                 subtasks: setAll(st.subtasks || [], val)
             }));
+
+            if (nextCompleted && t.recurrence && t.recurrence !== 'none') {
+                const nextDate = calculateNextDueDate(t.dueDate || new Date().toISOString(), t.recurrence);
+                return {
+                    ...t,
+                    dueDate: nextDate,
+                    completed: false, // Auto-reset
+                    readAt: null      // Mark as unread since it's "new" again
+                };
+            }
 
             return {
                 ...t,
@@ -110,7 +163,8 @@ function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
             subtasks: [],
             description: '',
             linkedFiles: [],
-            linkedNotes: []
+            linkedNotes: [],
+            recurrence: 'none'
         };
 
         const insertRecursive = (items) => items.map(t => {
@@ -206,6 +260,9 @@ function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
                             {level === 0 && (
                                 <div style={{ display: 'flex', gap: '12px', fontSize: '0.75rem', marginTop: '4px' }}>
                                     <span style={{ color: getPriorityColor(t.priority), fontWeight: 600 }}>{t.priority}</span>
+                                    {t.recurrence && t.recurrence !== 'none' && (
+                                        <span style={{ color: 'var(--primary)', fontWeight: 600 }}>🔁 {t.recurrence}</span>
+                                    )}
                                     {t.dueDate && (
                                         <span style={{ color: isOverdue(t.dueDate) ? 'var(--danger)' : 'var(--text-secondary)' }}>
                                             {isOverdue(t.dueDate) ? '⚠️ Scaduto il ' : 'Scadenza: '}
@@ -218,14 +275,28 @@ function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
                         </div>
                     </div>
 
-                    <button
-                        className="btn btn-ghost btn-icon-sm"
-                        onClick={() => setOpenDetails(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
-                        title="Dettagli"
-                        style={{ fontSize: '0.7rem', color: isDetailsOpen ? 'var(--primary)' : 'var(--text-tertiary)' }}
-                    >
-                        {isDetailsOpen ? '▼' : '▶'}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                            className="btn btn-ghost btn-icon-sm"
+                            onClick={() => {
+                                const path = prompt('Inserisci il percorso della cartella locale per questo task:');
+                                if (path !== null) updateTodoField(t.id, 'folderPath', path.trim());
+                            }}
+                            title="Collega Cartella Locale"
+                            style={{ color: t.folderPath ? 'var(--primary)' : 'var(--text-tertiary)' }}
+                        >
+                            🗂️
+                        </button>
+
+                        <button
+                            className="btn btn-ghost btn-icon-sm"
+                            onClick={() => setOpenDetails(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
+                            title="Dettagli"
+                            style={{ fontSize: '0.7rem', color: isDetailsOpen ? 'var(--primary)' : 'var(--text-tertiary)' }}
+                        >
+                            {isDetailsOpen ? '▼' : '▶'}
+                        </button>
+                    </div>
                     {level < 2 && (
                         <button
                             className="btn btn-ghost btn-icon-sm"
@@ -262,17 +333,51 @@ function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
                     <div className="todo-details-accordion">
                         <div className="todo-details-section">
                             <label className="todo-details-label">📝 Descrizione</label>
-                            <DebouncedTextarea
-                                className="input"
-                                placeholder="Aggiungi una descrizione..."
+                            <RichTextEditor
                                 value={t.description || ''}
                                 onChange={newVal => updateTodoField(t.id, 'description', newVal)}
-                                rows={3}
-                                style={{ resize: 'vertical', fontSize: '0.85rem' }}
+                                onInternalLinkClick={onInternalLink}
+                                allFiles={allFiles}
+                                allNotes={allNotes}
                             />
                         </div>
 
-                        {/* Linked Files */}
+                        {/* Recurrence Settings */}
+                        <div className="todo-details-section">
+                            <label className="todo-details-label">🔁 Ricorrenza</label>
+                            <select 
+                                className="input" 
+                                style={{ fontSize: '0.85rem' }}
+                                value={t.recurrence || 'none'} 
+                                onChange={e => updateTodoField(t.id, 'recurrence', e.target.value)}
+                            >
+                                <option value="none">Nessuna</option>
+                                <option value="Settimanale">Ogni settimana (7 gg)</option>
+                                <option value="Mensile">Ogni mese</option>
+                                <option value="Trimestrale">Ogni 3 mesi</option>
+                                <option value="Semestrale">Ogni 6 mesi</option>
+                                <option value="Annuale">Ogni anno</option>
+                            </select>
+                        </div>
+
+                        {/* Folder Link */}
+                        {t.folderPath && (
+                            <div className="todo-details-section">
+                                <label className="todo-details-label">🗂️ Cartella Collegata</label>
+                                <div 
+                                    className="todo-linked-badge clickable" 
+                                    style={{ background: 'var(--primary-ghost)', borderColor: 'var(--primary-light)', padding: '8px 12px' }}
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(t.folderPath);
+                                        alert('Percorso copiato: ' + t.folderPath);
+                                    }}
+                                >
+                                    <span>{t.folderPath.split(/[\\\/]/).pop() || t.folderPath}</span>
+                                    <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', marginLeft: '8px' }}>Clicca per copiare</span>
+                                    <span className="todo-linked-remove" onClick={(e) => { e.stopPropagation(); updateTodoField(t.id, 'folderPath', ''); }}>✕</span>
+                                </div>
+                            </div>
+                        )}
                         <div className="todo-details-section">
                             <label className="todo-details-label">📁 File collegati</label>
                             {linkedFileObjects.length > 0 && (
@@ -407,6 +512,20 @@ function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
                     onChange={e => setDueDate(e.target.value)}
                     style={{ flex: '0 0 140px' }}
                 />
+                <select 
+                    className="input" 
+                    value={recurrence} 
+                    onChange={e => setRecurrence(e.target.value)}
+                    style={{ flex: '0 0 130px' }}
+                    title="Ricorrenza"
+                >
+                    <option value="none">Non ricorr.</option>
+                    <option value="Settimanale">Settimanale</option>
+                    <option value="Mensile">Mensile</option>
+                    <option value="Trimestrale">Trimestrale</option>
+                    <option value="Semestrale">Semestrale</option>
+                    <option value="Annuale">Annuale</option>
+                </select>
                 <button type="submit" className="btn btn-primary">Aggiungi</button>
             </form>
 
@@ -497,14 +616,9 @@ function TodoSection({ form, update, confirmDelete, onOpenFile, onOpenNote }) {
             `}</style>
         </div>
     );
-}
+});
 
 export default function CustomerDetail({ customer, allTags, settings, onSave, onDelete, onClose }) {
-    const isNew = !customer;
-    const [showAdvancedFinance, setShowAdvancedFinance] = useState(false);
-    const [activeTab, setActiveTab] = useState('general');
-    const [newNote, setNewNote] = useState('');
-    const [newTag, setNewTag] = useState('');
     const [form, setForm] = useState(customer || {
         id: generateId(),
         name: '',
@@ -518,9 +632,16 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         links: [],
         files: [],
         notes: [],
+        todo: [], // Ensure todo is initialized
         logo: null,
         createdAt: new Date().toISOString()
     });
+
+    const isNew = !customer;
+    const [showAdvancedFinance, setShowAdvancedFinance] = useState(false);
+    const [activeTab, setActiveTab] = useState('general');
+    const [newNote, setNewNote] = useState('');
+    const [newTag, setNewTag] = useState('');
 
     const snapshot = useRef(JSON.stringify({ ...form, newNote: '', newTag: '' }));
 
@@ -533,6 +654,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
     const [isSaving, setIsSaving] = useState(false);
     const [initialPreviewFile, setInitialPreviewFile] = useState(null);
     const [initialSelectedNote, setInitialSelectedNote] = useState(null);
+
+
 
     const handleOpenFile = (fileId) => {
         const f = form.files?.find(x => x.id === fileId);
@@ -547,6 +670,15 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         if (n) {
             setInitialSelectedNote(n);
             setActiveTab('notes');
+        }
+    };
+
+    const handleInternalLink = (id, type) => {
+        if (type === 'file') handleOpenFile(id);
+        else if (type === 'note') handleOpenNote(id);
+        else if (type === 'folder-nav') {
+            setCurrentPath(id);
+            setActiveTab('files');
         }
     };
 
@@ -792,38 +924,62 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                 {/* Body */}
                 <div className="modal-body detail-body">
-                    {activeTab === 'general' && <GeneralSection form={form} update={update} allTags={allTags} newTag={newTag} setNewTag={setNewTag} />}
-                    {activeTab === 'config' && <ConfigSection form={form} update={update} />}
-                    {activeTab === 'finance' && (
-                        <FinanceSection
-                            form={form}
-                            update={update}
-                            settings={settings}
-                            confirmDelete={confirmDelete}
-                            showAdvancedFinance={showAdvancedFinance}
-                            setShowAdvancedFinance={setShowAdvancedFinance}
-                        />
-                    )}
-                    {activeTab === 'credentials' && (
-                        <CredentialsSection
-                            form={form}
-                            update={update}
-                            confirmDelete={confirmDelete}
-                        />
-                    )}
-                    {activeTab === 'links' && <LinksSection form={form} update={update} confirmDelete={confirmDelete} />}
-                    {activeTab === 'files' && (
-                        <FilesSection
-                            form={form}
-                            update={update}
-                            confirmDelete={confirmDelete}
-                            filterOutQuotes={true}
-                            initialPreviewFile={initialPreviewFile}
-                            clearInitialPreviewFile={() => setInitialPreviewFile(null)}
-                        />
-                    )}
-                    {activeTab === 'notes' && <NotesSection form={form} update={update} confirmDelete={confirmDelete} newNote={newNote} setNewNote={setNewNote} onOpenFile={handleOpenFile} onOpenNote={handleOpenNote} initialSelectedNote={initialSelectedNote} clearInitialSelectedNote={() => setInitialSelectedNote(null)} />}
-                    {activeTab === 'todo' && <TodoSection form={form} update={update} confirmDelete={confirmDelete} onOpenFile={handleOpenFile} onOpenNote={handleOpenNote} />}
+                    <>
+                        {activeTab === 'general' && <GeneralSection form={form} update={update} allTags={allTags} newTag={newTag} setNewTag={setNewTag} />}
+                        {activeTab === 'config' && <ConfigSection form={form} update={update} />}
+                        {activeTab === 'finance' && (
+                            <FinanceSection
+                                form={form}
+                                update={update}
+                                settings={settings}
+                                confirmDelete={confirmDelete}
+                                showAdvancedFinance={showAdvancedFinance}
+                                setShowAdvancedFinance={setShowAdvancedFinance}
+                            />
+                        )}
+                        {activeTab === 'credentials' && (
+                            <CredentialsSection
+                                form={form}
+                                update={update}
+                                confirmDelete={confirmDelete}
+                            />
+                        )}
+                        {activeTab === 'links' && <LinksSection form={form} update={update} confirmDelete={confirmDelete} />}
+                        {activeTab === 'files' && (
+                            <FilesSection
+                                form={form}
+                                update={update}
+                                confirmDelete={confirmDelete}
+                                filterOutQuotes={true}
+                                initialPreviewFile={initialPreviewFile}
+                                clearInitialPreviewFile={() => setInitialPreviewFile(null)}
+                            />
+                        )}
+                        {activeTab === 'notes' && (
+                            <NotesSection 
+                                form={form} 
+                                update={update} 
+                                confirmDelete={confirmDelete} 
+                                newNote={newNote} 
+                                setNewNote={setNewNote} 
+                                onInternalLink={handleInternalLink} 
+                                onOpenFile={handleOpenFile}
+                                onOpenNote={handleOpenNote}
+                                initialSelectedNote={initialSelectedNote} 
+                                clearInitialSelectedNote={() => setInitialSelectedNote(null)} 
+                            />
+                        )}
+                        {activeTab === 'todo' && (
+                            <TodoSection 
+                                form={form} 
+                                update={update} 
+                                confirmDelete={confirmDelete} 
+                                onInternalLink={handleInternalLink} 
+                                onOpenFile={handleOpenFile}
+                                onOpenNote={handleOpenNote}
+                            />
+                        )}
+                    </>
                 </div>
 
                 {/* Unsaved Changes Confirmation overlay */}
@@ -841,18 +997,38 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                 )}
 
                 {/* Delete Confirmation overlay */}
-                {deleteTarget && (
-                    <div className="detail-confirm-overlay animate-fade-in">
-                        <div className="detail-confirm-card animate-scale-in">
-                            <div className="detail-confirm-icon">🗑</div>
-                            <p>Sei sicuro di voler eliminare questo elemento?</p>
-                            <div className="detail-confirm-buttons">
-                                <button className="btn btn-danger" onClick={executeDelete}>Elimina</button>
-                                <button className="btn btn-secondary" onClick={() => setDeleteTarget(null)}>Annulla</button>
+                {deleteTarget && (() => {
+                    // Check if this is a recurring todo
+                    const isRecurTodo = deleteTarget.type === 'todo' && (() => {
+                        const findRec = (items) => {
+                            for (const item of items) {
+                                if (item.id === deleteTarget.id) return item.recurrence && item.recurrence !== 'none';
+                                if (item.subtasks?.length > 0) {
+                                    const r = findRec(item.subtasks);
+                                    if (r !== undefined) return r;
+                                }
+                            }
+                        };
+                        return findRec(form.todo || []);
+                    })();
+
+                    return (
+                        <div className="detail-confirm-overlay animate-fade-in">
+                            <div className="detail-confirm-card animate-scale-in">
+                                <div className="detail-confirm-icon">🗑</div>
+                                <p>
+                                    {isRecurTodo 
+                                        ? "Questo è un todo RICORRENTE. Sei sicuro di volerlo eliminare definitivamente?" 
+                                        : "Sei sicuro di voler eliminare questo elemento?"}
+                                </p>
+                                <div className="detail-confirm-buttons">
+                                    <button className="btn btn-danger" onClick={executeDelete}>Elimina</button>
+                                    <button className="btn btn-secondary" onClick={() => setDeleteTarget(null)}>Annulla</button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
 
                 {/* Payment Warning overlay */}
                 {showPaymentWarning && (() => {
@@ -948,7 +1124,7 @@ function LogoAvatar({ logo, name, onLogoChange }) {
 }
 
 /* ── GENERAL ── */
-function GeneralSection({ form, update, allTags, newTag, setNewTag }) {
+const GeneralSection = React.memo(({ form, update, allTags, newTag, setNewTag }) => {
 
     const addTag = (tag) => {
         const val = tag;
@@ -965,24 +1141,24 @@ function GeneralSection({ form, update, allTags, newTag, setNewTag }) {
             <div className="detail-row">
                 <div className="detail-group">
                     <label className="input-label">Nome *</label>
-                    <input className="input" value={form.name} onChange={e => update('name', e.target.value)} placeholder="Mario Rossi" />
+                    <DebouncedInput className="input" value={form.name} onChange={val => update('name', val)} placeholder="Mario Rossi" />
                 </div>
                 <div className="detail-group">
                     <label className="input-label">Tipo di attività</label>
-                    <input className="input" value={form.company || ''} onChange={e => update('company', e.target.value)} placeholder="Es. Sviluppo Software, Idraulico..." />
+                    <DebouncedInput className="input" value={form.company || ''} onChange={val => update('company', val)} placeholder="Es. Sviluppo Software, Idraulico..." />
                 </div>
             </div>
             <div className="detail-row">
                 <div className="detail-group">
                     <label className="input-label">Email</label>
-                    <input className="input" type="email" value={form.email || ''} onChange={e => update('email', e.target.value)} placeholder="mario@rossi.it" />
+                    <DebouncedInput className="input" type="email" value={form.email || ''} onChange={val => update('email', val)} placeholder="mario@rossi.it" />
                 </div>
                 <div className="detail-group">
                     <label className="input-label">Telefono</label>
-                    <input
+                    <DebouncedInput
                         className="input"
                         value={form.phone || ''}
-                        onChange={e => update('phone', e.target.value)}
+                        onChange={val => update('phone', val)}
                         onBlur={() => update('phone', formatPhone(form.phone || ''))}
                         placeholder="+39 333 1234567"
                     />
@@ -1056,10 +1232,10 @@ function GeneralSection({ form, update, allTags, newTag, setNewTag }) {
             </div>
         </div>
     );
-}
+});
 
 /* ── CONFIGURATION (Add-ons) ── */
-function ConfigSection({ form, update }) {
+const ConfigSection = React.memo(({ form, update }) => {
     const selectedPackage = form.packageType || '';
     const selectedAddons = form.addons || [];
 
@@ -1102,10 +1278,10 @@ function ConfigSection({ form, update }) {
             </div>
         </div>
     );
-}
+});
 
 /* ── FINANCE ── */
-function FinanceSection({ form, update, settings, confirmDelete, showAdvancedFinance, setShowAdvancedFinance }) {
+const FinanceSection = React.memo(({ form, update, settings, confirmDelete, showAdvancedFinance, setShowAdvancedFinance }) => {
     const installments = form.installments || [];
     const now = new Date();
 
@@ -1212,10 +1388,10 @@ function FinanceSection({ form, update, settings, confirmDelete, showAdvancedFin
             </div>
         </div>
     );
-}
+});
 
 /* ── CREDENTIALS ── */
-function CredentialsSection({ form, update, confirmDelete }) {
+const CredentialsSection = React.memo(({ form, update, confirmDelete }) => {
     const credentials = form.credentials || [];
     const [visibleIds, setVisibleIds] = useState({});
     const [unlocked, setUnlocked] = useState(false);
@@ -1288,14 +1464,14 @@ function CredentialsSection({ form, update, confirmDelete }) {
             {credentials.map((cred, idx) => (
                 <div key={cred.id} className="credential-item" style={{ animationDelay: `${idx * 30}ms`, borderLeft: !cred.readAt ? '3px solid var(--primary)' : '3px solid transparent' }}>
                     <div className="credential-fields">
-                        <input className="credential-service" placeholder="Servizio" value={cred.service}
-                            onChange={e => updateCredential(cred.id, 'service', e.target.value)} />
-                        <input className="credential-user" placeholder="Username" value={cred.username}
-                            onChange={e => updateCredential(cred.id, 'username', e.target.value)} />
-                        <input className="credential-pass"
+                        <DebouncedInput className="credential-service" placeholder="Servizio" value={cred.service}
+                            onChange={val => updateCredential(cred.id, 'service', val)} />
+                        <DebouncedInput className="credential-user" placeholder="Username" value={cred.username}
+                            onChange={val => updateCredential(cred.id, 'username', val)} />
+                        <DebouncedInput className="credential-pass"
                             type={visibleIds[cred.id] ? 'text' : 'password'}
                             placeholder="Password" value={cred.password}
-                            onChange={e => updateCredential(cred.id, 'password', e.target.value)} />
+                            onChange={val => updateCredential(cred.id, 'password', val)} />
                     </div>
                     <button className="btn btn-ghost btn-icon-sm" onClick={() => toggleVisible(cred.id)}
                         title={visibleIds[cred.id] ? 'Nascondi' : 'Mostra'}>
@@ -1311,10 +1487,10 @@ function CredentialsSection({ form, update, confirmDelete }) {
             ))}
         </div>
     );
-}
+});
 
 /* ── LINKS ── */
-function LinksSection({ form, update, confirmDelete }) {
+const LinksSection = React.memo(({ form, update, confirmDelete }) => {
     const links = form.links || [];
 
     const addLink = () => {
@@ -1371,10 +1547,10 @@ function LinksSection({ form, update, confirmDelete }) {
             ))}
         </div>
     );
-}
+});
 
 /* ── FILES ── */
-function FilesSection({ form, update, confirmDelete, filterOutQuotes, initialPreviewFile, clearInitialPreviewFile }) {
+const FilesSection = React.memo(({ form, update, confirmDelete, filterOutQuotes, initialPreviewFile, clearInitialPreviewFile }) => {
     const allFiles = form.files || [];
     const files = filterOutQuotes ? allFiles.filter(f => !f.isQuote) : allFiles;
     const fileRef = useRef(null);
@@ -1389,6 +1565,57 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes, initialPre
             clearInitialPreviewFile();
         }
     }, [initialPreviewFile, clearInitialPreviewFile]);
+
+    const copyInternalLink = async (item, type = 'file') => {
+        let label = '';
+        let html = '';
+        let text = '';
+
+        if (type === 'file') {
+            label = item.name;
+            html = `<a class="internal-link" data-internal-id="${item.id}" data-internal-type="file" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📄 ${label}</a>&nbsp;`;
+            text = `[File: ${label}]`;
+        } else if (type === 'folder-link') {
+            label = item.name;
+            const path = item.path || '';
+            html = `<a href="#" onclick="event.preventDefault(); navigator.clipboard.writeText('${path.replace(/\\/g, '\\\\')}'); alert('Percorso copiato: ${path.replace(/\\/g, '\\\\')}');" class="folder-internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">🗂️ ${label}</a>&nbsp;`;
+            text = `[Cartella: ${label}]`;
+        } else if (type === 'folder-nav') {
+            label = item.replace('/', '');
+            const path = currentPath + item;
+            html = `<a class="internal-link" data-internal-id="${path}" data-internal-type="folder-nav" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📁 ${label}</a>&nbsp;`;
+            text = `[Naviga: ${label}]`;
+        }
+
+        try {
+            const clipboardItem = new ClipboardItem({
+                'text/html': new Blob([html], { type: 'text/html' }),
+                'text/plain': new Blob([text], { type: 'text/plain' })
+            });
+            await navigator.clipboard.write([clipboardItem]);
+            alert(`Link per "${label}" copiato! Incollalo in una nota o todo.`);
+        } catch (err) {
+            console.error(err);
+            // Fallback to text if HTML copy fails
+            navigator.clipboard.writeText(text);
+        }
+    };
+
+    const handleAddFolderLink = () => {
+        const path = window.prompt("Inserisci il percorso assoluto della cartella (es: C:\\Lavori\\Cliente):\n\nQuesto creerà un collegamento rapido senza caricare i file.");
+        if (path && path.trim()) {
+            const newFolderLink = {
+                id: generateId ? generateId() : Date.now().toString(),
+                name: path.split(/[\\\/]/).filter(Boolean).pop() || path,
+                path: path.trim(),
+                type: 'folder-link',
+                size: 0,
+                isFolderLink: true,
+                uploadedAt: new Date().toISOString()
+            };
+            update('files', [...allFiles, newFolderLink]);
+        }
+    };
 
     const handleUploadMultiple = async (e) => {
         const selectedFiles = Array.from(e.target.files);
@@ -1444,6 +1671,11 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes, initialPre
 
     files.forEach(file => {
         const fullPath = file.path || file.name;
+        
+        if (file.isFolderLink) {
+            if (currentPath === '') visibleFiles.push(file);
+            return;
+        }
 
         if (currentPath === '' || fullPath.startsWith(currentPath)) {
             const relativePath = currentPath === '' ? fullPath : fullPath.substring(currentPath.length);
@@ -1476,12 +1708,11 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes, initialPre
                     <button className="btn btn-secondary btn-sm" onClick={() => fileRef.current?.click()}>
                         + File
                     </button>
-                    <button className="btn btn-secondary btn-sm" onClick={() => folderRef.current?.click()}>
-                        + Cartella
+                    <button className="btn btn-secondary btn-sm" onClick={handleAddFolderLink} title="Collega una cartella locale tramite percorso">
+                        🔗 Collega Cartella
                     </button>
                 </div>
                 <input ref={fileRef} type="file" multiple hidden onChange={handleUploadMultiple} />
-                <input ref={folderRef} type="file" webkitdirectory="true" hidden onChange={handleUploadMultiple} />
             </div>
 
             {uploadProgress && (
@@ -1550,21 +1781,42 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes, initialPre
                     const isText = file.type && file.type.startsWith('text/');
                     const isDocx = lowerName.endsWith('.docx');
                     const isXlsx = lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls');
+                    const isFolderLink = file.isFolderLink;
                     const canPreview = isImage || isPdf || isText || isDocx || isXlsx;
 
                     return (
                         <div key={file.id} className="file-card" style={{ animationDelay: `${idx * 20}ms` }}>
                             <div className="file-card-inner">
-                                <div className="file-card-icon" style={{ cursor: canPreview ? 'pointer' : 'default' }} onClick={() => canPreview && setPreviewFile(file)}>
-                                    {isImage ? <img src={file.data} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }} /> : '📄'}
+                                <div className="file-card-icon" style={{ cursor: canPreview || isFolderLink ? 'pointer' : 'default' }} onClick={() => {
+                                    if (isFolderLink) {
+                                        navigator.clipboard.writeText(file.path).catch(console.error);
+                                        alert("Percorso della cartella copiato negli appunti: " + file.path);
+                                    } else if (canPreview) setPreviewFile(file);
+                                }}>
+                                    {isFolderLink ? '🗂️' : (isImage ? <img src={file.data} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }} /> : '📄')}
                                 </div>
-                                <div className="file-card-name" style={{ cursor: canPreview ? 'pointer' : 'default' }} onClick={() => canPreview && setPreviewFile(file)}>
-                                    {file.name}
+                                <div className="file-card-name" style={{ cursor: canPreview || isFolderLink ? 'pointer' : 'default' }} onClick={() => {
+                                    if (isFolderLink) {
+                                        navigator.clipboard.writeText(file.path).catch(console.error);
+                                        alert("Percorso della cartella copiato negli appunti: " + file.path);
+                                    } else if (canPreview) setPreviewFile(file);
+                                }}>
+                                    {isFolderLink ? file.name : file.name}
                                 </div>
-                                <div className="file-card-meta">{formatBytes(file.size)}</div>
+                                {!isFolderLink && <div className="file-card-meta">{formatBytes(file.size)}</div>}
                             </div>
-                            <div className="file-card-actions">
-                                <button className="btn btn-ghost btn-icon-sm" onClick={() => downloadFile(file)} title="Scarica">⬇</button>
+                             <div className="file-card-actions">
+                                {!isFolderLink && (
+                                    <button 
+                                        className="btn btn-ghost btn-icon-sm" 
+                                        onClick={(e) => { e.stopPropagation(); copyInternalLink(file, 'file'); }} 
+                                        title="Copia Link per Nota"
+                                        style={{ color: 'var(--primary)' }}
+                                    >
+                                        🔗
+                                    </button>
+                                )}
+                                {!isFolderLink && <button className="btn btn-ghost btn-icon-sm" onClick={() => downloadFile(file)} title="Scarica">⬇</button>}
                                 <button className="btn btn-ghost btn-icon-sm" onClick={() => confirmDelete('file', file.id)}>✕</button>
                             </div>
                         </div>
@@ -1669,10 +1921,10 @@ function FilesSection({ form, update, confirmDelete, filterOutQuotes, initialPre
             `}</style>
         </div>
     );
-}
+});
 
 /* ── NOTES (Rich Text) ── */
-function NotesSection({ form, update, confirmDelete, newNote, setNewNote, onOpenFile, onOpenNote, initialSelectedNote, clearInitialSelectedNote }) {
+const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewNote, onInternalLink, onOpenFile, onOpenNote, initialSelectedNote, clearInitialSelectedNote }) => {
     const notes = form.notes || [];
     const [selectedNote, setSelectedNote] = useState(null);
     const [isEditorDirty, setIsEditorDirty] = useState(false);
@@ -1721,7 +1973,7 @@ function NotesSection({ form, update, confirmDelete, newNote, setNewNote, onOpen
     return (
         <div className="detail-section">
             <label className="input-label">Nuova Nota {isEditorDirty && <span style={{ color: 'var(--warning)', fontSize: '0.7rem', marginLeft: '6px' }}>● Non salvata</span>}</label>
-            <RichTextEditor value={newNote} onChange={setNewNote} onDirtyChange={setIsEditorDirty} onInternalLinkClick={(id, type) => type === 'file' ? onOpenFile && onOpenFile(id) : onOpenNote && onOpenNote(id)} allFiles={form.files} allNotes={form.notes} />
+            <RichTextEditor value={newNote} onChange={setNewNote} onDirtyChange={setIsEditorDirty} onInternalLinkClick={onInternalLink} allFiles={form.files} allNotes={form.notes} />
             <button className="btn btn-primary btn-sm" onClick={addNote} style={{ alignSelf: 'flex-end', marginTop: '8px' }}>
                 + Aggiungi Nota
             </button>
@@ -1802,7 +2054,7 @@ function NotesSection({ form, update, confirmDelete, newNote, setNewNote, onOpen
             )}
         </div>
     );
-}
+});
 
 /* ── FILE PREVIEW MODAL ── */
 function FilePreviewModal({ file, onClose }) {
@@ -2017,7 +2269,14 @@ function NoteModal({ note, onSave, onClose, onOpenFile, onOpenNote, allFiles, al
                 </div>
 
                 <div style={{ marginBottom: '24px', minHeight: '300px' }}>
-                    <RichTextEditor value={text} onChange={setText} onDirtyChange={setIsDirty} onInternalLinkClick={(id, type) => type === 'file' ? onOpenFile && onOpenFile(id) : onOpenNote && onOpenNote(id)} allFiles={allFiles} allNotes={allNotes} />
+                    <RichTextEditor 
+                        value={text} 
+                        onChange={setText} 
+                        onDirtyChange={setIsDirty} 
+                        onInternalLinkClick={(id, type) => type === 'file' ? (onOpenFile && onOpenFile(id)) : (onOpenNote && onOpenNote(id))} 
+                        allFiles={allFiles} 
+                        allNotes={allNotes} 
+                    />
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>

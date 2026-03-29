@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, memo } from 'react';
 import CustomerCard from './CustomerCard';
 
 const COLUMNS = [
@@ -8,7 +8,7 @@ const COLUMNS = [
   { id: 'completed', label: 'Completato', icon: '✅', color: 'var(--kanban-completed)' },
 ];
 
-export default function KanbanView({ customers, onSelectCustomer, onUpdateCustomerStatus }) {
+const KanbanView = memo(({ customers, onSelectCustomer, onUpdateCustomerStatus }) => {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   const [paymentWarning, setPaymentWarning] = useState(null);
@@ -263,4 +263,6 @@ export default function KanbanView({ customers, onSelectCustomer, onUpdateCustom
       `}</style>
     </div>
   );
-}
+});
+
+export default KanbanView;

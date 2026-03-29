@@ -1,16 +1,124 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
 import Login from './components/Login';
 import StatsHeader from './components/StatsHeader';
 import KanbanView from './components/KanbanView';
 import ListView from './components/ListView';
+import CalendarView from './components/CalendarView';
 import CustomerDetail from './components/CustomerDetail';
 import EarningsChartModal from './components/EarningsChartModal';
 import OverdueModal from './components/OverdueModal';
 import ClientListModal from './components/ClientListModal';
 import SettingsModal from './components/SettingsModal';
 import DataGridView from './components/DataGridView';
+import GeminiChat from './components/GeminiChat';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
-import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem } from './utils/storage';
+import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
+
+/* ── Notification Component (Hoisted/Top-level) ── */
+const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggleRead, customers, setSelectedCustomer }) => {
+  return (
+    <div className="app-menu-wrapper" style={{ overflow: 'visible', position: 'relative' }}>
+      <button
+        className="btn btn-secondary btn-sm"
+        style={{ marginRight: '16px', position: 'relative', overflow: 'visible', zIndex: 101 }}
+        onClick={() => setIsOpen(!isOpen)}
+        title="Notifiche"
+      >
+        🔔
+        {count > 0 && (
+          <span style={{
+            position: 'absolute',
+            top: '-8px',
+            right: '8px',
+            background: 'var(--danger)',
+            color: '#fff',
+            fontSize: '0.65rem',
+            fontWeight: 'bold',
+            minWidth: '18px',
+            height: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 4px',
+            borderRadius: '10px',
+            zIndex: 110,
+            border: '2px solid #fff',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}>
+            {count}
+          </span>
+        )}
+      </button>
+      {isOpen && (
+        <div className="app-dropdown animate-scale-in" style={{ top: '44px', left: '-280px', width: '350px', padding: '0' }}>
+          <div style={{ padding: '12px 16px', background: 'var(--bg-input)', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h4 style={{ margin: 0, fontSize: '0.85rem' }}>📢 Notifiche Aggiornate</h4>
+            {count > 0 && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }} onClick={() => {
+                notifications.forEach(n => {
+                  if (!n.readAt) toggleRead(n.clientId, n.id, n.type);
+                });
+              }}>
+                Segna tutti
+              </span>
+            )}
+          </div>
+          <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
+            {notifications.length === 0 && (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                Nessuna notifica presente.
+              </div>
+            )}
+            {notifications.map(n => (
+              <div key={`${n.type}-${n.id}`}
+                className="notification-item"
+                onClick={() => {
+                  const client = customers.find(c => c.id === n.clientId);
+                  if (client) setSelectedCustomer(client);
+                  setIsOpen(false);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  padding: '12px 16px',
+                  borderBottom: '1px solid var(--border-light)',
+                  borderLeft: !n.readAt ? '4px solid var(--primary)' : '4px solid transparent',
+                  gap: '12px',
+                  cursor: 'pointer',
+                  background: !n.readAt ? 'rgba(108, 92, 231, 0.04)' : 'transparent',
+                  transition: 'all 0.2s'
+                }}>
+                <div style={{ fontSize: '1.2rem', marginTop: '2px' }}>
+                  {n.type === 'todo' ? '☑️' : '💶'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>{n.clientName}</span>
+                    {n.isOverdue && <span style={{ fontSize: '0.6rem', color: 'var(--danger)', fontWeight: 700 }}>SCADUTO</span>}
+                    {n.isNear && <span style={{ fontSize: '0.6rem', color: 'var(--warning)', fontWeight: 700 }}>IN SCADENZA</span>}
+                  </div>
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', fontWeight: !n.readAt ? 600 : 400, wordBreak: 'break-word', lineHeight: 1.4 }}>
+                    {n.text}
+                    {n.recurrence && <span style={{ marginLeft: '6px', fontSize: '0.65rem', background: 'var(--primary-light)', color: '#fff', padding: '1px 6px', borderRadius: '4px' }}>{n.recurrence}</span>}
+                  </div>
+                </div>
+                <button className="btn btn-ghost btn-icon-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleRead(n.clientId, n.id, n.type);
+                  }}
+                  title={n.readAt ? "Segna come da leggere" : "Segna come letto"}
+                  style={{ fontSize: '0.8rem', flexShrink: 0, opacity: 0.6 }}>
+                  {n.readAt ? '👁️' : '🔵'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
 
 /* ── Tag Manager Modal ── */
 function TagManagerModal({ allTags, customers, updateTags, updateCustomer, onClose }) {
@@ -114,9 +222,14 @@ function TagManagerModal({ allTags, customers, updateTags, updateCustomer, onClo
   );
 }
 
+// Utils
+const isSameDay = (d1, d2) => 
+  d1.getFullYear() === d2.getFullYear() && 
+  d1.getMonth() === d2.getMonth() && 
+  d1.getDate() === d2.getDate();
+
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [viewMode, setViewMode] = useState('kanban'); // 'kanban' | 'list'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [showNew, setShowNew] = useState(false);
@@ -128,9 +241,19 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showDataGridView, setShowDataGridView] = useState(false);
   const [showTagMenu, setShowTagMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-
+  
   const searchInputRef = useRef(null);
+  const notifiedIdsRef = useRef(new Set());
+
+  // Request Desktop Notification permissions
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -145,30 +268,134 @@ export default function App() {
 
       // Close modals on Escape key
       if (e.key === 'Escape') {
-        // CustomerDetail and NewCustomer modals handle their own Escape key logic for save confirmation
         if (showCharts) setShowCharts(false);
         else if (showOverdue) setShowOverdue(false);
         else if (showClientList) setShowClientList(false);
         else if (showSettings) setShowSettings(false);
         else if (showDataGridView) setShowDataGridView(false);
         else if (showTagMenu) setShowTagMenu(false);
+        else if (showNotifications) setShowNotifications(false);
+        else if (showCalendar) setShowCalendar(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showCharts, showOverdue, showClientList, showSettings, showDataGridView, showTagMenu]);
+  }, [showCharts, showOverdue, showClientList, showSettings, showDataGridView, showTagMenu, showNotifications]);
 
   const {
-    customers, tags, settings, hasSynced,
+    customers, tags, settings, events, hasSynced,
+    chatHistory, aiUsageStats,
     addCustomer, updateCustomer, deleteCustomer, setCustomers,
-    updateSettings, updateTags
+    updateSettings, updateTags, updateEvents,
+    updateChatHistory, updateAiUsageStats
   } = useCustomers();
+
+  // Unified preferences sync
+  const viewMode = settings.viewMode || 'kanban';
+  const setViewMode = (mode) => updateSettings({ viewMode: mode });
 
   const filteredCustomers = useSearch(customers, searchQuery);
 
   const allTags = tags.length > 0 ? tags : [...new Set(customers.flatMap(c => c.tags || []))];
 
-  // Sync back derived tags to global state once if empty
+  const notifications = useMemo(() => {
+    const list = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nearDeadline = new Date(today);
+    nearDeadline.setDate(today.getDate() + 3);
+
+    customers.forEach(client => {
+      // 1. Recurring Todos
+      const traverse = (tasks) => {
+        (tasks || []).forEach(t => {
+          if (t.dueDate) {
+            const dDate = new Date(t.dueDate);
+            const isToday = isSameDay(dDate, today);
+            const isOverdue = dDate < today && !t.completed;
+            
+            if (isToday || isOverdue) {
+              list.push({
+                id: t.id,
+                clientId: client.id,
+                clientName: client.name,
+                text: `${t.text} (${isToday ? 'OGGI' : 'SCADUTO'})`,
+                type: 'todo',
+                isUrgent: true,
+                readAt: t.readAt,
+                createdAt: t.dueDate
+              });
+            }
+          }
+          if (t.subtasks && t.subtasks.length > 0) traverse(t.subtasks);
+        });
+      };
+      traverse(client.todo);
+
+      // 2. Overdue or Near-Deadline Installments
+      (client.installments || []).forEach(inst => {
+        if (!inst.paid && inst.dueDate) {
+          const dDate = new Date(inst.dueDate);
+          const isOverdue = dDate < today;
+          const isNear = dDate >= today && dDate <= nearDeadline;
+
+          if (isOverdue || isNear) {
+            list.push({
+              id: inst.id,
+              clientId: client.id,
+              clientName: client.name,
+              text: `Rata ${inst.amount ? '€' + inst.amount : ''} ${isOverdue ? 'SCADUTA' : 'in scadenza'} (${new Date(inst.dueDate).toLocaleDateString()})`,
+              type: 'payment',
+              isOverdue,
+              isNear,
+              readAt: inst.readAt,
+              createdAt: inst.dueDate
+            });
+          }
+        }
+      });
+    });
+    return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }, [customers]);
+
+  // Trigger Desktop Notifications for new urgent items
+  useEffect(() => {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+    notifications.forEach(n => {
+      // Notify only for unread, urgent items we haven't notified for in this session
+      const isUrgent = n.isOverdue || n.isNear;
+      if (!n.readAt && isUrgent && !notifiedIdsRef.current.has(n.id)) {
+        new Notification(`Upersite CRM: ${n.clientName}`, {
+          body: n.text,
+          icon: '/favicon.ico' // Or any app icon
+        });
+        notifiedIdsRef.current.add(n.id);
+      }
+    });
+  }, [notifications]);
+
+  const unreadNotificationsCount = notifications.filter(n => !n.readAt).length;
+
+  const toggleNotificationRead = (clientId, itemId, type) => {
+    const client = customers.find(c => c.id === clientId);
+    if (!client) return;
+
+    if (type === 'todo') {
+      const toggleRecursive = (items) => items.map(t => {
+        if (t.id === itemId) return { ...t, readAt: t.readAt ? null : new Date().toISOString() };
+        if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: toggleRecursive(t.subtasks) };
+        return t;
+      });
+      updateCustomer(clientId, { ...client, todo: toggleRecursive(client.todo || []) });
+    } else if (type === 'payment') {
+      const updatedInst = (client.installments || []).map(inst =>
+        inst.id === itemId ? { ...inst, readAt: inst.readAt ? null : new Date().toISOString() } : inst
+      );
+      updateCustomer(clientId, { ...client, installments: updatedInst });
+    }
+  };
+
   useEffect(() => {
     if (hasSynced && tags.length === 0) {
       const derived = [...new Set(customers.flatMap(c => c.tags || []))];
@@ -180,10 +407,17 @@ export default function App() {
     setIsLoggedIn(false);
   }, []);
 
+  const handleEndSession = () => {
+    if (settings.backupPath) {
+      triggerAutoBackup().catch(err => console.error('Background backup failed:', err));
+    }
+    setIsLoggedIn(false);
+    setShowExportMenu(false);
+  };
+
   useInactivityTimeout(settings.inactivityTimeout || 5 * 60 * 1000, handleLogout);
 
   const handleSave = (customer) => {
-    // Check for any newly added tags and save them globally
     const customerTags = customer.tags || [];
     const newTags = customerTags.filter(t => !allTags.includes(t));
     if (newTags.length > 0) {
@@ -250,7 +484,6 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      {/* Top Bar */}
       <header className="app-header">
         <div className="app-header-left">
           <div className="app-logo">
@@ -263,6 +496,14 @@ export default function App() {
                 </span>
               </div>
             </div>
+            <button 
+              className="btn btn-ghost btn-icon-sm" 
+              style={{ marginLeft: '12px', fontSize: '1.1rem', opacity: 0.8 }}
+              onClick={() => setShowCalendar(true)}
+              title="Vista Calendario"
+            >
+              📅
+            </button>
           </div>
         </div>
 
@@ -314,6 +555,18 @@ export default function App() {
         </div>
 
         <div className="app-header-right">
+          <div className="app-menu-wrapper" style={{ overflow: 'visible' }}>
+            <NotificationBell
+              count={unreadNotificationsCount}
+              isOpen={showNotifications}
+              setIsOpen={setShowNotifications}
+              notifications={notifications}
+              toggleRead={toggleNotificationRead}
+              customers={customers}
+              setSelectedCustomer={setSelectedCustomer}
+            />
+          </div>
+
           <button
             className="btn btn-secondary btn-sm"
             style={{ marginRight: '16px' }}
@@ -354,6 +607,10 @@ export default function App() {
                   ⚙️ Impostazioni
                 </button>
                 <div className="app-dropdown-divider" />
+                <button className="app-dropdown-item" onClick={handleEndSession} style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                  💼 Termina sessione di lavoro
+                </button>
+                <div className="app-dropdown-divider" />
                 <button className="app-dropdown-item app-dropdown-danger" onClick={() => { setIsLoggedIn(false); setShowExportMenu(false); }}>
                   🔒 Blocca CRM
                 </button>
@@ -386,6 +643,23 @@ export default function App() {
         )}
       </main>
 
+      {/* Calendar Modal */}
+      {showCalendar && (
+        <CalendarView 
+          customers={customers} 
+          onClose={() => setShowCalendar(false)} 
+          onSelectCustomer={(c) => {
+            setSelectedCustomer(c);
+            setShowCalendar(false);
+          }}
+          initialView={settings.calendarView}
+          initialFilter={settings.calendarFilter}
+          onSettingsChange={updateSettings}
+          globalEvents={events}
+          onUpdateEvents={updateEvents}
+        />
+      )}
+
       {/* Tag Manager Modal */}
       {showTagMenu && (
         <TagManagerModal
@@ -413,8 +687,6 @@ export default function App() {
         <EarningsChartModal customers={customers} onClose={() => setShowCharts(false)} />
       )}
 
-
-
       {showOverdue && (
         <OverdueModal customers={customers} onSelectCustomer={setSelectedCustomer} onClose={() => setShowOverdue(false)} />
       )}
@@ -441,9 +713,18 @@ export default function App() {
         />
       )}
 
+      {/* Gemini AI Assistant */}
+      <GeminiChat 
+        customers={customers}
+        chatHistory={chatHistory}
+        aiUsageStats={aiUsageStats}
+        onUpdateChatHistory={updateChatHistory}
+        onUpdateAiUsageStats={updateAiUsageStats}
+      />
+
       {/* Click outside to close menu */}
-      {(showExportMenu || showClientMenu) && (
-        <div className="app-backdrop" onClick={() => { setShowExportMenu(false); setShowClientMenu(false); }} />
+      {(showExportMenu || showClientMenu || showNotifications) && (
+        <div className="app-backdrop" onClick={() => { setShowExportMenu(false); setShowClientMenu(false); setShowNotifications(false); }} />
       )}
 
       <style>{`
@@ -478,6 +759,7 @@ export default function App() {
         .app-header-left {
           display: flex;
           align-items: center;
+          flex-shrink: 0;
         }
 
         .app-logo {
@@ -512,200 +794,100 @@ export default function App() {
         }
 
         .app-logo-subtitle-tag {
-          font-family: var(--font);
           font-size: 0.6875rem;
-          color: var(--primary);
           background: var(--primary-ghost);
-          border: none;
+          color: var(--primary);
           padding: 2px 8px;
-          border-radius: 4px;
+          border-radius: 12px;
           font-weight: 600;
-          display: inline-block;
         }
 
-        .app-subtitle-dropdown-wrapper {
-          position: relative;
-          margin-top: 2px;
-        }
-
-        .app-dropdown-clients {
-          top: calc(100% + 4px);
-          left: 0;
-          right: auto;
-          min-width: 260px;
-        }
-
-        .app-dropdown-header {
-          padding: 8px 12px;
-          font-size: 0.6875rem;
-          font-weight: 700;
-          text-transform: uppercase;
-          color: var(--text-tertiary);
-          letter-spacing: 0.5px;
-          border-bottom: 1px solid var(--border-light);
-          margin-bottom: 4px;
-        }
-
-        .app-dropdown-list {
-          max-height: 300px;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-        }
-
+        /* ── Search ── */
         .app-header-center {
           position: absolute;
           left: 50%;
-          transform: translateX(-50%);
-          display: flex;
-          justify-content: center;
-          max-width: 440px;
-          margin: 0 auto;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          width: 90%;
+          max-width: 640px;
+          z-index: 10;
+          pointer-events: none;
+        }
+
+        .app-search-wrapper {
           width: 100%;
-        }
-
-        .app-search {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 14px;
-          background: var(--bg-input);
-          border-radius: var(--radius-full);
-          border: 2px solid transparent;
-          transition: all var(--duration-normal) var(--ease-out);
-          width: 100%;
-        }
-
-        .app-search:focus-within {
-          border-color: var(--primary-light);
-          background: var(--bg-card);
-          box-shadow: 0 0 0 4px var(--primary-ghost);
-        }
-
-        .app-search-icon {
-          font-size: 0.875rem;
-          flex-shrink: 0;
+          pointer-events: auto;
         }
 
         .app-search-input {
-          border: none;
-          background: transparent;
-          outline: none;
-          font-family: var(--font);
-          font-size: 0.875rem;
-          color: var(--text-primary);
           width: 100%;
+          padding: 12px 16px 12px 44px;
+          background: var(--bg-input);
+          border: 2px solid transparent;
+          border-radius: var(--radius-lg);
+          font-size: 0.9375rem;
+          transition: all 0.2s;
         }
 
-        .app-search-input::placeholder {
+        .app-search-input:focus {
+          background: #fff;
+          border-color: var(--primary-light);
+          box-shadow: 0 4px 20px rgba(108, 92, 231, 0.1);
+          outline: none;
+        }
+
+        .app-search-icon {
+          position: absolute;
+          left: 14px;
+          top: 50%;
+          transform: translateY(-50%);
           color: var(--text-tertiary);
+          font-size: 1rem;
         }
 
         .app-search-clear {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
           border: none;
-          background: var(--bg-hover);
-          color: var(--text-secondary);
-          width: 20px; height: 20px;
-          border-radius: var(--radius-full);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 0.75rem;
+          background: none;
+          color: var(--text-tertiary);
           cursor: pointer;
-          flex-shrink: 0;
-          transition: all var(--duration-fast);
+          font-size: 0.8rem;
+          padding: 4px;
         }
 
-        .app-search-clear:hover {
-          background: var(--danger-bg);
-          color: var(--danger);
-        }
-
+        /* ── Right Section ── */
         .app-header-right {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 12px;
+          flex-shrink: 0;
         }
 
         .app-view-toggle {
           display: flex;
           background: var(--bg-input);
+          padding: 4px;
           border-radius: var(--radius-md);
-          padding: 3px;
         }
 
         .app-view-btn {
           border: none;
-          background: transparent;
-          padding: 6px 10px;
+          background: none;
+          padding: 6px 12px;
           border-radius: var(--radius-sm);
           cursor: pointer;
+          color: var(--text-tertiary);
           font-size: 1rem;
-          color: var(--text-secondary);
-          transition: all var(--duration-fast) var(--ease-out);
+          transition: all 0.2s;
         }
 
         .app-view-btn.active {
-          background: var(--bg-card);
+          background: #fff;
           color: var(--primary);
-          box-shadow: var(--shadow-xs);
-        }
-
-        .app-view-btn:hover:not(.active) {
-          color: var(--text-primary);
-        }
-
-        /* ── Dropdown Menu ── */
-        .app-menu-wrapper {
-          position: relative;
-        }
-
-        .app-dropdown {
-          position: absolute;
-          top: calc(100% + 8px);
-          right: 0;
-          background: var(--bg-card);
-          border-radius: var(--radius-lg);
-          border: 1px solid var(--border-light);
-          box-shadow: var(--shadow-lg);
-          padding: 6px;
-          min-width: 220px;
-          z-index: 200;
-        }
-
-        .app-dropdown-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          width: 100%;
-          padding: 10px 14px;
-          border: none;
-          background: transparent;
-          border-radius: var(--radius-md);
-          font-family: var(--font);
-          font-size: 0.8125rem;
-          color: var(--text-primary);
-          cursor: pointer;
-          transition: background var(--duration-fast);
-          text-align: left;
-        }
-
-        .app-dropdown-item:hover {
-          background: var(--bg-hover);
-        }
-
-        .app-dropdown-danger {
-          color: var(--danger);
-        }
-
-        .app-dropdown-danger:hover {
-          background: var(--danger-bg);
-        }
-
-        .app-dropdown-divider {
-          height: 1px;
-          background: var(--border-light);
-          margin: 4px 8px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
 
         .app-backdrop {
@@ -746,6 +928,62 @@ export default function App() {
           .app-main {
             padding: 16px;
           }
+        }
+        .notification-item:hover {
+          background: var(--bg-hover) !important;
+        }
+
+        /* ── Dropdown ── */
+        .app-dropdown {
+          position: absolute;
+          top: 100%;
+          right: 0;
+          margin-top: 8px;
+          background: #fff;
+          border: 1px solid var(--border-light);
+          border-radius: var(--radius-md);
+          box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+          min-width: 180px;
+          z-index: 1000;
+          overflow: hidden;
+          animation: fadeInScale 0.2s var(--ease-spring);
+        }
+
+        .app-dropdown-item {
+          width: 100%;
+          padding: 10px 16px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          border: none;
+          background: none;
+          font-family: var(--font);
+          font-size: 0.8125rem;
+          font-weight: 500;
+          color: var(--text-primary);
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.2s;
+        }
+
+        .app-dropdown-item:hover {
+          background: var(--bg-hover);
+          color: var(--primary);
+        }
+
+        .app-dropdown-danger {
+          color: var(--danger);
+        }
+
+        .app-dropdown-danger:hover {
+          background: var(--danger-bg);
+          color: var(--danger);
+        }
+
+        .app-dropdown-divider {
+          height: 1px;
+          background: var(--border-light);
+          margin: 4px 0;
         }
       `}</style>
     </div>

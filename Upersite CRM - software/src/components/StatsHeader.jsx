@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 
-export default function StatsHeader({ customers, onOpenCharts, onOpenClients, onOpenOverdue }) {
+const StatsHeader = memo(({ customers, onOpenCharts, onOpenClients, onOpenOverdue }) => {
   const stats = useMemo(() => {
     let totalQuoted = 0;
     let totalCollected = 0;
@@ -145,4 +145,6 @@ export default function StatsHeader({ customers, onOpenCharts, onOpenClients, on
       `}</style>
     </div>
   );
-}
+});
+
+export default StatsHeader;

@@ -21,10 +21,14 @@ function trySetLocalStorage(key, value) {
 export const defaultData = {
     customers: [],
     tags: [],
+    events: [],
+    chatHistory: [],
+    aiUsageStats: { date: '', count: 0 },
     settings: {
         inactivityTimeout: 5 * 60 * 1000,
         defaultInstallments: 3,
-        currency: 'EUR'
+        currency: 'EUR',
+        backupPath: ''
     }
 };
 
@@ -97,6 +101,30 @@ export function resetMasterPassword() {
     localStorage.removeItem(MASTER_KEY);
     const data = loadData();
     saveData(data);
+}
+
+export async function triggerAutoBackup() {
+    try {
+        const data = await syncWithFileSystem();
+        const backupPath = data.settings?.backupPath;
+        if (!backupPath) return { success: false, error: 'Percorso non configurato' };
+
+        const response = await fetch('/api/backup/auto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backupPath })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Errore durante il backup automatico');
+        }
+
+        return await response.json();
+    } catch (err) {
+        console.error('Auto backup failed:', err);
+        return { success: false, error: err.message };
+    }
 }
 
 export async function exportData() {
