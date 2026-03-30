@@ -147,7 +147,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
 
     return (
         <div className="modal-overlay" style={{ zIndex: 2000 }}>
-            <div className="modal-content animate-scale-in" style={{ maxWidth: '500px', width: '90%', maxHeight: '90vh', overflowY: 'auto', padding: '32px' }}>
+            <div className="modal-content animate-scale-in" style={{ maxWidth: '800px', width: '95%', maxHeight: '90vh', overflowY: 'auto', padding: '32px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                     <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>⚙️ Impostazioni</h2>
                     <button className="btn btn-ghost btn-icon" onClick={onClose}>✕</button>

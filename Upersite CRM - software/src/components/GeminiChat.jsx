@@ -12,20 +12,20 @@ const AI_MODELS = [
         description: 'Modello stabile (20 RPD)',
     },
     {
-        id: 'gemini-2.5-flash-lite',
-        apiVersion: 'v1beta',      // endpoint richiesto dal modello Flash Lite
-        label: 'Gemini 2.5 Flash Lite',
-        rpd: 20,
-        badge: '20/g',
-        description: 'Alta frequenza (20 RPD)',
-    },
-    {
         id: 'gemini-3.1-flash-lite-preview',
         apiVersion: 'v1beta',      // endpoint per i modelli preview
         label: 'Gemini 3.1 Flash Lite',
         rpd: 500,
         badge: '500/g',
         description: 'Alta capacità (500 RPD)',
+    },
+    {
+        id: 'gemma-3-27b-it',
+        apiVersion: 'v1beta',      // endpoint per i modelli Gemma
+        label: 'Gemma 3 27B',
+        rpd: 14400,
+        badge: '14.4k/g',
+        description: 'Poco contesto e intelligenza (14.4k RPD)',
     },
 ];
 
@@ -82,6 +82,7 @@ export default function GeminiChat({
 
     const [isOpen, setIsOpen] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
     const [currentSessionId, setCurrentSessionId] = useState(null);
     const [messages, setMessages] = useState([WELCOME_MESSAGE]);
     const [inputValue, setInputValue] = useState('');
@@ -103,6 +104,14 @@ export default function GeminiChat({
             setTimeout(() => inputRef.current?.focus(), 300);
         }
     }, [isOpen]);
+
+    // Resetta il contatore quando cambia giorno (mezzanotte UTC)
+    useEffect(() => {
+        const today = new Date().toISOString().slice(0, 10);
+        if (aiUsageStats.date !== today && onUpdateAiUsageStats) {
+            onUpdateAiUsageStats({ date: today, count: 0 });
+        }
+    }, [aiUsageStats.date, onUpdateAiUsageStats]);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -150,14 +159,6 @@ export default function GeminiChat({
         setInputValue('');
         setIsLoading(true);
 
-        // Aggiorna contatore richieste
-        const today = new Date().toISOString().slice(0, 10);
-        const newStats = {
-            date: today,
-            count: (aiUsageStats.date === today ? aiUsageStats.count : 0) + 1
-        };
-        if (onUpdateAiUsageStats) onUpdateAiUsageStats(newStats);
-
         try {
             const dbSummary = customers.map(c => ({
                 id: c.id,
@@ -169,7 +170,7 @@ export default function GeminiChat({
                 note_recenti: (c.notes || []).slice(-2).map(n => n.text)
             }));
 
-            const systemPrompt = `Sei Upersite AI, l'assistente intelligente ufficiale. Hai accesso al Database in sola lettura. Non puoi inventare dati o informazioni, piuttosto afferma di non saperle.
+            const systemPrompt = `Sei Upersite AI Assistant, l'assistente IA intelligente ufficiale di Upersite Studio. Hai accesso al Database in sola lettura. Non puoi inventare dati o informazioni, piuttosto afferma di non saperle.
             Non scrivere informazioni non richieste, per esempio se ti chiedo i task da fare non mescolare dentro anche i contenuti delle note.
             
 IL TUO ALFABETO (FORMATTAZIONE):
@@ -182,7 +183,7 @@ IL TUO ALFABETO (FORMATTAZIONE):
 REGOLE DI RISPOSTA:
 1. Sii coinciso ma completo. Vai a capo spesso.
 2. Usa il Grassetto per nomi clienti, cifre (€) e date (GG/MM/AAAA).
-3. Data Corrente: ${new Date().toLocaleDateString('it-IT')}
+3. Data Corrente (se richiesta): ${new Date().toLocaleDateString('it-IT')}
 
 DATABASE CONTEXT (JSON):
 ${JSON.stringify(dbSummary)}`;
@@ -227,11 +228,9 @@ ${JSON.stringify(dbSummary)}`;
                             `**Soluzione rapida:** cambia modello → seleziona **Gemini 2.5 Flash** dal menu in cima alla chat.\n` +
                             `Per sbloccare il modello: https://ai.dev/rate-limit`;
                     } else {
-                        errText = `⚠️ **Limite giornaliero raggiunto per "${currentModel.label}"** (${currentModel.rpd} RPD)\n\n` +
+                        errText = `⚠️ **Potresti aver raggiunto il limite di "${currentModel.label}"** (${currentModel.rpd} RPD (request per day) oppure il limite di TPM (token per minute).\n\n` +
                             `Modello: \`${currentModel.id}\` | Endpoint: /${currentModel.apiVersion}/\n` +
-                            (retrySeconds ? `Riprova tra: **${retrySeconds}s** (o domani dopo mezzanotte UTC)\n\n` : '\n') +
-                            `Hai esaurito le ${currentModel.rpd} richieste giornaliere gratuite.\n` +
-                            `Questo è normale se hai fatto molti test oggi — il contatore si azzera a mezzanotte UTC.`;
+                            (retrySeconds ? `Riprova tra: **${retrySeconds}s** (o domani dopo mezzanotte UTC)\n\n` : '\n');
                     }
                 } else {
                     errText = `⚠️ Errore API (${currentModel.label} / ${currentModel.id}): ${msg}`;
@@ -246,6 +245,15 @@ ${JSON.stringify(dbSummary)}`;
 
             const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text
                 || "Scusami, ho avuto un problema nel processare la richiesta. Riprova tra poco.";
+            
+            // Aggiorna contatore richieste SOLO dopo risposta positiva
+            const today = new Date().toISOString().slice(0, 10);
+            const newStats = {
+                date: today,
+                count: (aiUsageStats.date === today ? aiUsageStats.count : 0) + 1
+            };
+            if (onUpdateAiUsageStats) onUpdateAiUsageStats(newStats);
+            
             const finalMsgs = [...newMessages, { role: 'model', text: aiText }];
             setMessages(finalMsgs);
             saveCurrentSession(finalMsgs, sessionId);
@@ -361,7 +369,7 @@ ${JSON.stringify(dbSummary)}`;
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
                         <button
                             className="gemini-icon-btn"
-                            onClick={() => { setShowHistory(!showHistory); setShowModelMenu(false); }}
+                            onClick={() => { setShowHistory(!showHistory); setShowModelMenu(false); setShowSettings(false); }}
                             title="Cronologia Chat"
                             style={{
                                 background: showHistory ? 'var(--primary)' : 'var(--primary-ghost)',
@@ -369,6 +377,17 @@ ${JSON.stringify(dbSummary)}`;
                             }}
                         >
                             🕐
+                        </button>
+                        <button
+                            className="gemini-icon-btn"
+                            onClick={() => { setShowSettings(!showSettings); setShowModelMenu(false); setShowHistory(false); }}
+                            title="Impostazioni e Limiti"
+                            style={{
+                                background: showSettings ? 'var(--primary)' : 'var(--primary-ghost)',
+                                color: showSettings ? 'white' : 'var(--primary)'
+                            }}
+                        >
+                            ⚙️
                         </button>
                         <button
                             className="gemini-icon-btn"
@@ -382,7 +401,7 @@ ${JSON.stringify(dbSummary)}`;
                 </div>
 
                 {/* BODY */}
-                <div className="gemini-body" onClick={() => { if (showModelMenu) setShowModelMenu(false); }}>
+                <div className="gemini-body" onClick={() => { if (showModelMenu) setShowModelMenu(false); if (showSettings) setShowSettings(false); }}>
                     {/* HISTORY PANEL */}
                     <div className={`gemini-history-panel ${showHistory ? 'visible' : ''}`}>
                         <div className="gemini-history-title">💬 Sessioni precedenti</div>
@@ -411,6 +430,77 @@ ${JSON.stringify(dbSummary)}`;
                                 ))}
                             </div>
                         )}
+                    </div>
+
+                    {/* SETTINGS PANEL */}
+                    <div className={`gemini-history-panel ${showSettings ? 'visible' : ''}`} style={{ right: '0', left: 'auto' }}>
+                        <div className="gemini-history-title">⚙️ Impostazioni e Limiti</div>
+                        
+                        <div style={{ padding: '16px', fontSize: '0.78rem' }}>
+                            <div style={{ marginBottom: '16px' }}>
+                                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: '700' }}>Modello Attuale</h4>
+                                <div style={{ background: 'var(--bg-hover)', padding: '8px 12px', borderRadius: '8px' }}>
+                                    <div style={{ fontWeight: '600' }}>{currentModel.label}</div>
+                                    <div style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem' }}>
+                                        Limite: {currentModel.badge} • Endpoint: /{currentModel.apiVersion}/
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ marginBottom: '16px' }}>
+                                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: '700' }}>Utilizzo Oggi</h4>
+                                <div style={{ background: 'var(--bg-hover)', padding: '8px 12px', borderRadius: '8px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                        <span>Richieste:</span>
+                                        <span style={{ fontWeight: '600' }}>{usageCount} / {currentModel.rpd}</span>
+                                    </div>
+                                    <div className="gemini-usage-bar-wrap" style={{ width: '100%', height: '4px' }}>
+                                        <div className="gemini-usage-bar" style={{ width: `${usagePercent}%`, background: usageColor }} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ marginBottom: '16px' }}>
+                                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: '700' }}>Limiti Google AI</h4>
+                                <a 
+                                    href="https://aistudio.google.com/rate-limit?timeRange=last-hour&project=gen-lang-client-0332897590"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                        display: 'block',
+                                        background: 'var(--primary-ghost)',
+                                        color: 'var(--primary)',
+                                        padding: '10px 12px',
+                                        borderRadius: '8px',
+                                        textDecoration: 'none',
+                                        fontSize: '0.75rem',
+                                        fontWeight: '600',
+                                        textAlign: 'center',
+                                        transition: 'background 0.2s, color 0.2s'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        e.target.style.background = 'var(--primary)';
+                                        e.target.style.color = 'white';
+                                    }}
+                                    onMouseOut={(e) => {
+                                        e.target.style.background = 'var(--primary-ghost)';
+                                        e.target.style.color = 'var(--primary)';
+                                    }}
+                                >
+                                    📊 Apri Dashboard Limiti AI Studio
+                                </a>
+                            </div>
+
+                            <div>
+                                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: '700' }}>Info Limiti</h4>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', lineHeight: '1.4' }}>
+                                    • <strong>RPD</strong>: Richieste per giorno<br/>
+                                    • <strong>TPM</strong>: Token per minuto<br/>
+                                    • I limiti si resettano a mezzanotte UTC<br/>
+                                    • Controlla il dashboard per limiti reali
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     {/* MESSAGES */}
@@ -549,16 +639,18 @@ ${JSON.stringify(dbSummary)}`;
                 /* Body layout */
                 .gemini-body { flex: 1; display: flex; overflow: hidden; position: relative; }
 
-                /* History panel */
+                /* Settings panel - stile più largo come SettingsModal del CRM */
                 .gemini-history-panel {
-                    position: absolute; top: 0; left: 0; bottom: 0; width: 220px;
-                    background: #fff; border-right: 1px solid var(--border-light);
+                    position: absolute; top: 0; bottom: 0; width: 320px;
+                    background: #fff; border: 1px solid var(--border-light);
                     display: flex; flex-direction: column; z-index: 10;
-                    transform: translateX(-100%);
                     transition: transform 0.3s cubic-bezier(0.16,1,0.3,1);
                     box-shadow: 4px 0 20px rgba(0,0,0,0.06);
                 }
                 .gemini-history-panel.visible { transform: translateX(0); }
+                .gemini-history-panel:not(.visible) { transform: translateX(-100%); }
+                .gemini-history-panel.visible[style*="right: 0"] { transform: translateX(0); }
+                .gemini-history-panel[style*="right: 0"]:not(.visible) { transform: translateX(100%); }
                 .gemini-history-title {
                     padding: 14px 16px; font-size: 0.72rem; font-weight: 800;
                     color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 1px;
