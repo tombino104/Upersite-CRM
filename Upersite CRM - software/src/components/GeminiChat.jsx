@@ -184,7 +184,7 @@ REGOLE DI RISPOSTA:
 1. Sii coinciso ma completo. Vai a capo spesso.
 2. Usa il Grassetto per nomi clienti, cifre (€) e date (GG/MM/AAAA).
 3. Data Corrente (se richiesta): ${new Date().toLocaleDateString('it-IT')}
-
+ 
 DATABASE CONTEXT (JSON):
 ${JSON.stringify(dbSummary)}`;
 
@@ -228,9 +228,11 @@ ${JSON.stringify(dbSummary)}`;
                             `**Soluzione rapida:** cambia modello → seleziona **Gemini 2.5 Flash** dal menu in cima alla chat.\n` +
                             `Per sbloccare il modello: https://ai.dev/rate-limit`;
                     } else {
-                        errText = `⚠️ **Potresti aver raggiunto il limite di "${currentModel.label}"** (${currentModel.rpd} RPD (request per day) oppure il limite di TPM (token per minute).\n\n` +
+                        errText = `⚠️ **Limite giornaliero raggiunto per "${currentModel.label}"** (${currentModel.rpd} RPD)\n\n` +
                             `Modello: \`${currentModel.id}\` | Endpoint: /${currentModel.apiVersion}/\n` +
-                            (retrySeconds ? `Riprova tra: **${retrySeconds}s** (o domani dopo mezzanotte UTC)\n\n` : '\n');
+                            (retrySeconds ? `Riprova tra: **${retrySeconds}s** (o domani dopo mezzanotte UTC)\n\n` : '\n') +
+                            `Hai esaurito le ${currentModel.rpd} richieste giornaliere gratuite.\n` +
+                            `Questo è normale se hai fatto molti test oggi — il contatore si azzera a mezzanotte UTC.`;
                     }
                 } else {
                     errText = `⚠️ Errore API (${currentModel.label} / ${currentModel.id}): ${msg}`;
@@ -245,7 +247,7 @@ ${JSON.stringify(dbSummary)}`;
 
             const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text
                 || "Scusami, ho avuto un problema nel processare la richiesta. Riprova tra poco.";
-            
+
             // Aggiorna contatore richieste SOLO dopo risposta positiva
             const today = new Date().toISOString().slice(0, 10);
             const newStats = {
@@ -253,7 +255,7 @@ ${JSON.stringify(dbSummary)}`;
                 count: (aiUsageStats.date === today ? aiUsageStats.count : 0) + 1
             };
             if (onUpdateAiUsageStats) onUpdateAiUsageStats(newStats);
-            
+
             const finalMsgs = [...newMessages, { role: 'model', text: aiText }];
             setMessages(finalMsgs);
             saveCurrentSession(finalMsgs, sessionId);
@@ -348,6 +350,7 @@ ${JSON.stringify(dbSummary)}`;
                                                     <span style={{ fontWeight: 700, fontSize: '0.78rem' }}>{m.label}</span>
                                                     <span className="gemini-model-badge">{m.badge}</span>
                                                 </div>
+
                                                 <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>{m.description}</div>
                                                 {m.id === selectedModelId && <span className="gemini-model-check">✓</span>}
                                             </button>

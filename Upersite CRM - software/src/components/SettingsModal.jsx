@@ -183,6 +183,13 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                             <strong>{formatBytes(totalUsed)}</strong>
                         </div>
 
+                        {realSize !== null && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '0.78rem' }}>
+                                <span style={{ color: 'var(--text-tertiary)' }}>Dimensione reale (file)</span>
+                                <strong style={{ color: 'var(--text-secondary)' }}>{formatBytes(realSize)}</strong>
+                            </div>
+                        )}
+
                         <div style={{ height: '14px', borderRadius: '999px', background: 'rgba(0,0,0,0.06)', overflow: 'hidden', border: '1px solid var(--border-light)' }}>
                             <div style={{ display: 'flex', width: '100%', height: '100%' }}>
                                 <div style={{ width: `${pctApp}%`, background: 'var(--primary)', height: '100%' }} />
@@ -232,14 +239,14 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div className="detail-group" style={{ marginBottom: '8px' }}>
                             <label className="input-label">Percorso Backup Generico</label>
-                            <input type="text" className="input" 
-                                value={settings.backupPath || ''} 
+                            <input type="text" className="input"
+                                value={settings.backupPath || ''}
                                 onChange={e => updateSettings({ backupPath: e.target.value })}
                                 placeholder="C:\Users\...\Backup" />
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Cartella dove verranno creati i backup datati.</span>
                         </div>
 
-                        <button className="btn btn-primary" 
+                        <button className="btn btn-primary"
                             onClick={async () => {
                                 setSuccess('');
                                 setError('');
@@ -255,7 +262,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                     } else {
                                         setError(`Errore backup: ${result.error}`);
                                     }
-                                } catch (err) {
+                                } catch {
                                     setError('Errore di sistema durante il backup');
                                 }
                             }}
@@ -264,7 +271,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                         </button>
 
                         <div style={{ height: '1px', background: 'var(--border-light)', margin: '8px 0' }} />
-                        
+
                         <button className="btn btn-secondary" onClick={exportData} style={{ width: '100%', justifyContent: 'center' }}>
                             📥 Esporta Backup (JSON)
                         </button>
