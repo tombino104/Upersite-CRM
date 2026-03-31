@@ -323,7 +323,7 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
                         }}
                         style={{ fontSize: '0.75rem' }}
                     >
-                        {t.readAt ? '👁️' : '🔵'}
+                        {t.readAt ? <span className="material-symbols-outlined" style={{fontSize: '0.9rem'}}>visibility</span> : <span className="material-symbols-outlined" style={{fontSize: '0.9rem'}}>visibility_off</span>}
                     </button>
                     <button className="btn btn-ghost btn-icon-sm" onClick={() => confirmDelete('todo', t.id)}>✕</button>
                 </div>
@@ -545,6 +545,12 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
             )}
 
             <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=visibility,visibility_off');
+                
+                .material-symbols-outlined {
+                    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+                }
+                
                 .todo-item-card {
                     display: flex;
                     align-items: center;
@@ -1475,12 +1481,12 @@ const CredentialsSection = React.memo(({ form, update, confirmDelete }) => {
                     </div>
                     <button className="btn btn-ghost btn-icon-sm" onClick={() => toggleVisible(cred.id)}
                         title={visibleIds[cred.id] ? 'Nascondi' : 'Mostra'}>
-                        {visibleIds[cred.id] ? '🙈' : '👁'}
+                        {visibleIds[cred.id] ? <span className="material-symbols-outlined" style={{fontSize: '0.9rem'}}>visibility_off</span> : <span className="material-symbols-outlined" style={{fontSize: '0.9rem'}}>visibility</span>}
                     </button>
                     <button className="btn btn-ghost btn-icon-sm" title={cred.readAt ? 'Segna come non letto' : 'Segna come letto'}
                         onClick={() => updateCredential(cred.id, 'readAt', cred.readAt ? null : new Date().toISOString())}
                         style={{ fontSize: '0.75rem' }}>
-                        {cred.readAt ? '👁️' : '🔵'}
+                        {cred.readAt ? <span className="material-symbols-outlined" style={{fontSize: '0.9rem'}}>visibility</span> : <span className="material-symbols-outlined" style={{fontSize: '0.9rem'}}>visibility_off</span>}
                     </button>
                     <button className="btn btn-ghost btn-icon-sm" onClick={() => confirmDelete('credential', cred.id)}>✕</button>
                 </div>
@@ -1540,7 +1546,7 @@ const LinksSection = React.memo(({ form, update, confirmDelete }) => {
                     <button className="btn btn-ghost btn-icon-sm" title={link.readAt ? 'Segna come non letto' : 'Segna come letto'}
                         onClick={() => updateLink(link.id, 'readAt', link.readAt ? null : new Date().toISOString())}
                         style={{ fontSize: '0.75rem' }}>
-                        {link.readAt ? '👁️' : '🔵'}
+                        {link.readAt ? <span className="material-symbols-outlined" style={{fontSize: '0.9rem'}}>visibility</span> : <span className="material-symbols-outlined" style={{fontSize: '0.9rem'}}>visibility_off</span>}
                     </button>
                     <button className="btn btn-ghost btn-icon-sm" onClick={() => confirmDelete('link', link.id)}>✕</button>
                 </div>
@@ -1999,7 +2005,7 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                                         e.stopPropagation();
                                         update('notes', notes.map(n => n.id === note.id ? { ...n, readAt: note.readAt ? null : new Date().toISOString() } : n));
                                     }}>
-                                    {note.readAt ? '👁️' : '🔵'}
+                                    {note.readAt ? <span className="material-symbols-outlined" style={{fontSize: '0.85rem'}}>visibility</span> : <span className="material-symbols-outlined" style={{fontSize: '0.85rem'}}>visibility_off</span>}
                                 </button>
                                 <button className="btn btn-ghost btn-icon-sm" style={{ width: '22px', height: '22px', fontSize: '0.7rem' }}
                                     onClick={(e) => {

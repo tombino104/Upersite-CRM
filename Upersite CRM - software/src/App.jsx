@@ -24,7 +24,10 @@ const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggle
         onClick={() => setIsOpen(!isOpen)}
         title="Notifiche"
       >
-        🔔
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
         {count > 0 && (
           <span style={{
             position: 'absolute',
@@ -109,7 +112,7 @@ const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggle
                   }}
                   title={n.readAt ? "Segna come da leggere" : "Segna come letto"}
                   style={{ fontSize: '0.8rem', flexShrink: 0, opacity: 0.6 }}>
-                  {n.readAt ? '👁️' : '🔵'}
+                  {n.readAt ? <span className="material-symbols-outlined" style={{fontSize: '1rem'}}>visibility</span> : <span className="material-symbols-outlined" style={{fontSize: '1rem'}}>visibility_off</span>}
                 </button>
               </div>
             ))}
@@ -137,7 +140,13 @@ function TagManagerModal({ allTags, customers, updateTags, updateCustomer, onClo
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1200 }}>
       <div className="modal-content animate-scale-in" style={{ maxWidth: '500px', padding: '24px' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 style={{ margin: 0 }}>🏷️ Gestione Tag</h3>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                <line x1="7" y1="7" x2="7.01" y2="7"></line>
+              </svg> 
+            Gestione Tag
+          </h3>
           <button className="btn btn-ghost btn-icon" onClick={onClose}>✕</button>
         </div>
 
@@ -193,7 +202,12 @@ function TagManagerModal({ allTags, customers, updateTags, updateCustomer, onClo
         return (
           <div className="modal-overlay animate-fade-in" style={{ zIndex: 1300 }} onClick={() => setConfirmTag(null)}>
             <div className="modal-content animate-scale-in" style={{ maxWidth: '420px', padding: '28px', borderTop: '4px solid var(--warning)' }} onClick={e => e.stopPropagation()}>
-              <div style={{ fontSize: '2.5rem', textAlign: 'center', marginBottom: '8px' }}>🏷️</div>
+              <div style={{ fontSize: '2.5rem', textAlign: 'center', marginBottom: '8px' }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+              </div>
               <h3 style={{ textAlign: 'center', color: 'var(--warning)', margin: '0 0 12px 0', fontSize: '1.05rem' }}>
                 Eliminare il tag "{confirmTag}"?
               </h3>
@@ -502,14 +516,24 @@ export default function App() {
               onClick={() => setShowCalendar(true)}
               title="Vista Calendario"
             >
-              📅
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
             </button>
           </div>
         </div>
 
         <div className="app-header-center">
           <div className="app-search-wrapper app-search" style={{ position: 'relative' }}>
-            <span className="app-search-icon">🔍</span>
+            <span className="app-search-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+              </svg>
+            </span>
             <input
               ref={searchInputRef}
               type="text"
@@ -573,7 +597,10 @@ export default function App() {
             onClick={() => setShowTagMenu(true)}
             title="Gestisci Tag"
           >
-            🏷️ Tag
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                <line x1="7" y1="7" x2="7.01" y2="7"></line>
+              </svg> Tag
           </button>
 
           <div className="app-view-toggle">
@@ -582,14 +609,26 @@ export default function App() {
               onClick={() => setViewMode('kanban')}
               title="Vista Kanban"
             >
-              ▦
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ marginTop: '3px' }}>
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
             </button>
             <button
               className={`app-view-btn ${viewMode === 'list' ? 'active' : ''}`}
               onClick={() => setViewMode('list')}
               title="Vista Lista"
             >
-              ☰
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ marginTop: '3px' }}>
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
             </button>
           </div>
 
@@ -604,15 +643,26 @@ export default function App() {
             {showExportMenu && (
               <div className="app-dropdown animate-scale-in">
                 <button className="app-dropdown-item" onClick={() => { setShowSettings(true); setShowExportMenu(false); }}>
-                  ⚙️ Impostazioni
+                  <span className="material-symbols-outlined" style={{ marginRight: '8px', fontSize: '20px' }}>
+                    settings
+                  </span>
+                  Impostazioni
                 </button>
                 <div className="app-dropdown-divider" />
                 <button className="app-dropdown-item" onClick={handleEndSession} style={{ fontWeight: 600, color: 'var(--primary)' }}>
-                  💼 Termina sessione di lavoro
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ marginRight: '8px' }}>
+                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                  </svg>
+                  Termina sessione di lavoro
                 </button>
                 <div className="app-dropdown-divider" />
                 <button className="app-dropdown-item app-dropdown-danger" onClick={() => { setIsLoggedIn(false); setShowExportMenu(false); }}>
-                  🔒 Blocca CRM
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ marginRight: '8px' }}>
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                  Blocca CRM
                 </button>
               </div>
             )}
@@ -726,6 +776,19 @@ export default function App() {
       {(showExportMenu || showClientMenu || showNotifications) && (
         <div className="app-backdrop" onClick={() => { setShowExportMenu(false); setShowClientMenu(false); setShowNotifications(false); }} />
       )}
+
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=settings,visibility,visibility_off" />
+      <style>{`
+        .material-symbols-outlined {
+          font-variation-settings:
+            'FILL' 0,
+            'wght' 400,
+            'GRAD' 0,
+            'opsz' 24
+          }
+        }
+      `}</style>
 
       <style>{`
         .app-layout {

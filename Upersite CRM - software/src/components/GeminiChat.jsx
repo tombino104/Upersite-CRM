@@ -171,8 +171,8 @@ export default function GeminiChat({
             }));
 
             const systemPrompt = `Sei Upersite AI Assistant, l'assistente IA intelligente ufficiale di Upersite Studio. Hai accesso al Database in sola lettura. Non puoi inventare dati o informazioni, piuttosto afferma di non saperle.
-            Non scrivere informazioni non richieste, per esempio se ti chiedo i task da fare non mescolare dentro anche i contenuti delle note.
-            
+            Non scrivere informazioni non richieste, per esempio se ti chiedo i task da fare non mescolare dentro anche i contenuti delle note. Categorizza le richieste generiche (ovvero se ti chiedo per esempio i task che devo fare specifica anche per chi devo farli).
+                        Prima di dare le informazioni in output verifica che siano realmente QUELLE RICHIESTE. 
 IL TUO ALFABETO (FORMATTAZIONE):
 - # Titolo Grande
 - ## Titolo Medio
@@ -299,6 +299,26 @@ ${JSON.stringify(dbSummary)}`;
         }
     };
 
+    const copyMessage = (text, e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text).then(() => {
+            // Show feedback
+            const btn = e.target;
+            const originalTitle = btn.title;
+            btn.title = 'Copiato!';
+            btn.style.background = 'rgba(76, 175, 80, 0.2)';
+            btn.classList.add('copied');
+            
+            setTimeout(() => {
+                btn.title = originalTitle;
+                btn.style.background = '';
+                btn.classList.remove('copied');
+            }, 5000);
+        }).catch(err => {
+            console.error('Failed to copy text: ', err);
+        });
+    };
+
     const today = new Date().toISOString().slice(0, 10);
     const usageCount = aiUsageStats.date === today ? aiUsageStats.count : 0;
     const usagePercent = Math.min((usageCount / currentModel.rpd) * 100, 100);
@@ -371,35 +391,28 @@ ${JSON.stringify(dbSummary)}`;
 
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
                         <button
-                            className="gemini-icon-btn"
+                            className="gemini-icon-btn gemini-history-btn"
                             onClick={() => { setShowHistory(!showHistory); setShowModelMenu(false); setShowSettings(false); }}
                             title="Cronologia Chat"
                             style={{
                                 background: showHistory ? 'var(--primary)' : 'var(--primary-ghost)',
                                 color: showHistory ? 'white' : 'var(--primary)'
                             }}
-                        >
-                            🕐
-                        </button>
+                        />
                         <button
-                            className="gemini-icon-btn"
+                            className="gemini-icon-btn gemini-settings-btn"
                             onClick={() => { setShowSettings(!showSettings); setShowModelMenu(false); setShowHistory(false); }}
                             title="Impostazioni e Limiti"
                             style={{
                                 background: showSettings ? 'var(--primary)' : 'var(--primary-ghost)',
                                 color: showSettings ? 'white' : 'var(--primary)'
                             }}
-                        >
-                            ⚙️
-                        </button>
+                        />
                         <button
-                            className="gemini-icon-btn"
+                            className="gemini-icon-btn gemini-newchat-btn"
                             onClick={startNewChat}
                             title="Nuova Chat"
-                        >
-                            ✏️
-                        </button>
-                        <button className="gemini-close" onClick={() => setIsOpen(false)}>⇣</button>
+                        />
                     </div>
                 </div>
 
@@ -511,6 +524,13 @@ ${JSON.stringify(dbSummary)}`;
                         {messages.map((m, i) => (
                             <div key={i} className={`msg-bubble ${m.role}`}>
                                 <div className="msg-text">{formatText(m.text)}</div>
+                                {m.role === 'model' && (
+                                    <button 
+                                        className="msg-copy-btn"
+                                        onClick={(e) => copyMessage(m.text, e)}
+                                        title="Copia messaggio"
+                                    />
+                                )}
                             </div>
                         ))}
                         {isLoading && (
@@ -540,6 +560,8 @@ ${JSON.stringify(dbSummary)}`;
             </div>
 
             <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=settings');
+                
                 .gemini-chat-root {
                     position: fixed; bottom: 30px; right: 30px; z-index: 9999;
                     font-family: var(--font);
@@ -628,16 +650,41 @@ ${JSON.stringify(dbSummary)}`;
                     background: var(--primary-ghost); border: none;
                     width: 32px; height: 32px; border-radius: 10px; color: var(--primary);
                     cursor: pointer; display: flex; align-items: center; justify-content: center;
-                    font-size: 0.9rem; transition: 0.2s;
+                    font-size: 0.9rem; transition: 0.2s; position: relative;
                 }
                 .gemini-icon-btn:hover { transform: scale(1.1); }
-                .gemini-close {
-                    background: none; border: none; font-size: 1.2rem; cursor: pointer;
-                    color: var(--text-tertiary); width: 32px; height: 32px;
-                    display: flex; align-items: center; justify-content: center;
-                    border-radius: 8px; transition: 0.2s;
+                
+                /* History icon (clock) */
+                .gemini-history-btn::before {
+                    content: ''; position: absolute; width: 14px; height: 14px; border: 2px solid currentColor;
+                    border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%);
                 }
-                .gemini-close:hover { background: var(--bg-hover); }
+                .gemini-history-btn::after {
+                    content: ''; position: absolute; width: 1px; height: 4px; background: currentColor;
+                    top: 50%; left: 50%; transform: translate(-50%, -50%) translateY(-2px);
+                }
+                
+                /* Settings icon (Material Symbols) */
+                .gemini-settings-btn::before {
+                    content: 'settings';
+                    font-family: 'Material Symbols Outlined';
+                    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+                    font-size: 18px;
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                }
+                
+                /* New chat icon (plus) */
+                .gemini-newchat-btn::before {
+                    content: ''; position: absolute; width: 14px; height: 2px; background: currentColor;
+                    top: 50%; left: 50%; transform: translate(-50%, -50%);
+                }
+                .gemini-newchat-btn::after {
+                    content: ''; position: absolute; width: 2px; height: 14px; background: currentColor;
+                    top: 50%; left: 50%; transform: translate(-50%, -50%);
+                }
 
                 /* Body layout */
                 .gemini-body { flex: 1; display: flex; overflow: hidden; position: relative; }
@@ -702,8 +749,39 @@ ${JSON.stringify(dbSummary)}`;
                     align-self: flex-start; background: #fff; color: var(--text-primary);
                     border-bottom-left-radius: 4px; border: 1px solid var(--border-light);
                     box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+                    position: relative;
                 }
                 .msg-bubble.model.typing { display: flex; gap: 4px; align-items: center; padding: 12px 16px; }
+
+                .msg-copy-btn {
+                    position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.05);
+                    border: none; cursor: pointer; font-size: 0.6rem; opacity: 0.6;
+                    padding: 4px 6px; border-radius: 6px; transition: all 0.2s;
+                    z-index: 1; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+                }
+                .msg-copy-btn:hover { opacity: 1 !important; background: rgba(0,0,0,0.1); transform: scale(1.1); }
+                
+                /* Copy icon (default state) */
+                .msg-copy-btn::before {
+                    content: ''; position: absolute; width: 8px; height: 10px; border: 1.5px solid #666; border-radius: 2px;
+                    top: 3px; left: 4px; transition: all 0.2s;
+                }
+                .msg-copy-btn::after {
+                    content: ''; position: absolute; width: 8px; height: 10px; border: 1.5px solid #666; border-radius: 2px;
+                    top: 6px; left: 7px; background: rgba(0,0,0,0.05); transition: all 0.2s;
+                }
+                
+                /* Checkmark state (when copied) */
+                .msg-copy-btn.copied::before,
+                .msg-copy-btn.copied::after {
+                    display: none;
+                }
+                .msg-copy-btn.copied::after {
+                    display: block; content: '✓'; 
+                    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                    color: #4CAF50; font-size: 12px; font-weight: bold;
+                    width: auto; height: auto; background: none; border: none;
+                }
 
                 .dot {
                     width: 7px; height: 7px; background: var(--text-tertiary); border-radius: 50%;
