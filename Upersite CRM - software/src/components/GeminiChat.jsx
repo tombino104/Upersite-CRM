@@ -167,7 +167,7 @@ export default function GeminiChat({
                 stato: c.status,
                 rate: (c.installments || []).map(i => ({ scadenza: i.dueDate, importo: i.amount, pagata: i.paid })),
                 task: (c.todo || []).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
-                note_recenti: (c.notes || []).slice(-2).map(n => n.text)
+                note: (c.notes || []).map(n => n.text)
             }));
 
             const systemPrompt = `Sei Upersite AI Assistant, l'assistente IA intelligente ufficiale di Upersite Studio. Hai accesso al Database in sola lettura. Non puoi inventare dati o informazioni, piuttosto afferma di non saperle.
@@ -198,10 +198,13 @@ ${JSON.stringify(dbSummary)}`;
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{
-                        role: 'user',
-                        parts: [{ text: `${systemPrompt}\n\nUSER MESSAGE: ${text}` }]
-                    }]
+                    contents: [
+                        { role: 'user', parts: [{ text: systemPrompt }] },
+                        ...newMessages.slice(-10).map(msg => ({
+                            role: msg.role === 'model' ? 'model' : 'user',
+                            parts: [{ text: msg.text }]
+                        }))
+                    ]
                 })
             });
 
