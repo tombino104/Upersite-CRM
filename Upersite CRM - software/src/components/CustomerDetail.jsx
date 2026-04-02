@@ -168,6 +168,11 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
     const [recurrence, setRecurrence] = useState('none');
 
+    // Stati per modifica rapida todo
+    const [editingTodo, setEditingTodo] = useState({});
+    const [editingText, setEditingText] = useState({});
+    const [editingPriority, setEditingPriority] = useState({});
+
 
 
     const addTodo = (e) => {
@@ -384,6 +389,45 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
 
 
+    const startEditingTodo = (id, text, priority) => {
+
+        setEditingTodo(prev => ({ ...prev, [id]: true }));
+
+        setEditingText(prev => ({ ...prev, [id]: text }));
+
+        setEditingPriority(prev => ({ ...prev, [id]: priority }));
+
+    };
+
+
+
+    const saveTodoEdit = (id) => {
+
+        const newText = editingText[id]?.trim();
+
+        if (newText && newText !== '') {
+
+            updateTodoField(id, 'text', newText);
+
+        }
+
+        // Esci dalla modalità editing
+        setEditingTodo(prev => ({ ...prev, [id]: false }));
+        setEditingText(prev => ({ ...prev, [id]: '' }));
+    };
+
+
+
+    const cancelTodoEdit = (id) => {
+
+        setEditingTodo(prev => ({ ...prev, [id]: false }));
+
+        setEditingText(prev => ({ ...prev, [id]: '' }));
+
+    };
+
+
+
     const linkFileToTodo = (todoId, fileId) => {
 
         const updateRecursive = (items) => items.map(t => {
@@ -508,15 +552,87 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                         <input type="checkbox" checked={t.completed} onChange={() => toggleTodo(t.id)} className="todo-checkbox" />
 
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
 
-                            <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.95rem', textDecoration: t.completed ? 'line-through' : 'none', opacity: t.completed ? 0.6 : 1 }}>
+                            {editingTodo[t.id] ? (
+                                // Modalità editing
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        value={editingText[t.id] || ''}
+                                        onChange={e => setEditingText(prev => ({ ...prev, [t.id]: e.target.value }))}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                saveTodoEdit(t.id);
+                                            } else if (e.key === 'Escape') {
+                                                e.preventDefault();
+                                                cancelTodoEdit(t.id);
+                                            }
+                                        }}
+                                        style={{ flex: 1, fontSize: '0.9rem', padding: '4px 8px' }}
+                                        placeholder="Testo attività..."
+                                        autoFocus
+                                    />
+                                    <button
+                                        className="btn btn-ghost btn-icon-sm"
+                                        onClick={() => saveTodoEdit(t.id)}
+                                        title="Salva"
+                                        style={{ color: 'var(--success)' }}
+                                    >
+                                        ✓
+                                    </button>
+                                    <button
+                                        className="btn btn-ghost btn-icon-sm"
+                                        onClick={() => cancelTodoEdit(t.id)}
+                                        title="Annulla"
+                                        style={{ color: 'var(--danger)' }}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            ) : (
+                                // Modalità visualizzazione
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span 
+                                        style={{ 
+                                            fontWeight: 500, 
+                                            color: 'var(--text-primary)', 
+                                            fontSize: '0.95rem', 
+                                            textDecoration: t.completed ? 'line-through' : 'none', 
+                                            opacity: t.completed ? 0.6 : 1,
+                                            cursor: 'pointer',
+                                            flex: 1,
+                                            alignSelf: 'center'
+                                        }}
+                                        onClick={() => startEditingTodo(t.id, t.text, t.priority)}
+                                        title="Clicca per modificare"
+                                    >
+                                        {t.text}
+                                    </span>
+                                    <button
+                                        className="btn btn-ghost btn-icon-sm"
+                                        onClick={() => startEditingTodo(t.id, t.text, t.priority)}
+                                        title="Modifica attività"
+                                        style={{ 
+                                            fontSize: '0.75rem', 
+                                            color: 'var(--text-tertiary)', 
+                                            padding: '2px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            height: '24px',
+                                            width: '24px',
+                                            marginTop: '4px'
+                                        }}
+                                    >
+                                        ✏️
+                                    </button>
+                                </div>
+                            )}
 
-                                {t.text}
-
-                            </span>
-
-                            {level === 0 && (
+                            {level === 0 && !editingTodo[t.id] && (
 
                                 <div style={{ display: 'flex', gap: '12px', fontSize: '0.75rem', marginTop: '4px' }}>
 
