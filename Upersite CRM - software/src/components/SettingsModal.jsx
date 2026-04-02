@@ -7,6 +7,8 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [backupSuccess, setBackupSuccess] = useState('');
+    const [importSuccess, setImportSuccess] = useState('');
     const [realSize, setRealSize] = useState(null);
 
     const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -24,6 +26,8 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
         e.preventDefault();
         setError('');
         setSuccess('');
+        setBackupSuccess('');
+        setImportSuccess('');
 
         if (currentPassword !== getMasterPassword()) {
             setError('Password attuale errata');
@@ -94,7 +98,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                     syncWithFileSystem().then((data) => {
                         setCustomers(data.customers || []);
                         if (data.settings) updateSettings(data.settings);
-                        setSuccess('Dati importati con successo!');
+                        setImportSuccess('Dati importati con successo!');
                     }).catch(() => {
                         setError('Import riuscito ma sincronizzazione fallita. Riprova.');
                     });
@@ -110,6 +114,8 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
     const handleClearData = () => {
         setError('');
         setSuccess('');
+        setBackupSuccess('');
+        setImportSuccess('');
         setClearError('');
         setClearPassword('');
         setShowClearConfirm(true);
@@ -119,6 +125,8 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
         setClearError('');
         setError('');
         setSuccess('');
+        setBackupSuccess('');
+        setImportSuccess('');
 
         if (clearPassword !== getMasterPassword()) {
             setClearError('Password errata');
@@ -136,7 +144,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
             const data = await syncWithFileSystem();
             setCustomers(data.customers || []);
             if (data.settings) updateSettings(data.settings);
-            setSuccess('Tutti i dati sono stati cancellati.');
+            setImportSuccess('Tutti i dati sono stati cancellati.');
             setShowClearConfirm(false);
         } catch {
             setError('Errore durante la cancellazione dati.');
@@ -248,7 +256,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
 
                         <button className="btn btn-primary"
                             onClick={async () => {
-                                setSuccess('');
+                                setBackupSuccess('');
                                 setError('');
                                 if (!settings.backupPath) {
                                     setError('Specifica prima un percorso di backup');
@@ -258,7 +266,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                     const { triggerAutoBackup } = await import('../utils/storage');
                                     const result = await triggerAutoBackup();
                                     if (result.success) {
-                                        setSuccess(`Backup creato: ${result.folder}`);
+                                        setBackupSuccess(`Backup creato: ${result.folder}`);
                                     } else {
                                         setError(`Errore backup: ${result.error}`);
                                     }
@@ -270,6 +278,8 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                             💾 Crea Backup Ora
                         </button>
 
+                                                {backupSuccess && <div style={{ color: 'var(--success)', fontSize: '0.8rem', fontWeight: 600, marginTop: '8px', textAlign: 'center' }}>✅ {backupSuccess}</div>}
+
                         <div style={{ height: '1px', background: 'var(--border-light)', margin: '8px 0' }} />
 
                         <button className="btn btn-secondary" onClick={exportData} style={{ width: '100%', justifyContent: 'center' }}>
@@ -278,10 +288,12 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                         <button className="btn btn-secondary" onClick={handleImport} style={{ width: '100%', justifyContent: 'center' }}>
                             📤 Importa Backup
                         </button>
+                        {importSuccess && <div style={{ color: 'var(--success)', fontSize: '0.8rem', fontWeight: 600, marginTop: '8px', textAlign: 'center' }}>✅ {importSuccess}</div>}
                         <div style={{ height: '1px', background: 'var(--border-light)', margin: '8px 0' }} />
                         <button className="btn btn-danger" onClick={handleClearData} style={{ width: '100%', justifyContent: 'center', opacity: 0.8 }}>
                             🗑️ Cancella Tutti i Dati
                         </button>
+                        {importSuccess && importSuccess.includes('cancellati') && <div style={{ color: 'var(--success)', fontSize: '0.8rem', fontWeight: 600, marginTop: '8px', textAlign: 'center' }}>✅ {importSuccess}</div>}
                     </div>
                 </div>
 

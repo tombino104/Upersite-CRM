@@ -13,6 +13,7 @@ import DataGridView from './components/DataGridView';
 import GeminiChat from './components/GeminiChat';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
+import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
 
 /* ── Notification Component (Hoisted/Top-level) ── */
 const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggleRead, customers, setSelectedCustomer }) => {
@@ -777,6 +778,46 @@ export default function App() {
         <div className="app-backdrop" onClick={() => { setShowExportMenu(false); setShowClientMenu(false); setShowNotifications(false); }} />
       )}
 
+      {/* Version Badge */}
+      <div className="app-version-badge" style={{
+        position: 'fixed',
+        bottom: '16px',
+        left: '16px',
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border-light)',
+        borderRadius: 'var(--radius-md)',
+        padding: '6px 12px',
+        fontSize: '0.7rem',
+        color: 'var(--text-tertiary)',
+        fontWeight: 500,
+        fontFamily: 'monospace',
+        zIndex: 100,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+        cursor: 'pointer',
+        transition: 'all 0.2s'
+      }} 
+      title={`Upersite CRM ${formatVersionDisplay()}\nClicca per copiare la versione`}
+      onClick={async () => {
+        const success = await copyVersionToClipboard();
+        // Mostra feedback visivo temporaneo
+        const el = document.querySelector('.app-version-badge');
+        if (el) {
+          if (success) {
+            el.style.background = 'var(--success)';
+            el.style.color = '#fff';
+          } else {
+            el.style.background = 'var(--danger)';
+            el.style.color = '#fff';
+          }
+          setTimeout(() => {
+            el.style.background = 'var(--bg-card)';
+            el.style.color = 'var(--text-tertiary)';
+          }, 300);
+        }
+      }}>
+        {formatVersionDisplay()}
+      </div>
+
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=settings,visibility,visibility_off" />
       <style>{`
@@ -786,7 +827,6 @@ export default function App() {
             'wght' 400,
             'GRAD' 0,
             'opsz' 24
-          }
         }
       `}</style>
 

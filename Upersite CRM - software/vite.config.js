@@ -59,7 +59,7 @@ function storagePlugin() {
           req.on('data', chunk => { body += chunk; });
           req.on('end', () => {
             try {
-              const { backupPath } = JSON.parse(body);
+              const { backupPath, includeFiles = true } = JSON.parse(body);
               if (!backupPath) {
                 res.statusCode = 400;
                 res.end(JSON.stringify({ error: 'Percorso non specificato' }));
@@ -70,6 +70,21 @@ function storagePlugin() {
                 res.statusCode = 404;
                 res.end(JSON.stringify({ error: 'Nessun dato da salvare' }));
                 return;
+              }
+
+              // Leggi i dati originali
+              const originalData = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8'));
+              
+              // Crea una copia per il backup
+              let backupData = { ...originalData };
+              
+              // Se backup parziale, rimuovi completamente i file
+              if (!includeFiles && backupData.customers) {
+                backupData.customers = backupData.customers.map(customer => {
+                  const customerCopy = { ...customer };
+                  delete customerCopy.files; // Rimuovi completamente l'array files
+                  return customerCopy;
+                });
               }
 
               const now = new Date();
@@ -88,8 +103,13 @@ function storagePlugin() {
               const seconds = String(now.getSeconds()).padStart(2, '0');
               const timeSuffix = `${hours}-${minutes}-${seconds}`;
 
-              const targetFile = path.join(targetDir, `backup_ore_${timeSuffix}.json`);
-              fs.copyFileSync(STORAGE_FILE, targetFile);
+              // Naming intelligente
+              const fileName = includeFiles 
+                ? `backup_ore_${timeSuffix}.json`
+                : `backup_ore_${timeSuffix}_LIGHT.json`;
+              
+              const targetFile = path.join(targetDir, fileName);
+              fs.writeFileSync(targetFile, JSON.stringify(backupData, null, 2));
 
               res.end(JSON.stringify({ success: true, folder: dateFolder }));
             } catch (e) {
