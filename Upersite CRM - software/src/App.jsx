@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
 import Login from './components/Login';
 import StatsHeader from './components/StatsHeader';
 import KanbanView from './components/KanbanView';
@@ -11,6 +11,7 @@ import ClientListModal from './components/ClientListModal';
 import SettingsModal from './components/SettingsModal';
 import DataGridView from './components/DataGridView';
 import GeminiChat from './components/GeminiChat';
+import UserProfileModal from './components/UserProfileModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
@@ -258,6 +259,7 @@ export default function App() {
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showUserProfile, setShowUserProfile] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   
   const searchInputRef = useRef(null);
@@ -291,6 +293,7 @@ export default function App() {
         else if (showTagMenu) setShowTagMenu(false);
         else if (showNotifications) setShowNotifications(false);
         else if (showCalendar) setShowCalendar(false);
+        else if (showUserProfile) setShowUserProfile(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -299,10 +302,10 @@ export default function App() {
 
   const {
     customers, tags, settings, events, hasSynced,
-    chatHistory, aiUsageStats,
+    chatHistory, aiUsageStats, userProfile,
     addCustomer, updateCustomer, deleteCustomer, setCustomers,
     updateSettings, updateTags, updateEvents,
-    updateChatHistory, updateAiUsageStats
+    updateChatHistory, updateAiUsageStats, updateUserProfile
   } = useCustomers();
 
   // Unified preferences sync
@@ -511,6 +514,14 @@ export default function App() {
                 </span>
               </div>
             </div>
+            <button 
+              className="btn btn-ghost btn-icon-sm" 
+              style={{ marginLeft: '12px', fontSize: '1.1rem', opacity: 0.8 }}
+              onClick={() => setShowUserProfile(true)}
+              title="Profilo Utente"
+            >
+              👤
+            </button>
             <button 
               className="btn btn-ghost btn-icon-sm" 
               style={{ marginLeft: '12px', fontSize: '1.1rem', opacity: 0.8 }}
@@ -743,7 +754,12 @@ export default function App() {
       )}
 
       {showClientList && (
-        <ClientListModal customers={customers} onSelectCustomer={setSelectedCustomer} onClose={() => setShowClientList(false)} />
+        <ClientListModal 
+          customers={customers.filter(c => c.id !== userProfile?.id)} 
+          onSelectCustomer={setSelectedCustomer} 
+          userProfile={userProfile}
+          onClose={() => setShowClientList(false)} 
+        />
       )}
 
       {showSettings && (
@@ -764,9 +780,21 @@ export default function App() {
         />
       )}
 
+      {/* User Profile Modal */}
+      {showUserProfile && (
+        <UserProfileModal
+          isOpen={showUserProfile}
+          userProfile={userProfile}
+          onClose={() => setShowUserProfile(false)}
+          onUpdate={updateUserProfile}
+        />
+      )}
+
       {/* Gemini AI Assistant */}
       <GeminiChat 
         customers={customers}
+        events={events}
+        userProfile={userProfile}
         chatHistory={chatHistory}
         aiUsageStats={aiUsageStats}
         onUpdateChatHistory={updateChatHistory}
@@ -774,8 +802,8 @@ export default function App() {
       />
 
       {/* Click outside to close menu */}
-      {(showExportMenu || showClientMenu || showNotifications) && (
-        <div className="app-backdrop" onClick={() => { setShowExportMenu(false); setShowClientMenu(false); setShowNotifications(false); }} />
+      {(showExportMenu || showClientMenu || showNotifications || showUserProfile) && (
+        <div className="app-backdrop" onClick={() => { setShowExportMenu(false); setShowClientMenu(false); setShowNotifications(false); setShowUserProfile(false); }} />
       )}
 
       {/* Version Badge */}

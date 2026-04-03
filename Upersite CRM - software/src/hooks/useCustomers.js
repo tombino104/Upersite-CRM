@@ -7,6 +7,19 @@ export function useCustomers() {
     const [events, setEvents] = useState(defaultData.events || []);
     const [chatHistory, setChatHistory] = useState(defaultData.chatHistory || []);
     const [aiUsageStats, setAiUsageStats] = useState(defaultData.aiUsageStats || { date: '', count: 0 });
+    const [userProfile, setUserProfile] = useState(defaultData.userProfile || {
+        name: '',
+        email: '',
+        phone: '',
+        company: '',
+        role: '',
+        photo: '',
+        bio: '',
+        preferences: {
+            theme: 'light',
+            language: 'it'
+        }
+    });
     const [settings, setSettings] = useState(defaultData.settings);
     const [hasSynced, setHasSynced] = useState(false);
 
@@ -22,6 +35,7 @@ export function useCustomers() {
             const today = new Date().toISOString().slice(0, 10);
             setAiUsageStats(savedStats.date === today ? savedStats : { date: today, count: 0 });
             setSettings(data.settings || defaultData.settings);
+            setUserProfile(data.userProfile || defaultData.userProfile);
             setHasSynced(true);
         }
         init();
@@ -40,11 +54,12 @@ export function useCustomers() {
                 events,
                 chatHistory,
                 aiUsageStats,
+                userProfile,
             });
         }, 1000); // Save after 1 second of inactivity
 
         return () => clearTimeout(timer);
-    }, [customers, settings, tags, events, chatHistory, aiUsageStats, hasSynced]);
+    }, [customers, settings, tags, events, chatHistory, aiUsageStats, userProfile, hasSynced]);
 
     // --- AUTOMATION RULES (LOGIC-BASED) ---
     const runAutomations = (customer, updates) => {
@@ -156,12 +171,16 @@ export function useCustomers() {
         setAiUsageStats(newStats);
     }, []);
 
+    const updateUserProfile = useCallback((newProfile) => {
+        setUserProfile(newProfile);
+    }, []);
+
     return {
-        customers, tags, settings, events, chatHistory, aiUsageStats, hasSynced,
+        customers, tags, settings, events, chatHistory, aiUsageStats, userProfile, hasSynced,
         setCustomers,
         addCustomer, updateCustomer, deleteCustomer,
         updateSettings, updateTags, updateEvents,
-        updateChatHistory, updateAiUsageStats
+        updateChatHistory, updateAiUsageStats, updateUserProfile
     };
 }
 

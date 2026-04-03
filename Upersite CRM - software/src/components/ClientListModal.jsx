@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function ClientListModal({ customers, onSelectCustomer, onClose }) {
+export default function ClientListModal({ customers, onSelectCustomer, onClose, userProfile }) {
     const [search, setSearch] = useState('');
 
     const terms = search.toLowerCase().split(/\s+/).filter(t => t);
@@ -18,7 +18,7 @@ export default function ClientListModal({ customers, onSelectCustomer, onClose }
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
             <div className="modal-content animate-scale-in" style={{ maxWidth: '600px', padding: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Tutti i Clienti ({customers.length})</h2>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Clienti ({customers.filter(c => c.id !== userProfile?.id).length})</h2>
                     <button className="btn btn-ghost btn-icon" onClick={onClose}>✕</button>
                 </div>
 

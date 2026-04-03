@@ -50,6 +50,18 @@ export const defaultData = {
 
     aiUsageStats: { date: '', count: 0 },
 
+    userProfile: {
+        name: '',
+        email: '',
+        phone: '',
+        company: '',
+        role: '',
+        photo: '',
+        bio: '',
+        preferences: {
+        }
+    },
+
     settings: {
 
         inactivityTimeout: 5 * 60 * 1000,

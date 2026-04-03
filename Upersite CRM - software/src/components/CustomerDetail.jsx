@@ -595,19 +595,18 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
                             ) : (
                                 // Modalità visualizzazione
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span 
-                                        style={{ 
+                                    <span
+                                        style={{
                                             fontWeight: 500, 
                                             color: 'var(--text-primary)', 
                                             fontSize: '0.95rem', 
                                             textDecoration: t.completed ? 'line-through' : 'none', 
                                             opacity: t.completed ? 0.6 : 1,
-                                            cursor: 'pointer',
+                                            cursor: 'default',
                                             flex: 1,
                                             alignSelf: 'center'
                                         }}
-                                        onClick={() => startEditingTodo(t.id, t.text, t.priority)}
-                                        title="Clicca per modificare"
+                                        title="Testo del todo"
                                     >
                                         {t.text}
                                     </span>
@@ -1444,18 +1443,27 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
 
 
-    const handleOpenFile = (fileId) => {
-
+    const handleOpenFile = async (fileId) => {
         const f = form.files?.find(x => x.id === fileId);
-
+        
         if (f) {
-
-            setInitialPreviewFile(f);
-
-            setActiveTab('files');
-
+            // Se il file ha un percorso (file locale), apri direttamente con Windows Explorer
+            if (f.path) {
+                try {
+                    // Usa l'API esposta dal preload script
+                    await window.electronAPI.openPath(f.path);
+                } catch (error) {
+                    console.error('Errore nell\'aprire il percorso:', error);
+                    // Fallback: copia il percorso
+                    navigator.clipboard.writeText(f.path).catch(console.error);
+                    alert('Impossibile aprire automaticamente. Percorso copiato: ' + f.path);
+                }
+            } else {
+                // Se è un file caricato nell'app, apri la preview come prima
+                setInitialPreviewFile(f);
+                setActiveTab('files');
+            }
         }
-
     };
 
 
@@ -3855,15 +3863,13 @@ const FilesSection = React.memo(({ form, update, confirmDelete, filterOutQuotes,
 
                             <div className="file-card-inner">
 
-                                <div className="file-card-icon" style={{ cursor: canPreview || isFolderLink ? 'pointer' : 'default' }} onClick={() => {
-
+                                <div className="file-card-icon" style={{ cursor: canPreview || isFolderLink ? 'pointer' : 'default' }} onClick={async () => {
                                     if (isFolderLink) {
                                         // Apri direttamente il file manager di Windows al percorso specificato
                                         if (file.path) {
                                             try {
-                                                // Usa direttamente shell.openPath() - metodo più affidabile
-                                                const { shell } = window.require('electron');
-                                                shell.openPath(file.path);
+                                                // Usa l'API esposta dal preload script
+                                                await window.electronAPI.openPath(file.path);
                                             } catch (error) {
                                                 console.error('Errore nell\'aprire il percorso:', error);
                                                 // Fallback: copia il percorso
@@ -3872,22 +3878,19 @@ const FilesSection = React.memo(({ form, update, confirmDelete, filterOutQuotes,
                                             }
                                         }
                                     } else if (canPreview) setPreviewFile(file);
-
                                 }}>
 
                                     {isFolderLink ? '🗂️' : (isImage ? <img src={file.data} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }} /> : '📄')}
 
                                 </div>
 
-                                <div className="file-card-name" style={{ cursor: canPreview || isFolderLink ? 'pointer' : 'default' }} onClick={() => {
-
+                                <div className="file-card-name" style={{ cursor: canPreview || isFolderLink ? 'pointer' : 'default' }} onClick={async () => {
                                     if (isFolderLink) {
                                         // Apri direttamente il file manager di Windows al percorso specificato
                                         if (file.path) {
                                             try {
-                                                // Usa direttamente shell.openPath() - metodo più affidabile
-                                                const { shell } = window.require('electron');
-                                                shell.openPath(file.path);
+                                                // Usa l'API esposta dal preload script
+                                                await window.electronAPI.openPath(file.path);
                                             } catch (error) {
                                                 console.error('Errore nell\'aprire il percorso:', error);
                                                 // Fallback: copia il percorso
@@ -3896,7 +3899,6 @@ const FilesSection = React.memo(({ form, update, confirmDelete, filterOutQuotes,
                                             }
                                         }
                                     } else if (canPreview) setPreviewFile(file);
-
                                 }}>
 
                                     {isFolderLink ? file.name : file.name}

@@ -70,6 +70,8 @@ function formatText(text) {
 
 export default function GeminiChat({
     customers,
+    events = [],
+    userProfile,
     chatHistory = [],
     aiUsageStats = { date: '', count: 0 },
     onUpdateChatHistory,
@@ -160,18 +162,27 @@ export default function GeminiChat({
         setIsLoading(true);
 
         try {
-            const dbSummary = customers.map(c => ({
-                id: c.id,
-                nome: c.name,
-                azienda: c.company,
-                stato: c.status,
-                rate: (c.installments || []).map(i => ({ scadenza: i.dueDate, importo: i.amount, pagata: i.paid })),
-                task: (c.todo || []).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
-                note: (c.notes || []).map(n => n.text)
-            }));
+            const dbSummary = {
+                clienti: customers.map(c => ({
+                    id: c.id,
+                    nome: c.name,
+                    azienda: c.company,
+                    stato: c.status,
+                    rate: (c.installments || []).map(i => ({ scadenza: i.dueDate, importo: i.amount, pagata: i.paid })),
+                    task: (c.todo || []).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
+                    note: (c.notes || []).map(n => n.text)
+                })),
+                eventi: (events || []).map(e => ({
+                    id: e.id,
+                    titolo: e.title,
+                    data: e.date,
+                    tipo: 'evento_globale'
+                }))
+            };
 
             const systemPrompt = `Sei Upersite AI Assistant, l'assistente IA intelligente ufficiale di Upersite Studio. Hai accesso al Database in sola lettura. Non puoi inventare dati o informazioni, piuttosto afferma di non saperle.
             Non scrivere informazioni non richieste, per esempio se ti chiedo i task da fare non mescolare dentro anche i contenuti delle note. Categorizza le richieste generiche (ovvero se ti chiedo per esempio i task che devo fare specifica anche per chi devo farli).
+            Hai accesso ai dati dei clienti e agli eventi del calendario globale. Quando ti chiedono informazioni sul calendario, non includere i task/rate dei clienti.
                         Prima di dare le informazioni in output verifica che siano realmente QUELLE RICHIESTE. 
 IL TUO ALFABETO (FORMATTAZIONE):
 - # Titolo Grande
