@@ -12,6 +12,7 @@ import SettingsModal from './components/SettingsModal';
 import DataGridView from './components/DataGridView';
 import GeminiChat from './components/GeminiChat';
 import UserProfileModal from './components/UserProfileModal';
+import TaskFilterModal from './components/TaskFilterModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
@@ -260,6 +261,7 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
+  const [showTaskFilter, setShowTaskFilter] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   
   const searchInputRef = useRef(null);
@@ -294,11 +296,12 @@ export default function App() {
         else if (showNotifications) setShowNotifications(false);
         else if (showCalendar) setShowCalendar(false);
         else if (showUserProfile) setShowUserProfile(false);
+        else if (showTaskFilter) setShowTaskFilter(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showCharts, showOverdue, showClientList, showSettings, showDataGridView, showTagMenu, showNotifications]);
+  }, [showCharts, showOverdue, showClientList, showSettings, showDataGridView, showTagMenu, showNotifications, showTaskFilter]);
 
   const {
     customers, tags, settings, events, hasSynced,
@@ -591,6 +594,21 @@ export default function App() {
         </div>
 
         <div className="app-header-right">
+          <div className="app-menu-wrapper" style={{ overflow: 'visible', marginRight: '16px' }}>
+            <button 
+              className="btn btn-secondary btn-sm" 
+              style={{ position: 'relative', overflow: 'visible', zIndex: 101 }}
+              onClick={() => setShowTaskFilter(true)}
+              title="Filtra Task"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"></path>
+                <path d="M7 12h10"></path>
+                <path d="M10 18h4"></path>
+              </svg>
+            </button>
+          </div>
+
           <div className="app-menu-wrapper" style={{ overflow: 'visible' }}>
             <NotificationBell
               count={unreadNotificationsCount}
@@ -686,7 +704,7 @@ export default function App() {
       <main className="app-main">
         <StatsHeader
           customers={customers}
-          onOpenCharts={() => setShowCharts(true)}
+          onOpenCharts={(type) => setShowCharts({ show: true, chartType: type })}
           onOpenClients={() => setShowDataGridView(true)}
           onOpenOverdue={() => setShowOverdue(true)}
         />
@@ -746,7 +764,11 @@ export default function App() {
       )}
 
       {showCharts && (
-        <EarningsChartModal customers={customers} onClose={() => setShowCharts(false)} />
+        <EarningsChartModal 
+          customers={customers} 
+          chartType={showCharts.chartType || 'all'}
+          onClose={() => setShowCharts(false)} 
+        />
       )}
 
       {showOverdue && (
@@ -770,6 +792,14 @@ export default function App() {
           updateSettings={updateSettings}
           setCustomers={setCustomers}
           customers={customers}
+        />
+      )}
+
+      {showTaskFilter && (
+        <TaskFilterModal
+          customers={customers}
+          onClose={() => setShowTaskFilter(false)}
+          onSelectCustomer={setSelectedCustomer}
         />
       )}
 

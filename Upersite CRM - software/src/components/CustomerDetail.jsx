@@ -1409,6 +1409,19 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
     const [activeTab, setActiveTab] = useState('general');
 
+    // Listen for setActiveTab events from TaskFilterModal
+    useEffect(() => {
+        const handleSetActiveTab = (event) => {
+            setActiveTab(event.detail);
+        };
+        
+        window.addEventListener('setActiveTab', handleSetActiveTab);
+        
+        return () => {
+            window.removeEventListener('setActiveTab', handleSetActiveTab);
+        };
+    }, []);
+
     const [newNote, setNewNote] = useState('');
 
     const [newTag, setNewTag] = useState('');

@@ -8,7 +8,7 @@ import {
 
 
 
-export default function EarningsChartModal({ customers, onClose }) {
+export default function EarningsChartModal({ customers, chartType = 'all', onClose }) {
 
     const [view, setView] = useState('monthly'); // 'monthly' | 'status'
 
@@ -194,6 +194,10 @@ export default function EarningsChartModal({ customers, onClose }) {
 
                         const amt = parseFloat(inst.amount) || 0;
 
+                        // Filter based on chartType
+                        if (chartType === 'collected' && !inst.paid) return;
+                        if (chartType === 'pending' && inst.paid) return;
+
                         if (inst.paid) {
 
                             dataMap[key].Incassato += amt;
@@ -261,6 +265,10 @@ export default function EarningsChartModal({ customers, onClose }) {
                     installs.forEach(i => {
 
                         const amt = parseFloat(i.amount) || 0;
+
+                        // Filter based on chartType
+                        if (chartType === 'collected' && !i.paid) return;
+                        if (chartType === 'pending' && i.paid) return;
 
                         if (i.paid) data[idx].Incassato += amt;
 
@@ -388,7 +396,11 @@ export default function EarningsChartModal({ customers, onClose }) {
 
                     <div className="chart-container">
 
-                        <h3 className="chart-title">💰 Entrate e Pendenze</h3>
+                        <h3 className="chart-title">
+                        💰 {chartType === 'collected' ? 'Entrate Incassate' : 
+                            chartType === 'pending' ? 'Pendenze da Incassare' : 
+                            'Entrate e Pendenze'}
+                    </h3>
 
                         <div style={{ height: '300px', width: '100%', background: 'var(--bg-input)', borderRadius: 'var(--radius-lg)', padding: '20px' }}>
 

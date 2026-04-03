@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { getMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem, formatBytes, getStorageInfo } from '../utils/storage';
+import { APP_VERSION, formatVersionDisplay } from '../utils/version';
 
 export default function SettingsModal({ settings, updateSettings, onClose, setCustomers, customers }) {
     const [currentPassword, setCurrentPassword] = useState('');
@@ -294,6 +295,21 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                             </div>
                         </div>
                     )}
+
+                    {/* App Info Section */}
+                    <div className="settings-section" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '24px' }}>
+                        <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Informazioni App</h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'var(--bg-input)', borderRadius: 'var(--radius-md)' }}>
+                            <div>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Versione</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>{formatVersionDisplay(APP_VERSION)}</div>
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', textAlign: 'right' }}>
+                                <div>Upersite CRM</div>
+                                <div>Sistema di gestione clienti</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

@@ -42,7 +42,7 @@ const StatsHeader = memo(({ customers, onOpenCharts, onOpenClients, onOpenOverdu
         </div>
       </div>
 
-      <div className="stat-card" onClick={onOpenCharts} style={{ cursor: 'pointer' }} title="Vedi grafici">
+      <div className="stat-card" onClick={() => onOpenCharts('collected')} style={{ cursor: 'pointer' }} title="Vedi grafici incassati">
         <div className="stat-icon" style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>💰</div>
         <div className="stat-info">
           <span className="stat-value">{formatCurrency(stats.totalCollected)}</span>
@@ -50,7 +50,7 @@ const StatsHeader = memo(({ customers, onOpenCharts, onOpenClients, onOpenOverdu
         </div>
       </div>
 
-      <div className="stat-card" onClick={onOpenCharts} style={{ cursor: 'pointer' }} title="Vedi grafici">
+      <div className="stat-card" onClick={() => onOpenCharts('pending')} style={{ cursor: 'pointer' }} title="Vedi grafici da incassare">
         <div className="stat-icon" style={{ background: 'var(--info-bg)', color: 'var(--info)' }}>📊</div>
         <div className="stat-info">
           <span className="stat-value">{formatCurrency(stats.totalPending)}</span>
