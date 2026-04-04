@@ -170,7 +170,7 @@ export default function GeminiChat({
                     stato: c.status,
                     rate: (c.installments || []).map(i => ({ scadenza: i.dueDate, importo: i.amount, pagata: i.paid })),
                     task: (c.todo || []).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
-                    note: (c.notes || []).map(n => n.text)
+                    note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => n.text) // Esclude i report SmartReport
                 })),
                 eventi: (events || []).map(e => ({
                     id: e.id,

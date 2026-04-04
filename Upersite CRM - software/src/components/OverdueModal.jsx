@@ -38,7 +38,14 @@ export default function OverdueModal({ customers, onSelectCustomer, onClose }) {
                         </div>
                     ) : (
                         overdueList.map((item, idx) => (
-                            <div key={`${item.customer.id}-${item.installment.id}`} className="stat-card" style={{ cursor: 'pointer', padding: '12px' }} onClick={() => { onSelectCustomer(item.customer); onClose(); }}>
+                            <div key={`${item.customer.id}-${item.installment.id}`} className="stat-card" style={{ cursor: 'pointer', padding: '12px' }} onClick={() => { 
+    onSelectCustomer(item.customer); 
+    onClose();
+    setTimeout(() => {
+      const event = new CustomEvent('setActiveTab', { detail: 'finance' });
+      window.dispatchEvent(event);
+    }, 200);
+  }}>
                                 <div className="stat-icon" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', width: '36px', height: '36px', fontSize: '1rem' }}>⏱</div>
                                 <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: 600, fontSize: '0.9375rem' }}>{item.customer.name} {item.customer.company ? `(${item.customer.company})` : ''}</div>

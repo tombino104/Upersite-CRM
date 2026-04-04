@@ -55,13 +55,15 @@ export default function TaskFilterModal({ customers, onClose, onSelectCustomer }
   }, [allTasks, priorityFilter, customerFilter]);
 
   const handleTaskClick = useCallback((task) => {
+    // Close modal immediately
+    onClose();
+    // Set customer and trigger tab change
     onSelectCustomer(task.customer);
     // Set active tab to 'todo' after a short delay to ensure customer detail is loaded
     setTimeout(() => {
       const event = new CustomEvent('setActiveTab', { detail: 'todo' });
       window.dispatchEvent(event);
-    }, 100);
-    onClose();
+    }, 200);
   }, [onSelectCustomer, onClose]);
 
   const formatDate = (dateString) => {

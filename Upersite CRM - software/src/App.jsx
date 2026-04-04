@@ -759,6 +759,7 @@ export default function App() {
           settings={settings}
           onSave={handleSave}
           onDelete={handleDelete}
+          updateCustomer={updateCustomer}
           onClose={() => { setSelectedCustomer(null); setShowNew(false); }}
         />
       )}

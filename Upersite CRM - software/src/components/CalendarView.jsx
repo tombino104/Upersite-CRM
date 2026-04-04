@@ -7,14 +7,12 @@ const MONTH_NAMES = [
   'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
 ];
 
-export default function CalendarView({ customers, onClose, onSelectCustomer, initialView, initialFilter, onSettingsChange, globalEvents = [], onUpdateEvents }) {
+export default function CalendarView({ customers, onClose, onSelectCustomer, initialView, initialFilter, onSettingsChange }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState(initialView || 'Mese');
   const [filter, setFilter] = useState(initialFilter || 'all'); 
   const [isClosing, setIsClosing] = useState(false);
-  const [showEventModal, setShowEventModal] = useState(false);
-  const [newEventData, setNewEventData] = useState({ title: '', date: '', type: 'global-event' });
-
+  
   // Auto-persist settings when they change
   useEffect(() => {
     if (onSettingsChange) {
@@ -62,15 +60,10 @@ export default function CalendarView({ customers, onClose, onSelectCustomer, ini
     return list;
   }, [customers]);
 
-  // 2. Process Global Events
+  // 2. Process Global Events - DISABLED
   const processedGlobalEvents = useMemo(() => {
-    return (globalEvents || []).map(ge => ({
-      ...ge,
-      date: new Date(ge.date),
-      type: 'global-event',
-      fullText: `[EVENTO] ${ge.title}`
-    }));
-  }, [globalEvents]);
+    return [];
+  }, []);
 
   // 3. Combine All
   const allEvents = useMemo(() => {
@@ -80,19 +73,7 @@ export default function CalendarView({ customers, onClose, onSelectCustomer, ini
     return combined;
   }, [customerEvents, processedGlobalEvents, filter]);
 
-  const addGlobalEvent = () => {
-    if (!newEventData.title || !newEventData.date) return;
-    const item = {
-      id: Date.now().toString(),
-      title: newEventData.title,
-      date: newEventData.date,
-      type: 'global-event'
-    };
-    onUpdateEvents([...globalEvents, item]);
-    setShowEventModal(false);
-    setNewEventData({ title: '', date: '', type: 'global-event' });
-  };
-
+  
   // Navigation Logic
   const changeDate = (offset) => {
     const next = new Date(currentDate);
@@ -137,10 +118,6 @@ export default function CalendarView({ customers, onClose, onSelectCustomer, ini
 
           <div className="modal-header-right">
             <div className="filter-chips">
-              <button className="chip active" style={{ background: 'var(--primary)', color: 'white' }} onClick={() => setShowEventModal(true)}>
-                📅 + Evento
-              </button>
-              <div className="chip-separator" style={{ width: 1, background: 'var(--border-light)', margin: '0 10px' }}></div>
               <div className={`chip ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>Tutto</div>
               <div className={`chip ${filter === 'payment' ? 'active' : ''}`} onClick={() => setFilter('payment')}>Rate</div>
               <div className={`chip ${filter === 'todo' ? 'active' : ''}`} onClick={() => setFilter('todo')}>Task</div>
@@ -149,35 +126,30 @@ export default function CalendarView({ customers, onClose, onSelectCustomer, ini
         </header>
 
         <main className="calendar-modal-body">
-          {view === 'Mese' && <MonthView date={currentDate} events={allEvents} onOpenClient={onSelectCustomer} />}
-          {view === 'Settimana' && <WeekView date={currentDate} events={allEvents} onOpenClient={onSelectCustomer} />}
-          {view === 'Giorno' && <DayView date={currentDate} events={allEvents} onOpenClient={onSelectCustomer} />}
+          {view === 'Mese' && <MonthView date={currentDate} events={allEvents} onOpenClient={(customer) => {
+    onSelectCustomer(customer);
+    setTimeout(() => {
+      const event = new CustomEvent('setActiveTab', { detail: 'finance' });
+      window.dispatchEvent(event);
+    }, 200);
+  }} />}
+          {view === 'Settimana' && <WeekView date={currentDate} events={allEvents} onOpenClient={(customer) => {
+    onSelectCustomer(customer);
+    setTimeout(() => {
+      const event = new CustomEvent('setActiveTab', { detail: 'finance' });
+      window.dispatchEvent(event);
+    }, 200);
+  }} />}
+          {view === 'Giorno' && <DayView date={currentDate} events={allEvents} onOpenClient={(customer) => {
+    onSelectCustomer(customer);
+    setTimeout(() => {
+      const event = new CustomEvent('setActiveTab', { detail: 'finance' });
+      window.dispatchEvent(event);
+    }, 200);
+  }} />}
           {view === 'Anno' && <YearView date={currentDate} events={allEvents} onSelectMonth={(d) => { setView('Mese'); setCurrentDate(d); }} />}
         
-          {/* New Event Modal Overlay */}
-          {showEventModal && (
-            <div className="event-creation-overlay">
-              <div className="event-card">
-                <h3>Nuovo Evento Calendario</h3>
-                <input 
-                  type="text" 
-                  placeholder="Titolo evento..." 
-                  value={newEventData.title}
-                  onChange={e => setNewEventData({...newEventData, title: e.target.value})}
-                />
-                <input 
-                  type="date" 
-                  value={newEventData.date}
-                  onChange={e => setNewEventData({...newEventData, date: e.target.value})}
-                />
-                <div className="event-actions">
-                  <button className="btn btn-ghost" onClick={() => setShowEventModal(false)}>Annulla</button>
-                  <button className="btn btn-primary" onClick={addGlobalEvent}>Salva Evento</button>
-                </div>
-              </div>
-            </div>
-          )}
-        </main>
+                  </main>
       </div>
 
       <style>{`
@@ -283,7 +255,15 @@ function MonthView({ date, events, onOpenClient }) {
                     className={`event-strip ${e.type} ${e.status || ''} ${e.completed ? 'done' : ''}`}
                     onClick={(ev) => {
                       ev.stopPropagation();
-                      if (e.client) onOpenClient(e.client);
+                      if (e.client) {
+                        onOpenClient(e.client);
+                        setTimeout(() => {
+                          const event = new CustomEvent('setActiveTab', { 
+                            detail: e.type === 'todo' ? 'todo' : 'finance' 
+                          });
+                          window.dispatchEvent(event);
+                        }, 200);
+                      }
                     }}
                     title={e.fullText}
                   >
@@ -313,7 +293,7 @@ function MonthView({ date, events, onOpenClient }) {
         .cell-events { display: flex; flex-direction: column; gap: 3px; }
         .event-strip {
           padding: 4px 8px; border-radius: 8px; font-size: 0.65rem; font-weight: 700;
-          cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          cursor: pointer; white-space: normal; overflow: visible; text-overflow: initial;
           border-left: 3px solid transparent; background: var(--bg-app);
         }
         .event-strip.payment { border-color: var(--warning); background: var(--warning-bg); color: #E17055; }
@@ -351,7 +331,17 @@ function WeekView({ date, events, onOpenClient }) {
             </div>
             <div className="week-list">
               {dayEvents.map(e => (
-                <div key={e.id} className={`w-event ${e.type} ${e.status || ''} ${e.completed ? 'done' : ''}`} onClick={() => e.client && onOpenClient(e.client)}>
+                <div key={e.id} className={`w-event ${e.type} ${e.status || ''} ${e.completed ? 'done' : ''}`} onClick={() => {
+                  if (e.client) {
+                    onOpenClient(e.client);
+                    setTimeout(() => {
+                      const event = new CustomEvent('setActiveTab', { 
+                        detail: e.type === 'todo' ? 'todo' : 'finance' 
+                      });
+                      window.dispatchEvent(event);
+                    }, 200);
+                  }
+                }}>
                   <div className="w-client">{e.client ? e.client.name : '📅 Evento globale'}</div>
                   <div className="w-title">{e.title}</div>
                 </div>
@@ -369,12 +359,12 @@ function WeekView({ date, events, onOpenClient }) {
         .w-date { font-size: 1.5rem; font-weight: 900; }
         .today .w-date { color: var(--primary); }
         .week-list { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-        .w-event { padding: 12px; border-radius: 14px; border-left: 4px solid; cursor: pointer; transition: 0.2s; background: var(--bg-app); }
+        .w-event { padding: 12px; border-radius: 14px; border-left: 4px solid; cursor: pointer; transition: 0.2s; background: var(--bg-app); white-space: normal; overflow: visible; text-overflow: initial; }
         .w-event:hover { transform: scale(1.03); filter: brightness(1.1); }
         .w-event.payment { border-color: var(--warning); }
         .w-event.todo { border-color: var(--info); }
         .w-client { font-size: 0.6rem; font-weight: 800; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 3px; }
-        .w-title { font-size: 0.8rem; font-weight: 700; color: var(--text-primary); }
+        .w-title { font-size: 0.8rem; font-weight: 700; color: var(--text-primary); white-space: normal; overflow: visible; text-overflow: initial; }
       `}</style>
     </div>
   );
@@ -389,7 +379,17 @@ function DayView({ date, events, onOpenClient }) {
           <div className="day-agenda-empty">📭 Nessun impegno programmato per oggi.</div>
         ) : (
           dayEvents.map(e => (
-            <div key={e.id} className={`day-entry ${e.type} ${e.status || ''}`} onClick={() => e.client && onOpenClient(e.client)}>
+            <div key={e.id} className={`day-entry ${e.type} ${e.status || ''}`} onClick={() => {
+              if (e.client) {
+                onOpenClient(e.client);
+                setTimeout(() => {
+                  const event = new CustomEvent('setActiveTab', { 
+                    detail: e.type === 'todo' ? 'todo' : 'finance' 
+                  });
+                  window.dispatchEvent(event);
+                }, 200);
+              }
+            }}>
               <div className="entry-icon">
                 {e.type === 'payment' ? '💶' : e.type === 'todo' ? '☑️' : '🗓️'}
               </div>
@@ -409,13 +409,13 @@ function DayView({ date, events, onOpenClient }) {
         .day-entry {
           display: flex; align-items: center; gap: 24px; padding: 25px 35px;
           background: var(--bg-card); border-radius: 30px; border: 1px solid var(--border-light);
-          cursor: pointer; transition: 0.3s;
+          cursor: pointer; transition: 0.3s; white-space: normal; overflow: visible; text-overflow: initial;
         }
         .day-entry:hover { transform: translateX(10px); border-color: var(--primary); }
         .entry-icon { font-size: 1.8rem; background: var(--bg-app); width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 18px; }
         .entry-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
         .entry-client { font-size: 0.7rem; font-weight: 800; color: var(--primary); text-transform: uppercase; letter-spacing: 1.5px; }
-        .entry-title { font-size: 1.2rem; font-weight: 700; color: var(--text-primary); }
+        .entry-title { font-size: 1.2rem; font-weight: 700; color: var(--text-primary); white-space: normal; overflow: visible; text-overflow: initial; }
         .entry-go { font-size: 0.75rem; font-weight: 800; color: var(--text-tertiary); }
       `}</style>
     </div>
