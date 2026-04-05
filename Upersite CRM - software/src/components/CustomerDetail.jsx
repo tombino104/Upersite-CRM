@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import SmartSummarizerButton from './SmartSummarizerButton';
 
 
 
@@ -17128,23 +17129,16 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
 
 
 
-            <button className="btn btn-primary btn-sm" onClick={addNote} style={{ alignSelf: 'flex-end', marginTop: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-end', marginTop: '8px' }}>
+                <SmartSummarizerButton customer={form} />
+                <button className="btn btn-primary btn-sm" onClick={addNote}>
+                    + Aggiungi Nota
+                </button>
+            </div>
 
 
 
 
-
-
-
-                + Aggiungi Nota
-
-
-
-
-
-
-
-            </button>
 
 
 
