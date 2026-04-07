@@ -67,7 +67,8 @@ export function useCustomers() {
         const merged = { ...customer, ...updates };
 
         // RULE 1: Auto-Move Prospect -> In Lavorazione
-        if (merged.status === 'prospect') {
+        // Solo se non stiamo impostando esplicitamente lo stato a 'prospect' in questo aggiornamento
+        if (merged.status === 'prospect' && updates.status !== 'prospect') {
             const hasNotes = (merged.notes && merged.notes.length > 0);
             const hasFiles = (merged.files && merged.files.length > 0);
             if (hasNotes || hasFiles) {

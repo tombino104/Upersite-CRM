@@ -35,6 +35,11 @@ export default function SmartReportSection({ form, update, updateCustomer, onSav
         // Usa sempre updateCustomer per non chiudere la scheda
         if (typeof updateCustomer === 'function') {
             updateCustomer(customerId, updatedCustomer);
+            // Aggiorna anche lo stato locale della scheda per evitare che lo SmartReport
+            // "sparisca" finché non si riapre il cliente.
+            if (typeof update === 'function') {
+                update('smartReports', updatedCustomer?.smartReports || []);
+            }
         } else {
             console.error('updateCustomer non è una funzione:', updateCustomer);
             throw new Error('updateCustomer non è disponibile');
@@ -76,17 +81,12 @@ export default function SmartReportSection({ form, update, updateCustomer, onSav
 
         // Rimuovi il report dalla lista smartReports
         const updatedSmartReports = form.smartReports.filter(r => r.id !== reportToDelete.id);
-        
-        // Rimuovi anche dalla note corrispondente (stesso ID)
-        const updatedNotes = (form.notes || []).filter(note => note.id !== reportToDelete.id);
-        
+
         console.log('Report rimossi da smartReports:', form.smartReports.length - updatedSmartReports.length);
-        console.log('Note rimossi da notes:', form.notes.length - updatedNotes.length);
 
         const updatedCustomer = {
             ...form,
-            smartReports: updatedSmartReports,
-            notes: updatedNotes
+            smartReports: updatedSmartReports
         };
 
         console.log('Cliente aggiornato con eliminazione completa:', updatedCustomer);
@@ -98,6 +98,9 @@ export default function SmartReportSection({ form, update, updateCustomer, onSav
             
             // Aggiorna lo stato locale solo dopo che updateCustomer è stato chiamato
             setSavedReports(updatedSmartReports);
+            if (typeof update === 'function') {
+                update('smartReports', updatedSmartReports);
+            }
         } else {
             console.error('updateCustomer non è una funzione:', updateCustomer);
         }

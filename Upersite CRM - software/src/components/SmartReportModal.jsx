@@ -201,7 +201,7 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
                 break;
             case 'save':
                 if (reportData) {
-                    saveReportAsNote(reportData.content);
+                    saveReport(reportData.content);
                 }
                 break;
             case 'export':
@@ -217,7 +217,7 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
         setPendingAction(null);
     };
     // Salva report come nota nel cliente
-    const saveReportAsNote = (reportContent) => {
+    const saveReport = (reportContent) => {
         console.log('=== INIZIO SALVATAGGIO REPORT COME NOTA ===');
         console.log('saveReportAsNote chiamato con:', reportContent);
         console.log('customers:', customers);
@@ -247,11 +247,9 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
 
         console.log('Nota da salvare:', smartReportNote);
 
-        // Aggiungi sia alle note normali che ai report salvati
-        const updatedNotes = [...(customer.notes || []), smartReportNote];
+        // Aggiungi solo ai report salvati, non alle note
         const updatedCustomer = {
             ...customer,
-            notes: updatedNotes,
             smartReports: [...(customer.smartReports || []), {
                 id: smartReportNote.id,
                 content: reportContent,
@@ -776,7 +774,7 @@ IMPORTANTE:
                             {!initialReport && (
                                 <button 
                                     className="btn btn-secondary"
-                                    onClick={() => saveReportAsNote(reportData.content)}
+                                    onClick={() => saveReport(reportData.content)}
                                     style={{ flex: 1 }}
                                 >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ marginRight: '8px' }}>

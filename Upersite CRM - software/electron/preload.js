@@ -13,5 +13,14 @@ window.electronAPI = {
             console.error('Errore nell\'aprire il percorso:', error);
             throw error;
         }
+    },
+    showItemInFolder: async (filePath) => {
+        try {
+            // Evidenzia il file nel File Explorer (Windows)
+            shell.showItemInFolder(filePath);
+        } catch (error) {
+            console.error('Errore nel mostrare il file nella cartella:', error);
+            throw error;
+        }
     }
 };

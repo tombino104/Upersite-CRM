@@ -155,7 +155,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       const path = prompt('Inserisci il percorso assoluto della cartella (es: C:\\Lavori\\Cliente):');
       if (path && path.trim()) {
         const name = path.split(/[\\\/]/).filter(Boolean).pop() || path;
-        insertHtml(`<a href="#" onclick="event.preventDefault(); navigator.clipboard.writeText('${path.replace(/\\/g, '\\\\')}'); alert('Percorso copiato: ${path.replace(/\\/g, '\\\\')}');" class="folder-internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📁 ${name}</a>&nbsp;`);
+        insertHtml(`<a href="#" class="folder-internal-link" data-path="${path.replace(/\\/g, '\\\\')}" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📁 ${name}</a>&nbsp;`);
       }
     }
   };
@@ -369,6 +369,14 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       // If it's an internal-link with data-internal-type="folder-nav", we call the handler
       if (onInternalLinkClick && (id || type)) {
         onInternalLinkClick(id, type);
+      } else if (target.classList.contains('folder-internal-link')) {
+        const path = target.getAttribute('data-path');
+        if (path && window.electronAPI) {
+          window.electronAPI.openPath(path).catch(err => {
+            navigator.clipboard.writeText(path);
+            alert('Errore: ' + err.message + '. Percorso copiato.');
+          });
+        }
       }
       return;
     }
