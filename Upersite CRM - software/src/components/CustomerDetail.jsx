@@ -71,6 +71,8 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
     const [priority, setPriority] = useState('Media');
     const [dueDate, setDueDate] = useState('');
     const [recurrence, setRecurrence] = useState('none');
+    const [exportFormat, setExportFormat] = useState('md');
+    const [showExportDropdown, setShowExportDropdown] = useState(false);
     // Stati per modifica rapida todo
     const [editingTodo, setEditingTodo] = useState({});
     const [editingText, setEditingText] = useState({});
@@ -539,6 +541,167 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
         return 0;
     });
     const completed = todos.filter(t => t.completed).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Export to Markdown function for individual customer
+    const exportCustomerTodosToMarkdown = (format = exportFormat) => {
+        const extractAllTasks = (taskList, parentTask = null, level = 0) => {
+            const allTasks = [];
+            
+            taskList.forEach(task => {
+                allTasks.push({
+                    ...task,
+                    parentTask: parentTask,
+                    level: level
+                });
+                
+                // Recursively extract subtasks
+                if (task.subtasks && task.subtasks.length > 0) {
+                    allTasks.push(...extractAllTasks(task.subtasks, task, level + 1));
+                }
+            });
+            
+            return allTasks;
+        };
+
+        const allTasks = extractAllTasks(todos);
+        
+        // Sort by priority, then by due date
+        const priorityOrder = { 'Alta': 0, 'Media': 1, 'Bassa': 2 };
+        const sortedTasks = allTasks.sort((a, b) => {
+            // First by completion status
+            if (a.completed !== b.completed) return a.completed ? 1 : -1;
+            
+            // Then by priority
+            const pa = priorityOrder[a.priority] ?? 1;
+            const pb = priorityOrder[b.priority] ?? 1;
+            if (pa !== pb) return pa - pb;
+            
+            // Then by due date
+            if (a.dueDate && b.dueDate) return new Date(a.dueDate) - new Date(b.dueDate);
+            if (a.dueDate) return -1;
+            if (b.dueDate) return 1;
+            
+            return 0;
+        });
+
+        // Generate content based on format
+        const isMarkdown = format === 'md';
+        let content = '';
+        
+        if (isMarkdown) {
+            content = `# Task di ${form.name} - ${new Date().toLocaleDateString('it-IT')}\n\n`;
+            content += `Generato il: ${new Date().toLocaleString('it-IT')}\n`;
+            content += `Cliente: ${form.name}\n`;
+            content += `Totale task: ${allTasks.length}\n\n`;
+        } else {
+            content = `TASK DI ${form.name.toUpperCase()} - ${new Date().toLocaleDateString('it-IT')}\n`;
+            content += `${'='.repeat(50)}\n\n`;
+            content += `Generato il: ${new Date().toLocaleString('it-IT')}\n`;
+            content += `Cliente: ${form.name}\n`;
+            content += `Totale task: ${allTasks.length}\n\n`;
+        }
+
+        // Separate pending and completed tasks
+        const pending = sortedTasks.filter(t => !t.completed);
+        const completed = sortedTasks.filter(t => t.completed);
+        
+        if (pending.length > 0) {
+            if (isMarkdown) {
+                content += `## Da Fare (${pending.length})\n\n`;
+            } else {
+                content += `DA FARE (${pending.length}):\n`;
+            }
+            
+            pending.forEach(task => {
+                const indent = '  '.repeat(task.level);
+                const priority = task.priority || 'Media';
+                const dueDate = task.dueDate ? ` - Scadenza: ${new Date(task.dueDate).toLocaleDateString('it-IT')}` : '';
+                const recurrence = task.recurrence && task.recurrence !== 'none' ? ` - Ricorrenza: ${task.recurrence}` : '';
+                
+                if (isMarkdown) {
+                    const status = task.completed ? 'x' : ' ';
+                    content += `${indent}- [${status}] ${task.text} (${priority})${dueDate}${recurrence}\n`;
+                } else {
+                    const status = task.completed ? 'COMPLETATO' : 'DA FARE';
+                    content += `${indent} [${status}] ${task.text} (${priority})${dueDate}${recurrence}\n`;
+                }
+                
+                // Add description if available
+                if (task.description && task.description.trim()) {
+                    const desc = task.description.replace(/<[^>]*>/g, '').trim();
+                    if (desc) {
+                        if (isMarkdown) {
+                            content += `${indent}  - *${desc}*\n`;
+                        } else {
+                            content += `${indent}    Descrizione: ${desc}\n`;
+                        }
+                    }
+                }
+                
+                // Add linked files and notes
+                if (task.linkedFiles && task.linkedFiles.length > 0) {
+                    const files = allFiles.filter(f => task.linkedFiles.includes(f.id));
+                    if (files.length > 0) {
+                        if (isMarkdown) {
+                            content += `${indent}  - File: ${files.map(f => f.name).join(', ')}\n`;
+                        } else {
+                            content += `${indent}    File: ${files.map(f => f.name).join(', ')}\n`;
+                        }
+                    }
+                }
+                
+                if (task.linkedNotes && task.linkedNotes.length > 0) {
+                    const notes = allNotes.filter(n => task.linkedNotes.includes(n.id));
+                    if (notes.length > 0) {
+                        if (isMarkdown) {
+                            content += `${indent}  - Note: ${notes.map(n => n.text.replace(/<[^>]*>/g, '').substring(0, 50) + '...').join(', ')}\n`;
+                        } else {
+                            content += `${indent}    Note: ${notes.map(n => n.text.replace(/<[^>]*>/g, '').substring(0, 50) + '...').join(', ')}\n`;
+                        }
+                    }
+                }
+            });
+            content += '\n';
+        }
+        
+        if (completed.length > 0) {
+            if (isMarkdown) {
+                content += `## Completate (${completed.length})\n\n`;
+            } else {
+                content += `COMPLETATE (${completed.length}):\n`;
+            }
+            
+            completed.forEach(task => {
+                const indent = '  '.repeat(task.level);
+                const priority = task.priority || 'Media';
+                const completedDate = task.readAt ? ` - Completato: ${new Date(task.readAt).toLocaleDateString('it-IT')}` : '';
+                
+                if (isMarkdown) {
+                    content += `${indent}- [x] ${task.text} (${priority})${completedDate}\n`;
+                } else {
+                    content += `${indent} [COMPLETATO] ${task.text} (${priority})${completedDate}\n`;
+                }
+            });
+            content += '\n';
+        }
+
+        // Create and download the file
+        const fileExtension = isMarkdown ? 'md' : 'txt';
+        const mimeType = isMarkdown ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8';
+        const customerName = form.name.replace(/[^a-zA-Z0-9]/g, '_');
+        const fileName = `todos_${customerName}_${new Date().toISOString().split('T')[0]}.${fileExtension}`;
+        
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     return (
         <div className="detail-section">
             <form onSubmit={addTodo} style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
@@ -577,6 +740,71 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
                 </select>
                 <button type="submit" className="btn btn-primary">Aggiungi</button>
             </form>
+            
+            {/* Export button for customer todos */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+                <div className="app-menu-wrapper" style={{ position: 'relative' }}>
+                    <button 
+                        className="btn btn-secondary btn-sm" 
+                        onClick={() => setShowExportDropdown(!showExportDropdown)}
+                        title="Esporta i task di questo cliente"
+                        style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px',
+                            fontSize: '0.8rem',
+                            padding: '6px 10px',
+                            backgroundColor: 'var(--primary)',
+                            color: 'white',
+                            border: '1px solid var(--primary)'
+                        }}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Esporta Todo
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    {showExportDropdown && (
+                        <div className="app-dropdown animate-scale-in" style={{ 
+                            top: '100%', 
+                            right: '0', 
+                            marginTop: '4px', 
+                            minWidth: '110px',
+                            backgroundColor: 'var(--primary)',
+                            border: '1px solid var(--primary)'
+                        }}>
+                            <button 
+                                className="app-dropdown-item" 
+                                onClick={() => { setExportFormat('md'); setShowExportDropdown(false); exportCustomerTodosToMarkdown('md'); }}
+                                style={{ 
+                                    color: 'white', 
+                                    padding: '6px 10px',
+                                    fontSize: '0.75rem'
+                                }}
+                            >
+                                Esporta .md
+                            </button>
+                            <button 
+                                className="app-dropdown-item" 
+                                onClick={() => { setExportFormat('txt'); setShowExportDropdown(false); exportCustomerTodosToMarkdown('txt'); }}
+                                style={{ 
+                                    color: 'white', 
+                                    padding: '6px 10px',
+                                    fontSize: '0.75rem'
+                                }}
+                            >
+                                Esporta .txt
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+            
             <label className="input-label">Da fare ({pending.length})</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
                 {pending.length === 0 && <span style={{ color: 'var(--text-tertiary)', fontSize: '0.9rem' }}>Nessuna attività pendente.</span>}

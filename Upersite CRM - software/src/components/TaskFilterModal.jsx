@@ -3,6 +3,8 @@ import { useState, useMemo, useCallback } from 'react';
 export default function TaskFilterModal({ customers, onClose, onSelectCustomer }) {
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [customerFilter, setCustomerFilter] = useState('all');
+  const [exportFormat, setExportFormat] = useState('md');
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
 
   // Extract all tasks from all customers
   const allTasks = useMemo(() => {
@@ -84,6 +86,190 @@ export default function TaskFilterModal({ customers, onClose, onSelectCustomer }
     }
   };
 
+  const exportToMarkdown = (format = exportFormat) => {
+    const extractAllTasks = (customers) => {
+      const allTasks = [];
+      
+      customers.forEach(customer => {
+        const traverseTasks = (taskList, parentTask = null, level = 0) => {
+          taskList.forEach(task => {
+            allTasks.push({
+              ...task,
+              customerName: customer.name,
+              customerId: customer.id,
+              customer: customer,
+              parentTask: parentTask,
+              level: level
+            });
+            
+            // Recursively extract subtasks
+            if (task.subtasks && task.subtasks.length > 0) {
+              traverseTasks(task.subtasks, task, level + 1);
+            }
+          });
+        };
+        
+        traverseTasks(customer.todo || []);
+      });
+      
+      return allTasks;
+    };
+
+    const allTasks = extractAllTasks(customers);
+    
+    // Sort by customer name, then by priority, then by due date
+    const priorityOrder = { 'Alta': 0, 'Media': 1, 'Bassa': 2 };
+    const sortedTasks = allTasks.sort((a, b) => {
+      // First by customer name
+      const customerCompare = a.customerName.localeCompare(b.customerName);
+      if (customerCompare !== 0) return customerCompare;
+      
+      // Then by priority
+      const pa = priorityOrder[a.priority] ?? 1;
+      const pb = priorityOrder[b.priority] ?? 1;
+      if (pa !== pb) return pa - pb;
+      
+      // Then by due date
+      if (a.dueDate && b.dueDate) return new Date(a.dueDate) - new Date(b.dueDate);
+      if (a.dueDate) return -1;
+      if (b.dueDate) return 1;
+      
+      return 0;
+    });
+
+    // Generate content based on format
+    const isMarkdown = format === 'md';
+    let content = '';
+    
+    if (isMarkdown) {
+      content = `# Tutti i Task - ${new Date().toLocaleDateString('it-IT')}\n\n`;
+      content += `Generato il: ${new Date().toLocaleString('it-IT')}\n`;
+      content += `Totale task: ${allTasks.length}\n\n`;
+    } else {
+      content = `TUTTI I TASK - ${new Date().toLocaleDateString('it-IT')}\n`;
+      content += `${'='.repeat(50)}\n\n`;
+      content += `Generato il: ${new Date().toLocaleString('it-IT')}\n`;
+      content += `Totale task: ${allTasks.length}\n\n`;
+    }
+
+    // Group by customer
+    const tasksByCustomer = {};
+    sortedTasks.forEach(task => {
+      if (!tasksByCustomer[task.customerName]) {
+        tasksByCustomer[task.customerName] = [];
+      }
+      tasksByCustomer[task.customerName].push(task);
+    });
+
+    Object.entries(tasksByCustomer).forEach(([customerName, tasks]) => {
+      if (isMarkdown) {
+        content += `## ${customerName}\n\n`;
+      } else {
+        content += `${customerName.toUpperCase()}\n`;
+        content += `${'-'.repeat(customerName.length)}\n\n`;
+      }
+      
+      // Separate pending and completed tasks
+      const pending = tasks.filter(t => !t.completed);
+      const completed = tasks.filter(t => t.completed);
+      
+      if (pending.length > 0) {
+        if (isMarkdown) {
+          content += `### Da Fare (${pending.length})\n\n`;
+        } else {
+          content += `DA FARE (${pending.length}):\n`;
+        }
+        
+        pending.forEach(task => {
+          const indent = '  '.repeat(task.level);
+          const priority = task.priority || 'Media';
+          const dueDate = task.dueDate ? ` - Scadenza: ${new Date(task.dueDate).toLocaleDateString('it-IT')}` : '';
+          const recurrence = task.recurrence && task.recurrence !== 'none' ? ` - Ricorrenza: ${task.recurrence}` : '';
+          
+          if (isMarkdown) {
+            const status = task.completed ? 'x' : ' ';
+            content += `${indent}- [${status}] ${task.text} (${priority})${dueDate}${recurrence}\n`;
+          } else {
+            const status = task.completed ? 'COMPLETATO' : 'DA FARE';
+            content += `${indent} [${status}] ${task.text} (${priority})${dueDate}${recurrence}\n`;
+          }
+          
+          // Add description if available
+          if (task.description && task.description.trim()) {
+            const desc = task.description.replace(/<[^>]*>/g, '').trim();
+            if (desc) {
+              if (isMarkdown) {
+                content += `${indent}  - *${desc}*\n`;
+              } else {
+                content += `${indent}    Descrizione: ${desc}\n`;
+              }
+            }
+          }
+          
+          // Add linked files and notes
+          if (task.linkedFiles && task.linkedFiles.length > 0) {
+            const files = task.customer?.files?.filter(f => task.linkedFiles.includes(f.id)) || [];
+            if (files.length > 0) {
+              if (isMarkdown) {
+                content += `${indent}  - File: ${files.map(f => f.name).join(', ')}\n`;
+              } else {
+                content += `${indent}    File: ${files.map(f => f.name).join(', ')}\n`;
+              }
+            }
+          }
+          
+          if (task.linkedNotes && task.linkedNotes.length > 0) {
+            const notes = task.customer?.notes?.filter(n => task.linkedNotes.includes(n.id)) || [];
+            if (notes.length > 0) {
+              if (isMarkdown) {
+                content += `${indent}  - Note: ${notes.map(n => n.text.replace(/<[^>]*>/g, '').substring(0, 50) + '...').join(', ')}\n`;
+              } else {
+                content += `${indent}    Note: ${notes.map(n => n.text.replace(/<[^>]*>/g, '').substring(0, 50) + '...').join(', ')}\n`;
+              }
+            }
+          }
+        });
+        content += '\n';
+      }
+      
+      if (completed.length > 0) {
+        if (isMarkdown) {
+          content += `### Completate (${completed.length})\n\n`;
+        } else {
+          content += `COMPLETATE (${completed.length}):\n`;
+        }
+        
+        completed.forEach(task => {
+          const indent = '  '.repeat(task.level);
+          const priority = task.priority || 'Media';
+          const completedDate = task.readAt ? ` - Completato: ${new Date(task.readAt).toLocaleDateString('it-IT')}` : '';
+          
+          if (isMarkdown) {
+            content += `${indent}- [x] ${task.text} (${priority})${completedDate}\n`;
+          } else {
+            content += `${indent} [COMPLETATO] ${task.text} (${priority})${completedDate}\n`;
+          }
+        });
+        content += '\n';
+      }
+    });
+
+    // Create and download the file
+    const fileExtension = isMarkdown ? 'md' : 'txt';
+    const mimeType = isMarkdown ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8';
+    const fileName = `todos_${new Date().toISOString().split('T')[0]}.${fileExtension}`;
+    
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1200 }}>
       <div className="modal-content animate-scale-in" style={{ maxWidth: '1200px', width: '95vw', maxHeight: '90vh', padding: '24px' }} onClick={e => e.stopPropagation()}>
@@ -136,6 +322,65 @@ export default function TaskFilterModal({ customers, onClose, onSelectCustomer }
           </div>
 
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', marginLeft: 'auto' }}>
+            <div className="app-menu-wrapper" style={{ position: 'relative' }}>
+              <button 
+                className="btn btn-primary btn-sm" 
+                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                title="Esporta tutti i task"
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px',
+                  fontSize: '0.85rem',
+                  padding: '8px 12px',
+                  backgroundColor: 'var(--primary)',
+                  color: 'white'
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Esporta
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              {showExportDropdown && (
+                <div className="app-dropdown animate-scale-in" style={{ 
+                  top: '100%', 
+                  right: '0', 
+                  marginTop: '4px', 
+                  minWidth: '120px',
+                  backgroundColor: 'var(--primary)',
+                  border: '1px solid var(--primary)'
+                }}>
+                  <button 
+                    className="app-dropdown-item" 
+                    onClick={() => { setExportFormat('md'); setShowExportDropdown(false); exportToMarkdown('md'); }}
+                    style={{ 
+                      color: 'white', 
+                      padding: '8px 12px',
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    Esporta .md
+                  </button>
+                  <button 
+                    className="app-dropdown-item" 
+                    onClick={() => { setExportFormat('txt'); setShowExportDropdown(false); exportToMarkdown('txt'); }}
+                    style={{ 
+                      color: 'white', 
+                      padding: '8px 12px',
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    Esporta .txt
+                  </button>
+                </div>
+              )}
+            </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>
               {filteredTasks.length} task trovati
             </div>
