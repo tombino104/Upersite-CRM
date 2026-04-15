@@ -50,6 +50,10 @@ export const defaultData = {
 
     aiUsageStats: { date: '', count: 0 },
 
+    workflows: [],
+
+    workflowLogs: [],
+
     userProfile: {
         name: '',
         email: '',
@@ -118,7 +122,7 @@ export async function syncWithFileSystem() {
 
         let data = await response.json();
 
-        
+
 
         // Unwrap data if it comes in the "backup" format
 
@@ -300,7 +304,7 @@ export async function importData(jsonString) {
 
         });
 
-        
+
 
         if (!response.ok) {
 

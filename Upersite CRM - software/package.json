@@ -19,8 +19,10 @@
     "version:stable": "node -e \"const pkg=require('./package.json'); pkg.version=pkg.version.replace(/-.*$/, '') + '-stable'; require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2));\""
   },
   "dependencies": {
+    "@xyflow/react": "^12.10.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "lucide-react": "^1.8.0",
     "mammoth": "^1.9.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

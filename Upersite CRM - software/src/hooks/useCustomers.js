@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { saveData, syncWithFileSystem, defaultData, generateId } from '../utils/storage';
+import { emit, WorkflowEventTypes } from '../utils/workflowEvents';
+import { runWorkflow } from '../utils/workflowRunner';
 
 export function useCustomers() {
     const [customers, setCustomers] = useState([]);
@@ -7,6 +9,8 @@ export function useCustomers() {
     const [events, setEvents] = useState(defaultData.events || []);
     const [chatHistory, setChatHistory] = useState(defaultData.chatHistory || []);
     const [aiUsageStats, setAiUsageStats] = useState(defaultData.aiUsageStats || { date: '', count: 0 });
+    const [workflows, setWorkflows] = useState(defaultData.workflows || []);
+    const [workflowLogs, setWorkflowLogs] = useState(defaultData.workflowLogs || []);
     const [userProfile, setUserProfile] = useState(defaultData.userProfile || {
         name: '',
         email: '',
@@ -23,6 +27,12 @@ export function useCustomers() {
     const [settings, setSettings] = useState(defaultData.settings);
     const [hasSynced, setHasSynced] = useState(false);
 
+    // Ref per accesso diretto ai customers nel runner
+    const customersRef = useRef(customers);
+    useEffect(() => { customersRef.current = customers; }, [customers]);
+    const workflowsRef = useRef(workflows);
+    useEffect(() => { workflowsRef.current = workflows; }, [workflows]);
+
     useEffect(() => {
         async function init() {
             const data = await syncWithFileSystem();
@@ -30,6 +40,8 @@ export function useCustomers() {
             setTags(data.tags || defaultData.tags || []);
             setEvents(data.events || defaultData.events || []);
             setChatHistory(data.chatHistory || defaultData.chatHistory || []);
+            setWorkflows(data.workflows || defaultData.workflows || []);
+            setWorkflowLogs(data.workflowLogs || defaultData.workflowLogs || []);
             // Reset AI usage count if date changed (midnight reset)
             const savedStats = data.aiUsageStats || defaultData.aiUsageStats;
             const today = new Date().toISOString().slice(0, 10);
@@ -55,11 +67,51 @@ export function useCustomers() {
                 chatHistory,
                 aiUsageStats,
                 userProfile,
+                workflows,
+                workflowLogs,
             });
         }, 1000); // Save after 1 second of inactivity
 
         return () => clearTimeout(timer);
-    }, [customers, settings, tags, events, chatHistory, aiUsageStats, userProfile, hasSynced]);
+    }, [customers, settings, tags, events, chatHistory, aiUsageStats, userProfile, workflows, workflowLogs, hasSynced]);
+
+    // ─── Workflow Engine: trigger runner ───
+    const triggerWorkflows = useCallback(async (eventType, eventPayload) => {
+        const activeWorkflows = workflowsRef.current.filter(wf =>
+            wf.enabled !== false && wf.status !== 'broken'
+        );
+
+        // Trova workflow il cui trigger corrisponde all'evento
+        const matchingWorkflows = activeWorkflows.filter(wf => {
+            const triggerNode = (wf.nodes || []).find(n => n.type === 'triggerNode');
+            return triggerNode && triggerNode.data?.eventType === eventType;
+        });
+
+        if (matchingWorkflows.length === 0) return;
+
+        // CRM Actions per il runner
+        const crmActions = {
+            updateCustomer: (id, updates) => {
+                setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+            },
+            getCustomer: (id) => customersRef.current.find(c => c.id === id),
+            triggerBackup: () => {
+                import('../utils/storage').then(mod => mod.triggerAutoBackup());
+            },
+            exportBackup: () => {
+                import('../utils/storage').then(mod => mod.exportData());
+            },
+        };
+
+        for (const wf of matchingWorkflows) {
+            try {
+                const log = await runWorkflow(wf, { type: eventType, ...eventPayload }, crmActions);
+                setWorkflowLogs(prev => [...prev.slice(-199), log]); // Mantieni max 200 log
+            } catch (err) {
+                console.error(`[WorkflowEngine] Errore nel workflow ${wf.name}:`, err);
+            }
+        }
+    }, []);
 
     // --- AUTOMATION RULES (LOGIC-BASED) ---
     const runAutomations = (customer, updates) => {
@@ -85,7 +137,7 @@ export function useCustomers() {
 
         const currentTags = merged.tags || [];
         const currentTodos = merged.todo || [];
-        
+
         Object.entries(TAG_TEMPLATES).forEach(([triggerTag, templateTasks]) => {
             if (currentTags.includes(triggerTag) && currentTodos.length === 0) {
                 const newTasks = templateTasks.map(text => ({
@@ -110,7 +162,7 @@ export function useCustomers() {
         if (updates.installments) {
             const previousInstallments = customer.installments || [];
             const newInstallments = updates.installments;
-            
+
             // Check if any installment was just marked as paid
             newInstallments.forEach((inst, idx) => {
                 const prev = previousInstallments[idx];
@@ -118,13 +170,13 @@ export function useCustomers() {
                     // Auto-complete tasks matching this amount
                     const amount = inst.amount || '';
                     if (amount) {
-                      const completeRecursive = (tasks) => tasks.map(t => {
-                          const match = t.text.includes(amount.toString());
-                          if (match) return { ...t, completed: true, readAt: new Date().toISOString() };
-                          if (t.subtasks) return { ...t, subtasks: completeRecursive(t.subtasks) };
-                          return t;
-                      });
-                      finalUpdates.todo = completeRecursive(finalUpdates.todo || currentTodos);
+                        const completeRecursive = (tasks) => tasks.map(t => {
+                            const match = t.text.includes(amount.toString());
+                            if (match) return { ...t, completed: true, readAt: new Date().toISOString() };
+                            if (t.subtasks) return { ...t, subtasks: completeRecursive(t.subtasks) };
+                            return t;
+                        });
+                        finalUpdates.todo = completeRecursive(finalUpdates.todo || currentTodos);
                     }
                 }
             });
@@ -135,22 +187,78 @@ export function useCustomers() {
 
     const addCustomer = useCallback((customer) => {
         const automated = runAutomations({ status: 'prospect', todo: [], notes: [], files: [], tags: [] }, customer);
-        setCustomers(prev => [...prev, { ...customer, ...automated }]);
-    }, []);
+        const finalCustomer = { ...customer, ...automated };
+        setCustomers(prev => [...prev, finalCustomer]);
+        // Emetti evento per il workflow engine
+        triggerWorkflows(WorkflowEventTypes.CUSTOMER_CREATED, { customer: finalCustomer, cliente: finalCustomer });
+    }, [triggerWorkflows]);
 
     const updateCustomer = useCallback((id, updates) => {
         setCustomers(prev => prev.map(c => {
             if (c.id === id) {
                 const automatedUpdates = runAutomations(c, updates);
-                return { ...c, ...updates, ...automatedUpdates };
+                const updated = { ...c, ...updates, ...automatedUpdates };
+
+                // Emetti eventi specifici
+                if (updates.status && updates.status !== c.status) {
+                    triggerWorkflows(WorkflowEventTypes.CUSTOMER_STATUS_CHANGED, {
+                        customer: updated, cliente: updated,
+                        previousStatus: c.status, newStatus: updates.status,
+                    });
+                }
+                // Tag aggiunto
+                if (updates.tags) {
+                    const oldTags = c.tags || [];
+                    const newTags = updates.tags || [];
+                    newTags.filter(t => !oldTags.includes(t)).forEach(tag => {
+                        triggerWorkflows(WorkflowEventTypes.TAG_ADDED, { customer: updated, cliente: updated, tag });
+                    });
+                    oldTags.filter(t => !newTags.includes(t)).forEach(tag => {
+                        triggerWorkflows(WorkflowEventTypes.TAG_REMOVED, { customer: updated, cliente: updated, tag });
+                    });
+                }
+                // Nota creata
+                if (updates.notes && updates.notes.length > (c.notes || []).length) {
+                    const newNote = updates.notes[updates.notes.length - 1];
+                    triggerWorkflows(WorkflowEventTypes.NOTE_CREATED_ON_CUSTOMER, {
+                        customer: updated, cliente: updated, note: newNote, nota: newNote,
+                    });
+                }
+                // Task creato
+                if (updates.todo && updates.todo.length > (c.todo || []).length) {
+                    const newTask = updates.todo[updates.todo.length - 1];
+                    triggerWorkflows(WorkflowEventTypes.TASK_CREATED, {
+                        customer: updated, cliente: updated, task: newTask,
+                    });
+                }
+                // Pagamento registrato
+                if (updates.installments) {
+                    const prevInst = c.installments || [];
+                    const newInst = updates.installments || [];
+                    newInst.forEach((inst, idx) => {
+                        const prev = prevInst[idx];
+                        if (inst.paid && (!prev || !prev.paid)) {
+                            triggerWorkflows(WorkflowEventTypes.PAYMENT_REGISTERED, {
+                                customer: updated, cliente: updated, payment: inst, pagamento: inst,
+                            });
+                        }
+                    });
+                }
+
+                triggerWorkflows(WorkflowEventTypes.CUSTOMER_UPDATED, { customer: updated, cliente: updated });
+                return updated;
             }
             return c;
         }));
-    }, []);
+    }, [triggerWorkflows]);
 
     const deleteCustomer = useCallback((id) => {
+        const customer = customersRef.current.find(c => c.id === id);
         setCustomers(prev => prev.filter(c => c.id !== id));
-    }, []);
+        if (customer) {
+            triggerWorkflows(WorkflowEventTypes.CUSTOMER_DELETED, { customer, cliente: customer });
+        }
+    }, [triggerWorkflows]);
 
     const updateSettings = useCallback((newSettings) => {
         setSettings(prev => ({ ...prev, ...newSettings }));
@@ -176,12 +284,33 @@ export function useCustomers() {
         setUserProfile(newProfile);
     }, []);
 
+    // ─── Workflow CRUD ───
+    const saveWorkflow = useCallback((workflow) => {
+        setWorkflows(prev => {
+            const idx = prev.findIndex(w => w.id === workflow.id);
+            if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = workflow;
+                return updated;
+            }
+            return [...prev, workflow];
+        });
+    }, []);
+
+    const deleteWorkflow = useCallback((workflowId) => {
+        setWorkflows(prev => prev.filter(w => w.id !== workflowId));
+        setWorkflowLogs(prev => prev.filter(l => l.workflowId !== workflowId));
+    }, []);
+
     return {
         customers, tags, settings, events, chatHistory, aiUsageStats, userProfile, hasSynced,
+        workflows, workflowLogs,
         setCustomers,
         addCustomer, updateCustomer, deleteCustomer,
         updateSettings, updateTags, updateEvents,
-        updateChatHistory, updateAiUsageStats, updateUserProfile
+        updateChatHistory, updateAiUsageStats, updateUserProfile,
+        saveWorkflow, deleteWorkflow, setWorkflows, setWorkflowLogs,
+        triggerWorkflows,
     };
 }
 

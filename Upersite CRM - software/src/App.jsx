@@ -13,6 +13,7 @@ import DataGridView from './components/DataGridView';
 import GeminiChat from './components/GeminiChat';
 import UserProfileModal from './components/UserProfileModal';
 import TaskFilterModal from './components/TaskFilterModal';
+import AutomationEditor from './components/AutomationEditor/AutomationEditor';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
@@ -28,9 +29,9 @@ const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggle
         title="Notifiche"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-              </svg>
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
         {count > 0 && (
           <span style={{
             position: 'absolute',
@@ -115,7 +116,7 @@ const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggle
                   }}
                   title={n.readAt ? "Segna come da leggere" : "Segna come letto"}
                   style={{ fontSize: '0.8rem', flexShrink: 0, opacity: 0.6 }}>
-                  {n.readAt ? <span className="material-symbols-outlined" style={{fontSize: '1rem'}}>visibility</span> : <span className="material-symbols-outlined" style={{fontSize: '1rem'}}>visibility_off</span>}
+                  {n.readAt ? <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>visibility</span> : <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>visibility_off</span>}
                 </button>
               </div>
             ))}
@@ -145,9 +146,9 @@ function TagManagerModal({ allTags, customers, updateTags, updateCustomer, onClo
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-                <line x1="7" y1="7" x2="7.01" y2="7"></line>
-              </svg> 
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              <line x1="7" y1="7" x2="7.01" y2="7"></line>
+            </svg>
             Gestione Tag
           </h3>
           <button className="btn btn-ghost btn-icon" onClick={onClose}>✕</button>
@@ -240,9 +241,9 @@ function TagManagerModal({ allTags, customers, updateTags, updateCustomer, onClo
 }
 
 // Utils
-const isSameDay = (d1, d2) => 
-  d1.getFullYear() === d2.getFullYear() && 
-  d1.getMonth() === d2.getMonth() && 
+const isSameDay = (d1, d2) =>
+  d1.getFullYear() === d2.getFullYear() &&
+  d1.getMonth() === d2.getMonth() &&
   d1.getDate() === d2.getDate();
 
 export default function App() {
@@ -262,8 +263,9 @@ export default function App() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showTaskFilter, setShowTaskFilter] = useState(false);
+  const [showAutomationEditor, setShowAutomationEditor] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  
+
   const searchInputRef = useRef(null);
   const notifiedIdsRef = useRef(new Set());
 
@@ -306,9 +308,11 @@ export default function App() {
   const {
     customers, tags, settings, events, hasSynced,
     chatHistory, aiUsageStats, userProfile,
+    workflows, workflowLogs,
     addCustomer, updateCustomer, deleteCustomer, setCustomers,
     updateSettings, updateTags, updateEvents,
-    updateChatHistory, updateAiUsageStats, updateUserProfile
+    updateChatHistory, updateAiUsageStats, updateUserProfile,
+    saveWorkflow, deleteWorkflow,
   } = useCustomers();
 
   // Unified preferences sync
@@ -334,7 +338,7 @@ export default function App() {
             const dDate = new Date(t.dueDate);
             const isToday = isSameDay(dDate, today);
             const isOverdue = dDate < today && !t.completed;
-            
+
             if (isToday || isOverdue) {
               list.push({
                 id: t.id,
@@ -517,16 +521,16 @@ export default function App() {
                 </span>
               </div>
             </div>
-            <button 
-              className="btn btn-ghost btn-icon-sm" 
+            <button
+              className="btn btn-ghost btn-icon-sm"
               style={{ marginLeft: '12px', fontSize: '1.1rem', opacity: 0.8 }}
               onClick={() => setShowUserProfile(true)}
               title="Profilo Utente"
             >
               👤
             </button>
-            <button 
-              className="btn btn-ghost btn-icon-sm" 
+            <button
+              className="btn btn-ghost btn-icon-sm"
               style={{ marginLeft: '12px', fontSize: '1.1rem', opacity: 0.8 }}
               onClick={() => setShowCalendar(true)}
               title="Vista Calendario"
@@ -595,8 +599,8 @@ export default function App() {
 
         <div className="app-header-right">
           <div className="app-menu-wrapper" style={{ overflow: 'visible', marginRight: '16px' }}>
-            <button 
-              className="btn btn-secondary btn-sm" 
+            <button
+              className="btn btn-secondary btn-sm"
               style={{ position: 'relative', overflow: 'visible', zIndex: 101 }}
               onClick={() => setShowTaskFilter(true)}
               title="Filtra Task"
@@ -628,9 +632,9 @@ export default function App() {
             title="Gestisci Tag"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-                <line x1="7" y1="7" x2="7.01" y2="7"></line>
-              </svg> Tag
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              <line x1="7" y1="7" x2="7.01" y2="7"></line>
+            </svg> Tag
           </button>
 
           <div className="app-view-toggle">
@@ -725,9 +729,9 @@ export default function App() {
 
       {/* Calendar Modal */}
       {showCalendar && (
-        <CalendarView 
-          customers={customers} 
-          onClose={() => setShowCalendar(false)} 
+        <CalendarView
+          customers={customers}
+          onClose={() => setShowCalendar(false)}
           onSelectCustomer={(c) => {
             setSelectedCustomer(c);
             setShowCalendar(false);
@@ -765,10 +769,10 @@ export default function App() {
       )}
 
       {showCharts && (
-        <EarningsChartModal 
-          customers={customers} 
+        <EarningsChartModal
+          customers={customers}
           chartType={showCharts.chartType || 'all'}
-          onClose={() => setShowCharts(false)} 
+          onClose={() => setShowCharts(false)}
         />
       )}
 
@@ -777,11 +781,11 @@ export default function App() {
       )}
 
       {showClientList && (
-        <ClientListModal 
-          customers={customers.filter(c => c.id !== userProfile?.id)} 
-          onSelectCustomer={setSelectedCustomer} 
+        <ClientListModal
+          customers={customers.filter(c => c.id !== userProfile?.id)}
+          onSelectCustomer={setSelectedCustomer}
           userProfile={userProfile}
-          onClose={() => setShowClientList(false)} 
+          onClose={() => setShowClientList(false)}
         />
       )}
 
@@ -822,7 +826,7 @@ export default function App() {
       )}
 
       {/* Gemini AI Assistant */}
-      <GeminiChat 
+      <GeminiChat
         customers={customers}
         events={events}
         userProfile={userProfile}
@@ -837,45 +841,53 @@ export default function App() {
         <div className="app-backdrop" onClick={() => { setShowExportMenu(false); setShowClientMenu(false); setShowNotifications(false); setShowUserProfile(false); }} />
       )}
 
-      {/* Version Badge */}
-      <div className="app-version-badge" style={{
-        position: 'fixed',
-        bottom: '16px',
-        left: '16px',
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-light)',
-        borderRadius: 'var(--radius-md)',
-        padding: '6px 12px',
-        fontSize: '0.7rem',
-        color: 'var(--text-tertiary)',
-        fontWeight: 500,
-        fontFamily: 'monospace',
-        zIndex: 100,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-        cursor: 'pointer',
-        transition: 'all 0.2s'
-      }} 
-      title={`Upersite CRM ${formatVersionDisplay()}\nClicca per copiare la versione`}
-      onClick={async () => {
-        const success = await copyVersionToClipboard();
-        // Mostra feedback visivo temporaneo
-        const el = document.querySelector('.app-version-badge');
-        if (el) {
-          if (success) {
-            el.style.background = 'var(--success)';
-            el.style.color = '#fff';
-          } else {
-            el.style.background = 'var(--danger)';
-            el.style.color = '#fff';
-          }
-          setTimeout(() => {
-            el.style.background = 'var(--bg-card)';
-            el.style.color = 'var(--text-tertiary)';
-          }, 300);
-        }
-      }}>
-        {formatVersionDisplay()}
-      </div>
+      {/* Automation Editor */}
+      <AutomationEditor
+        isOpen={showAutomationEditor}
+        onClose={() => setShowAutomationEditor(false)}
+        workflows={workflows}
+        workflowLogs={workflowLogs}
+        onSaveWorkflow={saveWorkflow}
+        onDeleteWorkflow={deleteWorkflow}
+        crmData={{ customers, tags, settings }}
+      />
+
+      {/* Automation Button */}
+      <button
+        onClick={() => setShowAutomationEditor(true)}
+        title="Automazioni"
+        style={{
+          position: 'fixed',
+          bottom: '16px',
+          left: '80px',
+          width: 44,
+          height: 44,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          boxShadow: '0 4px 16px rgba(124, 58, 237, 0.4)',
+          transition: 'all 0.2s',
+          fontSize: '1.2rem',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'scale(1.1)';
+          e.currentTarget.style.boxShadow = '0 6px 24px rgba(124, 58, 237, 0.6)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.boxShadow = '0 4px 16px rgba(124, 58, 237, 0.4)';
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      </button>
 
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=settings,visibility,visibility_off" />
