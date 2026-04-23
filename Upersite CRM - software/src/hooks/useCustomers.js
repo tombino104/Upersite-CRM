@@ -27,11 +27,14 @@ export function useCustomers() {
     const [settings, setSettings] = useState(defaultData.settings);
     const [hasSynced, setHasSynced] = useState(false);
 
-    // Ref per accesso diretto ai customers nel runner
+    // Ref per accesso diretto nel runner (evita stale closures)
     const customersRef = useRef(customers);
     useEffect(() => { customersRef.current = customers; }, [customers]);
     const workflowsRef = useRef(workflows);
     useEffect(() => { workflowsRef.current = workflows; }, [workflows]);
+    const isLoggedInRef = useRef(false);
+    // Ref per il timer dello scheduler
+    const schedulerRef = useRef(null);
 
     useEffect(() => {
         async function init() {
@@ -75,13 +78,12 @@ export function useCustomers() {
         return () => clearTimeout(timer);
     }, [customers, settings, tags, events, chatHistory, aiUsageStats, userProfile, workflows, workflowLogs, hasSynced]);
 
-    // ─── Workflow Engine: trigger runner ───
+    // ─── Workflow Engine ───
     const triggerWorkflows = useCallback(async (eventType, eventPayload) => {
         const activeWorkflows = workflowsRef.current.filter(wf =>
             wf.enabled !== false && wf.status !== 'broken'
         );
 
-        // Trova workflow il cui trigger corrisponde all'evento
         const matchingWorkflows = activeWorkflows.filter(wf => {
             const triggerNode = (wf.nodes || []).find(n => n.type === 'triggerNode');
             return triggerNode && triggerNode.data?.eventType === eventType;
@@ -89,12 +91,14 @@ export function useCustomers() {
 
         if (matchingWorkflows.length === 0) return;
 
-        // CRM Actions per il runner
+        const appState = { isLoggedIn: isLoggedInRef.current, isUnlocked: isLoggedInRef.current };
+
         const crmActions = {
             updateCustomer: (id, updates) => {
                 setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
             },
             getCustomer: (id) => customersRef.current.find(c => c.id === id),
+            getWorkflow: (id) => workflowsRef.current.find(w => w.id === id),
             triggerBackup: () => {
                 import('../utils/storage').then(mod => mod.triggerAutoBackup());
             },
@@ -105,13 +109,49 @@ export function useCustomers() {
 
         for (const wf of matchingWorkflows) {
             try {
-                const log = await runWorkflow(wf, { type: eventType, ...eventPayload }, crmActions);
-                setWorkflowLogs(prev => [...prev.slice(-199), log]); // Mantieni max 200 log
+                const log = await runWorkflow(wf, { type: eventType, ...eventPayload }, crmActions, appState);
+                setWorkflowLogs(prev => [...prev.slice(-199), log]);
             } catch (err) {
                 console.error(`[WorkflowEngine] Errore nel workflow ${wf.name}:`, err);
             }
         }
     }, []);
+
+    // ─── Scheduler: trigger temporali ───
+    useEffect(() => {
+        if (!hasSynced) return;
+
+        const checkSchedules = () => {
+            const now = new Date();
+            const timeStr = now.toTimeString().slice(0, 5); // HH:MM
+            const dayNames = ['Domenica', 'Lunedi', 'Martedi', 'Mercoledi', 'Giovedi', 'Venerdi', 'Sabato'];
+            const dayName = dayNames[now.getDay()];
+            const dayOfMonth = now.getDate();
+            const dateStr = now.toISOString().split('T')[0];
+
+            workflowsRef.current.forEach(wf => {
+                if (wf.enabled === false || wf.status === 'broken') return;
+                const triggerNode = (wf.nodes || []).find(n => n.type === 'triggerNode');
+                if (!triggerNode) return;
+
+                const { eventType, eventConfig = {} } = triggerNode.data || {};
+
+                if (eventType === 'schedule.daily' && eventConfig.time === timeStr) {
+                    triggerWorkflows('schedule.daily', { scheduledTime: timeStr });
+                } else if (eventType === 'schedule.weekly' && eventConfig.time === timeStr && eventConfig.day === dayName) {
+                    triggerWorkflows('schedule.weekly', { scheduledTime: timeStr, day: dayName });
+                } else if (eventType === 'schedule.monthly' && eventConfig.time === timeStr && parseInt(eventConfig.dayOfMonth) === dayOfMonth) {
+                    triggerWorkflows('schedule.monthly', { scheduledTime: timeStr, dayOfMonth });
+                } else if (eventType === 'schedule.date' && eventConfig.date === dateStr && eventConfig.time === timeStr) {
+                    triggerWorkflows('schedule.date', { scheduledDate: dateStr, scheduledTime: timeStr });
+                }
+            });
+        };
+
+        // Controlla ogni minuto
+        schedulerRef.current = setInterval(checkSchedules, 60000);
+        return () => clearInterval(schedulerRef.current);
+    }, [hasSynced, triggerWorkflows]);
 
     // --- AUTOMATION RULES (LOGIC-BASED) ---
     const runAutomations = (customer, updates) => {
@@ -302,6 +342,16 @@ export function useCustomers() {
         setWorkflowLogs(prev => prev.filter(l => l.workflowId !== workflowId));
     }, []);
 
+    const notifyLogin = useCallback(() => {
+        isLoggedInRef.current = true;
+        triggerWorkflows(WorkflowEventTypes.USER_LOGIN, { app: { isLoggedIn: true } });
+        triggerWorkflows(WorkflowEventTypes.APP_STARTED, { app: { isLoggedIn: true } });
+    }, [triggerWorkflows]);
+
+    const notifyLogout = useCallback(() => {
+        isLoggedInRef.current = false;
+    }, []);
+
     return {
         customers, tags, settings, events, chatHistory, aiUsageStats, userProfile, hasSynced,
         workflows, workflowLogs,
@@ -310,7 +360,7 @@ export function useCustomers() {
         updateSettings, updateTags, updateEvents,
         updateChatHistory, updateAiUsageStats, updateUserProfile,
         saveWorkflow, deleteWorkflow, setWorkflows, setWorkflowLogs,
-        triggerWorkflows,
+        triggerWorkflows, notifyLogin, notifyLogout,
     };
 }
 

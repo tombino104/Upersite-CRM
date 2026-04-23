@@ -13,6 +13,7 @@ import DataGridView from './components/DataGridView';
 import GeminiChat from './components/GeminiChat';
 import UserProfileModal from './components/UserProfileModal';
 import TaskFilterModal from './components/TaskFilterModal';
+import TicketDashboardModal from './components/TicketDashboardModal';
 import AutomationEditor from './components/AutomationEditor/AutomationEditor';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
@@ -263,6 +264,7 @@ export default function App() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showTaskFilter, setShowTaskFilter] = useState(false);
+  const [showTicketDashboard, setShowTicketDashboard] = useState(false);
   const [showAutomationEditor, setShowAutomationEditor] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
@@ -299,11 +301,12 @@ export default function App() {
         else if (showCalendar) setShowCalendar(false);
         else if (showUserProfile) setShowUserProfile(false);
         else if (showTaskFilter) setShowTaskFilter(false);
+      else if (showTicketDashboard) setShowTicketDashboard(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showCharts, showOverdue, showClientList, showSettings, showDataGridView, showTagMenu, showNotifications, showTaskFilter]);
+  }, [showCharts, showOverdue, showClientList, showSettings, showDataGridView, showTagMenu, showNotifications, showTaskFilter, showTicketDashboard]);
 
   const {
     customers, tags, settings, events, hasSynced,
@@ -313,6 +316,7 @@ export default function App() {
     updateSettings, updateTags, updateEvents,
     updateChatHistory, updateAiUsageStats, updateUserProfile,
     saveWorkflow, deleteWorkflow,
+    notifyLogin, notifyLogout,
   } = useCustomers();
 
   // Unified preferences sync
@@ -321,7 +325,10 @@ export default function App() {
 
   const filteredCustomers = useSearch(customers, searchQuery);
 
-  const allTags = tags.length > 0 ? tags : [...new Set(customers.flatMap(c => c.tags || []))];
+  const allTags = useMemo(() => 
+    [...new Set([...tags, ...customers.flatMap(c => c.tags || [])])].filter(Boolean),
+    [tags, customers]
+  );
 
   const notifications = useMemo(() => {
     const list = [];
@@ -429,13 +436,15 @@ export default function App() {
   }, [hasSynced, tags.length, customers, updateTags]);
 
   const handleLogout = useCallback(() => {
+    notifyLogout();
     setIsLoggedIn(false);
-  }, []);
+  }, [notifyLogout]);
 
   const handleEndSession = () => {
     if (settings.backupPath) {
       triggerAutoBackup().catch(err => console.error('Background backup failed:', err));
     }
+    notifyLogout();
     setIsLoggedIn(false);
     setShowExportMenu(false);
   };
@@ -504,7 +513,7 @@ export default function App() {
   }
 
   if (!isLoggedIn) {
-    return <Login onLogin={() => setIsLoggedIn(true)} />;
+    return <Login onLogin={() => { setIsLoggedIn(true); notifyLogin(); }} />;
   }
 
   return (
@@ -610,6 +619,48 @@ export default function App() {
                 <path d="M7 12h10"></path>
                 <path d="M10 18h4"></path>
               </svg>
+            </button>
+          </div>
+
+          <div className="app-menu-wrapper" style={{ overflow: 'visible', marginRight: '16px' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{ position: 'relative', overflow: 'visible', zIndex: 101 }}
+              onClick={() => setShowTicketDashboard(true)}
+              title="Ticket Dashboard"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14,2 14,8 20,8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10,9 9,9 8,9"></polyline>
+              </svg>
+              {customers.reduce((count, customer) => 
+                count + (customer.tickets || []).filter(ticket => ticket.isOpen).length, 0
+              ) > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-8px',
+                  right: '8px',
+                  background: 'var(--danger)',
+                  color: '#fff',
+                  fontSize: '0.65rem',
+                  fontWeight: 'bold',
+                  minWidth: '18px',
+                  height: '18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                  borderRadius: '10px',
+                  border: '2px solid var(--bg-primary)'
+                }}>
+                  {customers.reduce((count, customer) => 
+                    count + (customer.tickets || []).filter(ticket => ticket.isOpen).length, 0
+                  )}
+                </span>
+              )}
             </button>
           </div>
 
@@ -732,9 +783,9 @@ export default function App() {
         <CalendarView
           customers={customers}
           onClose={() => setShowCalendar(false)}
-          onSelectCustomer={(c) => {
-            setSelectedCustomer(c);
-            setShowCalendar(false);
+          onSelectCustomer={(customerId) => {
+            setSelectedCustomer(customerId);
+            window.dispatchEvent(new CustomEvent('setActiveTab', { detail: 'tickets' }));
           }}
           initialView={settings.calendarView}
           initialFilter={settings.calendarFilter}
@@ -808,6 +859,20 @@ export default function App() {
         />
       )}
 
+      {showTicketDashboard && (
+        <TicketDashboardModal
+          customers={customers}
+          onClose={() => setShowTicketDashboard(false)}
+          onSelectCustomer={(customerId) => {
+            setSelectedCustomer(customerId);
+            // Set active tab to 'tickets' when opening from dashboard
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('setActiveTab', { detail: 'tickets' }));
+            }, 100);
+          }}
+        />
+      )}
+
       {showDataGridView && (
         <DataGridView
           customers={customers}
@@ -842,15 +907,17 @@ export default function App() {
       )}
 
       {/* Automation Editor */}
-      <AutomationEditor
-        isOpen={showAutomationEditor}
-        onClose={() => setShowAutomationEditor(false)}
-        workflows={workflows}
-        workflowLogs={workflowLogs}
-        onSaveWorkflow={saveWorkflow}
-        onDeleteWorkflow={deleteWorkflow}
-        crmData={{ customers, tags, settings }}
-      />
+      {showAutomationEditor && (
+        <AutomationEditor
+          isOpen={showAutomationEditor}
+          onClose={() => setShowAutomationEditor(false)}
+          workflows={workflows}
+          workflowLogs={workflowLogs}
+          onSaveWorkflow={saveWorkflow}
+          onDeleteWorkflow={deleteWorkflow}
+          crmData={{ customers, tags: allTags, settings }}
+        />
+      )}
 
       {/* Automation Button */}
       <button
@@ -858,10 +925,10 @@ export default function App() {
         title="Automazioni"
         style={{
           position: 'fixed',
-          bottom: '16px',
-          left: '80px',
-          width: 44,
-          height: 44,
+          bottom: '30px',
+          left: '30px',
+          width: 60,
+          height: 60,
           borderRadius: '50%',
           border: 'none',
           background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
@@ -871,20 +938,20 @@ export default function App() {
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 100,
-          boxShadow: '0 4px 16px rgba(124, 58, 237, 0.4)',
-          transition: 'all 0.2s',
-          fontSize: '1.2rem',
+          boxShadow: '0 10px 40px rgba(124, 58, 237, 0.4)',
+          transition: 'all 0.4s cubic-bezier(0.175,0.885,0.32,1.275)',
+          fontSize: '1.5rem',
         }}
         onMouseEnter={e => {
-          e.currentTarget.style.transform = 'scale(1.1)';
-          e.currentTarget.style.boxShadow = '0 6px 24px rgba(124, 58, 237, 0.6)';
+          e.currentTarget.style.transform = 'scale(1.1) rotate(-5deg)';
+          e.currentTarget.style.boxShadow = '0 15px 50px rgba(124, 58, 237, 0.6)';
         }}
         onMouseLeave={e => {
-          e.currentTarget.style.transform = 'scale(1)';
-          e.currentTarget.style.boxShadow = '0 4px 16px rgba(124, 58, 237, 0.4)';
+          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+          e.currentTarget.style.boxShadow = '0 10px 40px rgba(124, 58, 237, 0.4)';
         }}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
         </svg>
       </button>

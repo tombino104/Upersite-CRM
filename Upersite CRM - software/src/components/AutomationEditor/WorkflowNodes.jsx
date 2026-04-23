@@ -181,9 +181,9 @@ export const actionLabels = {
   create_task: 'Crea task',
   create_subtask: 'Crea sotto-task',
   update_task: 'Aggiorna task',
-  complete_task: 'Completa task',
+  complete_task: 'Segna task come completato/da fare',
   create_note: 'Crea nota',
-  append_note: 'Aggiungi a nota',
+  append_note: 'Aggiungi testo a nota esistente',
   create_backup: 'Crea backup',
   export_backup: 'Esporta backup',
 };

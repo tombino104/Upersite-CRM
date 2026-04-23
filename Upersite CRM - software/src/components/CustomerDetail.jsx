@@ -3,6 +3,7 @@ import SmartSummarizerButton from './SmartSummarizerButton';
 import RichTextEditor from './RichTextEditor';
 import SmartReportModal from './SmartReportModal';
 import SmartReportSection from './SmartReportSection';
+import TicketSection from './TicketSection';
 import { generateId, sanitizePositiveNumber, formatBytes, saveFile, getMasterPassword, PACKAGES, ADDONS } from '../utils/storage';
 const STATUSES = [
     { value: 'prospect', label: 'Prospect' },
@@ -1132,6 +1133,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         { id: 'files', label: 'File', icon: '📁' },
         { id: 'notes', label: 'Note', icon: '📝', unread: getUnread(form.notes) },
         { id: 'todo', label: 'To-Do', icon: '☑️', unread: getUnreadTodos(form.todo) },
+        { id: 'tickets', label: 'Tickets', icon: '🎫' },
         { id: 'smartreport', label: 'SmartReport', icon: '🤖' },
     ];
     return (
@@ -1244,6 +1246,13 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                                 onInternalLink={handleInternalLink} 
                                 onOpenFile={handleOpenFile}
                                 onOpenNote={handleOpenNote}
+                            />
+                        )}
+                        {activeTab === 'tickets' && (
+                            <TicketSection 
+                                form={form} 
+                                update={update} 
+                                confirmDelete={confirmDelete}
                             />
                         )}
                         {activeTab === 'smartreport' && (

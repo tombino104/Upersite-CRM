@@ -1029,17 +1029,17 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 12px;
 }
 
 .detail-tabs {
   display: flex;
-  gap: 4px;
-  padding: 0 24px;
-  background: var(--bg-card);
+  gap: 6px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--border-light);
   overflow-x: auto;
   flex-shrink: 0;
+  max-width: 100%;
 }
 
 .detail-tabs::-webkit-scrollbar {
@@ -1049,8 +1049,8 @@ body {
 .detail-tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 12px 12px;
+  gap: 4px;
+  padding: 10px 12px;
   border: none;
   background: transparent;
   font-family: var(--font);
@@ -1061,6 +1061,8 @@ body {
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
   white-space: nowrap;
+  min-width: fit-content;
+  flex-shrink: 0;
 }
 
 .detail-tab:hover {

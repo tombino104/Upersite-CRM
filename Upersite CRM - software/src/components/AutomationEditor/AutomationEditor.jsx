@@ -79,7 +79,7 @@ export default function AutomationEditor({
   const [edges, setEdges] = useState([]);
   const [workflowName, setWorkflowName] = useState('');
   const [workflowEnabled, setWorkflowEnabled] = useState(true);
-  const [executionConditions, setExecutionConditions] = useState({ requireLogin: false, requireUnlocked: false });
+  const [executionConditions, setExecutionConditions] = useState({ requireLogin: false, background: false });
   const [selectedNode, setSelectedNode] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('editor');
@@ -191,7 +191,7 @@ export default function AutomationEditor({
     setEdges([]);
     setWorkflowName('Nuovo Workflow');
     setWorkflowEnabled(true);
-    setExecutionConditions({ requireLogin: false, requireUnlocked: false });
+    setExecutionConditions({ requireLogin: false, background: false });
     setSelectedNode(null);
     setHasChanges(false);
     setIsEditorActive(true); // <-- FIX: mostra subito il canvas
@@ -230,6 +230,39 @@ export default function AutomationEditor({
       .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))
       .slice(0, 50);
   }, [selectedWorkflowId, workflowLogs]);
+
+  const downloadLogs = useCallback(() => {
+    if (!currentLogs || currentLogs.length === 0) return;
+    const wf = workflows.find(w => w.id === selectedWorkflowId);
+    const fileName = `logs_${(wf?.name || 'workflow').replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().slice(0, 10)}.txt`;
+
+    const content = `LOG DI ESECUZIONE - UPERSITE CRM\n` +
+      `Workflow: ${wf?.name || 'Senza nome'}\n` +
+      `ID: ${selectedWorkflowId}\n` +
+      `Data Estrazione: ${new Date().toLocaleString('it-IT')}\n` +
+      `--------------------------------------------------\n\n` +
+      currentLogs.map(log => {
+        let text = `[${new Date(log.startedAt).toLocaleString('it-IT')}] STATO: ${log.status.toUpperCase()}\n`;
+        if (log.triggeredBy) text += `TRIGGER: ${EventLabels[log.triggeredBy] || log.triggeredBy}\n`;
+        if (log.error) text += `ERRORE: ${log.error}\n`;
+        if (log.steps && log.steps.length > 0) {
+          text += `PASSAGGI:\n`;
+          log.steps.forEach((step, i) => {
+            const resultStr = typeof step.result === 'object' ? (step.result.detail || JSON.stringify(step.result)) : step.result;
+            text += `  ${i + 1}. [${step.nodeType}] ${step.label || 'Senza label'}: ${resultStr}\n`;
+          });
+        }
+        return text + '\n' + '='.repeat(50);
+      }).join('\n\n');
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [currentLogs, selectedWorkflowId, workflows]);
 
   if (!isOpen) return null;
 
@@ -307,10 +340,10 @@ export default function AutomationEditor({
         {showCanvas && (
           <button onClick={() => { setWorkflowEnabled(v => !v); markChanged(); }} style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            background: workflowEnabled ? 'rgba(0,184,148,0.08)' : '#F4F5F9',
-            border: `1.5px solid ${workflowEnabled ? '#00B894' : '#E8ECF1'}`,
+            background: workflowEnabled ? 'rgba(0,184,148,0.08)' : 'rgba(225,112,85,0.08)',
+            border: `1.5px solid ${workflowEnabled ? '#00B894' : '#E17055'}`,
             borderRadius: 8, padding: '5px 12px', cursor: 'pointer',
-            color: workflowEnabled ? '#00B894' : '#B2BEC3',
+            color: workflowEnabled ? '#00B894' : '#E17055',
             fontSize: '0.72rem', fontWeight: 600, fontFamily: "'Inter', sans-serif", transition: 'all 0.15s',
           }}>
             {workflowEnabled ? <ToggleRight size={15} /> : <ToggleLeft size={15} />}
@@ -323,7 +356,7 @@ export default function AutomationEditor({
           <div style={{ display: 'flex', gap: 4 }}>
             {[
               { key: 'requireLogin', label: 'Solo login' },
-              { key: 'requireUnlocked', label: 'Solo unlock' },
+              { key: 'background', label: 'Background' },
             ].map(c => (
               <button key={c.key} onClick={() => { setExecutionConditions(p => ({ ...p, [c.key]: !p[c.key] })); markChanged(); }}
                 title={c.label}
@@ -527,6 +560,7 @@ export default function AutomationEditor({
                     onDelete={deleteNode}
                     onClose={() => setSelectedNode(null)}
                     workflows={workflows}
+                    crmData={crmData}
                   />
                 )}
               </div>
@@ -562,8 +596,24 @@ export default function AutomationEditor({
           ) : (
             /* ── Log Tab ── */
             <div style={{ height: '100%', overflow: 'auto', padding: 20 }}>
-              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#2D3436', marginBottom: 14 }}>
-                Log & Debug
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#2D3436' }}>
+                  Log & Debug
+                </div>
+                {currentLogs.length > 0 && (
+                  <button onClick={downloadLogs} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '6px 12px', borderRadius: 8, border: '1.5px solid #E8ECF1',
+                    background: '#fff', cursor: 'pointer', color: '#6C5CE7',
+                    fontSize: '0.72rem', fontWeight: 600, fontFamily: "'Inter', sans-serif",
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(108,92,231,0.04)'; e.currentTarget.style.borderColor = '#6C5CE7'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#E8ECF1'; }}
+                  >
+                    <Save size={14} /> Scarica Log (.txt)
+                  </button>
+                )}
               </div>
               {currentLogs.length === 0 ? (
                 <div style={{

@@ -1,5 +1,5 @@
-// Upersite CRM — Workflow Runner
-// Motore di esecuzione che percorre il grafo dei workflow e applica le azioni
+// Upersite CRM — Workflow Runner v2
+// Motore di esecuzione corretto e completo
 
 import { generateId } from './storage';
 
@@ -17,224 +17,136 @@ export function resolveVariables(template, context) {
   });
 }
 
+// ─── Costruzione contesto normalizzato IT/EN ───
+// Mappiamo sia i campi italiani che quelli inglesi così le condizioni
+// funzionano con entrambe le notazioni (cliente.stato E cliente.status).
+export function buildContext(event, appState = {}) {
+  const customer = event.customer || event.cliente || null;
+
+  const clienteNorm = customer ? {
+    // campi originali (inglese)
+    ...customer,
+    // alias italiani
+    nome: customer.name || '',
+    azienda: customer.company || '',
+    stato: customer.status || '',
+    email: customer.email || '',
+    telefono: customer.phone || '',
+    tipo_pacchetto: customer.packageType || '',
+    tag: customer.tags || [],
+    // alias inglese espliciti (ridondanti ma sicuri)
+    name: customer.name || '',
+    company: customer.company || '',
+    status: customer.status || '',
+    phone: customer.phone || '',
+    tags: customer.tags || [],
+  } : null;
+
+  const task = event.task || null;
+  const taskNorm = task ? {
+    ...task,
+    nome: task.text || task.nome || '',
+    testo: task.text || task.testo || '',
+    stato: task.completed ? 'completato' : 'da_fare',
+    scadenza: task.dueDate || '',
+    priorita: task.priority || '',
+    // alias inglese
+    text: task.text || task.nome || '',
+    completed: task.completed,
+    dueDate: task.dueDate || '',
+    priority: task.priority || '',
+  } : null;
+
+  const nota = event.note || event.nota || null;
+  const notaNorm = nota ? {
+    ...nota,
+    testo: nota.text || nota.testo || '',
+    text: nota.text || nota.testo || '',
+  } : null;
+
+  return {
+    // accesso italiano
+    cliente: clienteNorm,
+    task: taskNorm,
+    nota: notaNorm,
+    pagamento: event.payment || event.pagamento || null,
+    tag: event.tag || null,
+    // accesso inglese
+    customer: clienteNorm,
+    // metadati temporali
+    data_corrente: new Date().toISOString().split('T')[0],
+    ora_corrente: new Date().toLocaleTimeString('it-IT'),
+    timestamp: new Date().toISOString(),
+    // stato app
+    app: {
+      isLoggedIn: appState.isLoggedIn !== false,
+      isUnlocked: appState.isUnlocked !== false,
+      ...appState,
+    },
+    // evento raw
+    evento: event,
+    event,
+  };
+}
+
 // ─── Valutazione condizioni ───
+function getNestedValue(obj, path) {
+  if (!obj || !path) return undefined;
+  const keys = path.trim().split('.');
+  let value = obj;
+  for (const key of keys) {
+    if (value == null) return undefined;
+    value = value[key];
+  }
+  return value;
+}
+
 function evaluateCondition(condition, context) {
   const { field, operator, value } = condition;
-  const keys = field.split('.');
-  let actual = context;
-  for (const key of keys) {
-    if (actual == null) return false;
-    actual = actual[key];
-  }
+  if (!field) return true;
 
-  const strActual = String(actual ?? '').toLowerCase();
-  const strValue = String(value ?? '').toLowerCase();
+  const actual = getNestedValue(context, field);
+  const strActual = String(actual ?? '').toLowerCase().trim();
+  const strValue = String(value ?? '').toLowerCase().trim();
 
   switch (operator) {
-    case '=': return strActual === strValue;
+    case '=':
+    case '==':
+      return strActual === strValue;
     case '!=':
-    case '\u2260': return strActual !== strValue;
-    case '>': return parseFloat(actual) > parseFloat(value);
-    case '<': return parseFloat(actual) < parseFloat(value);
-    case '>=': return parseFloat(actual) >= parseFloat(value);
-    case '<=': return parseFloat(actual) <= parseFloat(value);
-    case 'contiene': return strActual.includes(strValue);
-    case 'non_contiene': return !strActual.includes(strValue);
-    default: return false;
+    case '≠':
+      return strActual !== strValue;
+    case '>':
+      return parseFloat(actual) > parseFloat(value);
+    case '<':
+      return parseFloat(actual) < parseFloat(value);
+    case '>=':
+      return parseFloat(actual) >= parseFloat(value);
+    case '<=':
+      return parseFloat(actual) <= parseFloat(value);
+    case 'contiene':
+      if (Array.isArray(actual)) {
+        return actual.some(v => String(v).toLowerCase().includes(strValue));
+      }
+      return strActual.includes(strValue);
+    case 'non_contiene':
+      if (Array.isArray(actual)) {
+        return !actual.some(v => String(v).toLowerCase().includes(strValue));
+      }
+      return !strActual.includes(strValue);
+    default:
+      return false;
   }
 }
 
 function evaluateConditionGroup(conditions, logic, context) {
   if (!conditions || conditions.length === 0) return true;
+  const filtered = conditions.filter(c => c.field && c.field.trim());
+  if (filtered.length === 0) return true;
   if (logic === 'OR') {
-    return conditions.some(c => evaluateCondition(c, context));
+    return filtered.some(c => evaluateCondition(c, context));
   }
-  return conditions.every(c => evaluateCondition(c, context));
-}
-
-// ─── Esecuzione azioni ───
-function executeAction(action, context, crmActions) {
-  const { actionType, config } = action;
-  const resolved = {};
-  Object.entries(config || {}).forEach(([k, v]) => {
-    resolved[k] = resolveVariables(v, context);
-  });
-
-  switch (actionType) {
-    case 'move_customer_status': {
-      const customerId = context.cliente?.id;
-      if (customerId && crmActions.updateCustomer) {
-        crmActions.updateCustomer(customerId, { status: resolved.targetStatus });
-      }
-      return { success: true, detail: `Stato cliente -> ${resolved.targetStatus}` };
-    }
-
-    case 'add_tag': {
-      const customerId = context.cliente?.id;
-      if (customerId && crmActions.updateCustomer) {
-        const customer = crmActions.getCustomer?.(customerId);
-        if (customer) {
-          const tags = [...(customer.tags || [])];
-          if (!tags.includes(resolved.tag)) {
-            tags.push(resolved.tag);
-            crmActions.updateCustomer(customerId, { tags });
-          }
-        }
-      }
-      return { success: true, detail: `Tag aggiunto: ${resolved.tag}` };
-    }
-
-    case 'remove_tag': {
-      const customerId = context.cliente?.id;
-      if (customerId && crmActions.updateCustomer) {
-        const customer = crmActions.getCustomer?.(customerId);
-        if (customer) {
-          const tags = (customer.tags || []).filter(t => t !== resolved.tag);
-          crmActions.updateCustomer(customerId, { tags });
-        }
-      }
-      return { success: true, detail: `Tag rimosso: ${resolved.tag}` };
-    }
-
-    case 'create_task': {
-      const customerId = resolved.customerId || context.cliente?.id;
-      if (customerId && crmActions.updateCustomer) {
-        const customer = crmActions.getCustomer?.(customerId);
-        if (customer) {
-          const newTask = {
-            id: generateId(),
-            text: resolved.title || 'Nuovo task',
-            priority: resolved.priority || 'Media',
-            dueDate: calculateDueDate(resolved.dueDateType, resolved.dueDateValue),
-            completed: false,
-            createdAt: new Date().toISOString(),
-            readAt: null,
-            subtasks: [],
-            description: resolved.description || '',
-            linkedFiles: [],
-            linkedNotes: [],
-            recurrence: 'none',
-            createdByWorkflow: true
-          };
-          const todo = [...(customer.todo || []), newTask];
-          crmActions.updateCustomer(customerId, { todo });
-        }
-      }
-      return { success: true, detail: `Task creato: ${resolved.title}` };
-    }
-
-    case 'create_subtask': {
-      const customerId = resolved.customerId || context.cliente?.id;
-      const parentTaskId = resolved.parentTaskId || context.task?.id;
-      if (customerId && parentTaskId && crmActions.updateCustomer) {
-        const customer = crmActions.getCustomer?.(customerId);
-        if (customer) {
-          const newSubtask = {
-            id: generateId(),
-            text: resolved.title || 'Nuovo sotto-task',
-            priority: resolved.priority || 'Media',
-            dueDate: '',
-            completed: false,
-            createdAt: new Date().toISOString(),
-            readAt: null,
-            subtasks: [],
-            description: '',
-            linkedFiles: [],
-            linkedNotes: [],
-            recurrence: 'none',
-            createdByWorkflow: true
-          };
-          const todo = addSubtaskToParent(customer.todo || [], parentTaskId, newSubtask, parseInt(resolved.level) || 1);
-          crmActions.updateCustomer(customerId, { todo });
-        }
-      }
-      return { success: true, detail: `Sotto-task creato: ${resolved.title}` };
-    }
-
-    case 'complete_task': {
-      const customerId = resolved.customerId || context.cliente?.id;
-      const taskName = resolved.taskName;
-      if (customerId && crmActions.updateCustomer) {
-        const customer = crmActions.getCustomer?.(customerId);
-        if (customer) {
-          const todo = markTaskByName(customer.todo || [], taskName, resolved.markAs !== 'da_fare');
-          crmActions.updateCustomer(customerId, { todo });
-        }
-      }
-      return { success: true, detail: `Task "${taskName}" -> ${resolved.markAs === 'da_fare' ? 'da fare' : 'completato'}` };
-    }
-
-    case 'update_task': {
-      const customerId = resolved.customerId || context.cliente?.id;
-      const taskId = resolved.taskId || context.task?.id;
-      if (customerId && taskId && crmActions.updateCustomer) {
-        const customer = crmActions.getCustomer?.(customerId);
-        if (customer) {
-          const updates = {};
-          if (resolved.title) updates.text = resolved.title;
-          if (resolved.priority) updates.priority = resolved.priority;
-          if (resolved.dueDate) updates.dueDate = resolved.dueDate;
-          const todo = updateTaskById(customer.todo || [], taskId, updates);
-          crmActions.updateCustomer(customerId, { todo });
-        }
-      }
-      return { success: true, detail: `Task aggiornato` };
-    }
-
-    case 'create_note': {
-      const customerId = resolved.customerId || context.cliente?.id;
-      if (customerId && crmActions.updateCustomer) {
-        const customer = crmActions.getCustomer?.(customerId);
-        if (customer) {
-          const newNote = {
-            id: generateId(),
-            text: resolved.text || '',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            createdByWorkflow: true
-          };
-          const notes = [...(customer.notes || []), newNote];
-          crmActions.updateCustomer(customerId, { notes });
-        }
-      }
-      return { success: true, detail: `Nota creata su cliente` };
-    }
-
-    case 'append_note': {
-      const customerId = resolved.customerId || context.cliente?.id;
-      const noteId = resolved.noteId;
-      if (customerId && noteId && crmActions.updateCustomer) {
-        const customer = crmActions.getCustomer?.(customerId);
-        if (customer) {
-          const notes = (customer.notes || []).map(n => {
-            if (n.id === noteId) {
-              return { ...n, text: n.text + '\n' + (resolved.text || ''), updatedAt: new Date().toISOString() };
-            }
-            return n;
-          });
-          crmActions.updateCustomer(customerId, { notes });
-        }
-      }
-      return { success: true, detail: `Testo aggiunto a nota` };
-    }
-
-    case 'create_backup': {
-      if (crmActions.triggerBackup) {
-        crmActions.triggerBackup();
-      }
-      return { success: true, detail: 'Backup avviato' };
-    }
-
-    case 'export_backup': {
-      if (crmActions.exportBackup) {
-        crmActions.exportBackup();
-      }
-      return { success: true, detail: 'Esportazione backup avviata' };
-    }
-
-    default:
-      return { success: false, detail: `Azione sconosciuta: ${actionType}` };
-  }
+  return filtered.every(c => evaluateCondition(c, context));
 }
 
 // ─── Utility per task ───
@@ -266,7 +178,7 @@ function addSubtaskToParent(tasks, parentId, subtask, maxLevel, currentLevel = 1
 
 function markTaskByName(tasks, name, completed) {
   return tasks.map(t => {
-    if (t.text === name) {
+    if ((t.text || '').toLowerCase() === (name || '').toLowerCase()) {
       return { ...t, completed, readAt: completed ? new Date().toISOString() : null };
     }
     if (t.subtasks && t.subtasks.length > 0) {
@@ -288,8 +200,209 @@ function updateTaskById(tasks, taskId, updates) {
   });
 }
 
+// ─── Esecuzione azioni ───
+async function executeAction(action, context, crmActions) {
+  const { actionType, config } = action;
+
+  // Risolvi variabili dinamiche in tutti i campi config
+  const resolved = {};
+  Object.entries(config || {}).forEach(([k, v]) => {
+    resolved[k] = resolveVariables(v, context);
+  });
+
+  // Ricava customerId: prima dal config esplicito, poi dal contesto cliente
+  const customerId = resolved.customerId || context.cliente?.id || context.customer?.id;
+
+  switch (actionType) {
+    // ── Cliente ──
+    case 'move_customer_status': {
+      if (!customerId || !crmActions.updateCustomer) {
+        return { success: false, detail: 'ID cliente mancante per spostamento stato' };
+      }
+      crmActions.updateCustomer(customerId, { status: resolved.targetStatus });
+      return { success: true, detail: `Stato cliente → ${resolved.targetStatus}` };
+    }
+
+    case 'add_tag': {
+      if (!customerId || !crmActions.updateCustomer) {
+        return { success: false, detail: 'ID cliente mancante per aggiunta tag' };
+      }
+      const customer = crmActions.getCustomer?.(customerId);
+      if (!customer) return { success: false, detail: `Cliente ${customerId} non trovato` };
+      const tags = [...(customer.tags || [])];
+      const tagToAdd = resolved.tag || '';
+      if (tagToAdd && !tags.includes(tagToAdd)) {
+        tags.push(tagToAdd);
+        crmActions.updateCustomer(customerId, { tags });
+      }
+      return { success: true, detail: `Tag aggiunto: ${tagToAdd}` };
+    }
+
+    case 'remove_tag': {
+      if (!customerId || !crmActions.updateCustomer) {
+        return { success: false, detail: 'ID cliente mancante per rimozione tag' };
+      }
+      const customer = crmActions.getCustomer?.(customerId);
+      if (!customer) return { success: false, detail: `Cliente ${customerId} non trovato` };
+      const tags = (customer.tags || []).filter(t => t !== resolved.tag);
+      crmActions.updateCustomer(customerId, { tags });
+      return { success: true, detail: `Tag rimosso: ${resolved.tag}` };
+    }
+
+    // ── Task ──
+    case 'create_task': {
+      if (!customerId || !crmActions.updateCustomer) {
+        return { success: false, detail: 'ID cliente mancante per creazione task' };
+      }
+      const customer = crmActions.getCustomer?.(customerId);
+      if (!customer) return { success: false, detail: `Cliente ${customerId} non trovato` };
+      const newTask = {
+        id: generateId(),
+        text: resolved.title || 'Nuovo task',
+        priority: resolved.priority || 'Media',
+        dueDate: calculateDueDate(resolved.dueDateType, resolved.dueDateValue),
+        completed: false,
+        createdAt: new Date().toISOString(),
+        readAt: null,
+        subtasks: [],
+        description: resolved.description || '',
+        linkedFiles: [],
+        linkedNotes: [],
+        recurrence: 'none',
+        createdByWorkflow: true,
+      };
+      const todo = [...(customer.todo || []), newTask];
+      crmActions.updateCustomer(customerId, { todo });
+      return { success: true, detail: `Task creato: "${newTask.text}"` };
+    }
+
+    case 'create_subtask': {
+      const parentTaskId = resolved.parentTaskId || context.task?.id;
+      if (!customerId || !parentTaskId || !crmActions.updateCustomer) {
+        return { success: false, detail: 'ID cliente o task padre mancante' };
+      }
+      const customer = crmActions.getCustomer?.(customerId);
+      if (!customer) return { success: false, detail: `Cliente ${customerId} non trovato` };
+      const newSubtask = {
+        id: generateId(),
+        text: resolved.title || 'Nuovo sotto-task',
+        priority: resolved.priority || 'Media',
+        dueDate: '',
+        completed: false,
+        createdAt: new Date().toISOString(),
+        readAt: null,
+        subtasks: [],
+        description: '',
+        linkedFiles: [],
+        linkedNotes: [],
+        recurrence: 'none',
+        createdByWorkflow: true,
+      };
+      const todo = addSubtaskToParent(customer.todo || [], parentTaskId, newSubtask, parseInt(resolved.level) || 1);
+      crmActions.updateCustomer(customerId, { todo });
+      return { success: true, detail: `Sotto-task creato: "${newSubtask.text}"` };
+    }
+
+    case 'complete_task': {
+      if (!customerId || !crmActions.updateCustomer) {
+        return { success: false, detail: 'ID cliente mancante' };
+      }
+      const customer = crmActions.getCustomer?.(customerId);
+      if (!customer) return { success: false, detail: `Cliente ${customerId} non trovato` };
+      const markAsCompleted = resolved.markAs !== 'da_fare';
+
+      let todo;
+      if (resolved.taskId) {
+        // Cerca per ID (via dropdown picker nel pannello)
+        const updateById = (tasks) => tasks.map(t => {
+          if (t.id === resolved.taskId) {
+            return { ...t, completed: markAsCompleted, readAt: markAsCompleted ? new Date().toISOString() : null };
+          }
+          if (t.subtasks?.length) return { ...t, subtasks: updateById(t.subtasks) };
+          return t;
+        });
+        todo = updateById(customer.todo || []);
+      } else {
+        // Fallback: cerca per nome testuale
+        todo = markTaskByName(customer.todo || [], resolved.taskName, markAsCompleted);
+      }
+
+      crmActions.updateCustomer(customerId, { todo });
+      return { success: true, detail: `Task → ${markAsCompleted ? 'completato' : 'da fare'}` };
+    }
+
+    case 'update_task': {
+      const taskId = resolved.taskId || context.task?.id;
+      if (!customerId || !taskId || !crmActions.updateCustomer) {
+        return { success: false, detail: 'ID cliente o task mancante' };
+      }
+      const customer = crmActions.getCustomer?.(customerId);
+      if (!customer) return { success: false, detail: `Cliente ${customerId} non trovato` };
+      const updates = {};
+      if (resolved.title) updates.text = resolved.title;
+      if (resolved.priority) updates.priority = resolved.priority;
+      if (resolved.dueDate) updates.dueDate = resolved.dueDate;
+      const todo = updateTaskById(customer.todo || [], taskId, updates);
+      crmActions.updateCustomer(customerId, { todo });
+      return { success: true, detail: `Task ${taskId} aggiornato` };
+    }
+
+    // ── Note ──
+    case 'create_note': {
+      if (!customerId || !crmActions.updateCustomer) {
+        return { success: false, detail: 'ID cliente mancante per creazione nota' };
+      }
+      const customer = crmActions.getCustomer?.(customerId);
+      if (!customer) return { success: false, detail: `Cliente ${customerId} non trovato` };
+      const newNote = {
+        id: generateId(),
+        text: resolved.text || '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdByWorkflow: true,
+      };
+      const notes = [...(customer.notes || []), newNote];
+      crmActions.updateCustomer(customerId, { notes });
+      return { success: true, detail: `Nota creata su cliente` };
+    }
+
+    case 'append_note': {
+      const noteId = resolved.noteId;
+      if (!customerId || !noteId || !crmActions.updateCustomer) {
+        return { success: false, detail: 'ID nota o cliente mancante' };
+      }
+      const customer = crmActions.getCustomer?.(customerId);
+      if (!customer) return { success: false, detail: `Cliente ${customerId} non trovato` };
+      const noteExists = (customer.notes || []).some(n => n.id === noteId);
+      if (!noteExists) return { success: false, detail: `Nota ${noteId} non trovata` };
+      const notes = (customer.notes || []).map(n => {
+        if (n.id === noteId) {
+          return { ...n, text: (n.text || '') + '\n' + (resolved.text || ''), updatedAt: new Date().toISOString() };
+        }
+        return n;
+      });
+      crmActions.updateCustomer(customerId, { notes });
+      return { success: true, detail: `Testo aggiunto a nota` };
+    }
+
+    // ── Sistema ──
+    case 'create_backup': {
+      if (crmActions.triggerBackup) crmActions.triggerBackup();
+      return { success: true, detail: 'Backup avviato' };
+    }
+
+    case 'export_backup': {
+      if (crmActions.exportBackup) crmActions.exportBackup();
+      return { success: true, detail: 'Esportazione backup avviata' };
+    }
+
+    default:
+      return { success: false, detail: `Azione sconosciuta: ${actionType}` };
+  }
+}
+
 // ─── Runner principale ───
-export async function runWorkflow(workflow, triggerEvent, crmActions) {
+export async function runWorkflow(workflow, triggerEvent, crmActions, appState = {}) {
   const log = {
     id: generateId(),
     workflowId: workflow.id,
@@ -303,46 +416,60 @@ export async function runWorkflow(workflow, triggerEvent, crmActions) {
   };
 
   try {
-    // Costruisci il contesto dalle variabili dell'evento
-    const context = buildContext(triggerEvent);
+    const context = buildContext(triggerEvent, appState);
 
     // Verifica condizioni di esecuzione
     if (workflow.executionConditions) {
-      const { requireLogin, requireUnlocked } = workflow.executionConditions;
-      if (requireLogin && !context.app?.isLoggedIn) {
+      const { requireLogin, background } = workflow.executionConditions;
+      // requireLogin = esegui SOLO se loggato (e non in background mode)
+      if (requireLogin && !background && !context.app?.isLoggedIn) {
         log.status = 'skipped';
-        log.error = 'App non loggata';
-        log.completedAt = new Date().toISOString();
-        return log;
-      }
-      if (requireUnlocked && !context.app?.isUnlocked) {
-        log.status = 'skipped';
-        log.error = 'App bloccata';
+        log.error = 'Richiesto login utente';
         log.completedAt = new Date().toISOString();
         return log;
       }
     }
 
-    // Percorri il grafo: trova il nodo trigger
     const nodes = workflow.nodes || [];
     const edges = workflow.edges || [];
+
     const triggerNode = nodes.find(n => n.type === 'triggerNode');
     if (!triggerNode) {
       throw new Error('Nessun trigger trovato nel workflow');
     }
 
-    // Esecuzione in sequenza seguendo le connessioni
+    // Verifica che l'evento del trigger corrisponda
+    if (triggerNode.data?.eventType && triggerNode.data.eventType !== triggerEvent.type) {
+      log.status = 'skipped';
+      log.error = `Trigger non corrispondente: atteso ${triggerNode.data.eventType}, ricevuto ${triggerEvent.type}`;
+      log.completedAt = new Date().toISOString();
+      return log;
+    }
+
+    // Percorri il grafo seguendo le connessioni
     let currentNodeId = triggerNode.id;
     const visited = new Set();
+    const MAX_STEPS = 50; // anti-loop
 
-    while (currentNodeId && !visited.has(currentNodeId)) {
+    while (currentNodeId && !visited.has(currentNodeId) && log.steps.length < MAX_STEPS) {
       visited.add(currentNodeId);
       const node = nodes.find(n => n.id === currentNodeId);
       if (!node) break;
 
-      const stepLog = { nodeId: node.id, nodeType: node.type, label: node.data?.label || '', timestamp: new Date().toISOString() };
+      const stepLog = {
+        nodeId: node.id,
+        nodeType: node.type,
+        label: node.data?.label || '',
+        timestamp: new Date().toISOString(),
+        result: null,
+      };
 
-      if (node.type === 'conditionNode') {
+      if (node.type === 'triggerNode') {
+        // Il trigger è il punto di partenza, non esegue azioni
+        stepLog.result = 'trigger';
+        log.steps.push(stepLog);
+
+      } else if (node.type === 'conditionNode') {
         const conditions = node.data?.conditions || [];
         const logic = node.data?.logic || 'AND';
         const passed = evaluateConditionGroup(conditions, logic, context);
@@ -350,12 +477,15 @@ export async function runWorkflow(workflow, triggerEvent, crmActions) {
         log.steps.push(stepLog);
 
         if (!passed) {
+          // Condizione fallita: termina il workflow (non è un errore)
           log.status = 'completed';
           log.completedAt = new Date().toISOString();
+          log.steps.push({ ...stepLog, nodeType: '_end', label: 'Condizione non soddisfatta', result: 'stopped' });
           return log;
         }
+
       } else if (node.type === 'actionNode') {
-        const result = executeAction(
+        const result = await executeAction(
           { actionType: node.data?.actionType, config: node.data?.config || {} },
           context,
           crmActions
@@ -365,6 +495,7 @@ export async function runWorkflow(workflow, triggerEvent, crmActions) {
         if (!result.success) {
           throw new Error(result.detail);
         }
+
       } else if (node.type === 'ifElseNode') {
         const conditions = node.data?.conditions || [];
         const logic = node.data?.logic || 'AND';
@@ -372,38 +503,60 @@ export async function runWorkflow(workflow, triggerEvent, crmActions) {
         stepLog.result = passed ? 'if_branch' : 'else_branch';
         log.steps.push(stepLog);
 
-        // Trova il ramo corretto
         const branchEdge = edges.find(e =>
           e.source === node.id && e.sourceHandle === (passed ? 'if' : 'else')
         );
         currentNodeId = branchEdge?.target || null;
         continue;
+
       } else if (node.type === 'delayNode') {
-        const delayMs = (node.data?.delayValue || 0) * (node.data?.delayUnit === 'minuti' ? 60000 : 1000);
-        if (delayMs > 0) {
-          await new Promise(resolve => setTimeout(resolve, Math.min(delayMs, 300000)));
+        const unit = node.data?.delayUnit || 'secondi';
+        const val = parseInt(node.data?.delayValue) || 0;
+        const delayMs = val * (unit === 'minuti' ? 60000 : 1000);
+        // Limitiamo a 5 minuti max per evitare blocchi eccessivi
+        const cappedMs = Math.min(delayMs, 300000);
+        if (cappedMs > 0) {
+          await new Promise(resolve => setTimeout(resolve, cappedMs));
         }
-        stepLog.result = `Atteso ${node.data?.delayValue} ${node.data?.delayUnit}`;
+        stepLog.result = `Atteso ${val} ${unit}`;
         log.steps.push(stepLog);
+
       } else if (node.type === 'endNode') {
         stepLog.result = 'Workflow terminato';
         log.steps.push(stepLog);
         break;
+
       } else if (node.type === 'chainNode') {
-        stepLog.result = `Chain a workflow: ${node.data?.targetWorkflowId}`;
+        const targetId = node.data?.targetWorkflowId;
+        stepLog.result = `Chain → ${node.data?.targetWorkflowName || targetId}`;
         log.steps.push(stepLog);
-        // Il chain verrà gestito dal chiamante
+        // Esegui il workflow concatenato
+        if (targetId && crmActions.getWorkflow) {
+          const targetWf = crmActions.getWorkflow(targetId);
+          if (targetWf) {
+            const chainLog = await runWorkflow(targetWf, triggerEvent, crmActions, appState);
+            log.steps.push({
+              nodeId: 'chain_result',
+              nodeType: 'chainResult',
+              label: `Risultato chain: ${targetWf.name}`,
+              timestamp: new Date().toISOString(),
+              result: chainLog.status,
+            });
+          }
+        }
+
       } else {
         log.steps.push(stepLog);
       }
 
-      // Trova il prossimo nodo
+      // Nodo successivo
       const nextEdge = edges.find(e => e.source === currentNodeId);
       currentNodeId = nextEdge?.target || null;
     }
 
     log.status = 'completed';
     log.completedAt = new Date().toISOString();
+
   } catch (err) {
     log.status = 'error';
     log.error = err.message;
@@ -413,21 +566,6 @@ export async function runWorkflow(workflow, triggerEvent, crmActions) {
   return log;
 }
 
-// ─── Costruzione contesto ───
-function buildContext(event) {
-  return {
-    cliente: event.customer || event.cliente || null,
-    task: event.task || null,
-    nota: event.note || event.nota || null,
-    pagamento: event.payment || event.pagamento || null,
-    tag: event.tag || null,
-    data_corrente: new Date().toISOString().split('T')[0],
-    ora_corrente: new Date().toLocaleTimeString('it-IT'),
-    app: event.app || { isLoggedIn: true, isUnlocked: true },
-    evento: event,
-  };
-}
-
 // ─── Validazione workflow ───
 export function validateWorkflow(workflow, crmData) {
   const errors = [];
@@ -435,32 +573,38 @@ export function validateWorkflow(workflow, crmData) {
   const nodes = workflow.nodes || [];
   const edges = workflow.edges || [];
 
-  // Deve avere almeno un trigger
+  // Deve avere esattamente un trigger
   const triggers = nodes.filter(n => n.type === 'triggerNode');
   if (triggers.length === 0) {
     errors.push({ nodeId: null, message: 'Il workflow non ha un trigger' });
-  }
-  if (triggers.length > 1) {
+  } else if (triggers.length > 1) {
     errors.push({ nodeId: null, message: 'Il workflow ha troppi trigger (max 1)' });
   }
 
-  // Verifica nodi orfani
+  // Trigger senza evento configurato
+  triggers.forEach(n => {
+    if (!n.data?.eventType) {
+      errors.push({ nodeId: n.id, message: 'Trigger senza evento configurato' });
+    }
+  });
+
+  // Nodi orfani (eccetto trigger)
   nodes.forEach(node => {
     if (node.type === 'triggerNode') return;
     const hasIncoming = edges.some(e => e.target === node.id);
     if (!hasIncoming) {
-      warnings.push({ nodeId: node.id, message: `Blocco "${node.data?.label}" non collegato` });
+      warnings.push({ nodeId: node.id, message: `"${node.data?.label || node.type}" non è collegato` });
     }
   });
 
-  // Verifica configurazione azioni
+  // Azioni senza tipo
   nodes.filter(n => n.type === 'actionNode').forEach(node => {
     if (!node.data?.actionType) {
-      errors.push({ nodeId: node.id, message: `Blocco azione senza tipo configurato` });
+      errors.push({ nodeId: node.id, message: `Azione "${node.data?.label}" senza tipo configurato` });
     }
   });
 
-  // Verifica riferimenti a tag esistenti
+  // Tag inesistenti
   nodes.forEach(node => {
     const config = node.data?.config || {};
     if (config.tag) {
@@ -471,12 +615,12 @@ export function validateWorkflow(workflow, crmData) {
     }
   });
 
-  // Verifica condizioni
-  nodes.filter(n => n.type === 'conditionNode' || n.type === 'ifElseNode').forEach(node => {
-    const conditions = node.data?.conditions || [];
-    if (conditions.length === 0) {
-      warnings.push({ nodeId: node.id, message: `Blocco condizione senza regole configurate` });
-    }
+  // IF/ELSE con uscite non collegate
+  nodes.filter(n => n.type === 'ifElseNode').forEach(node => {
+    const ifEdge = edges.find(e => e.source === node.id && e.sourceHandle === 'if');
+    const elseEdge = edges.find(e => e.source === node.id && e.sourceHandle === 'else');
+    if (!ifEdge) warnings.push({ nodeId: node.id, message: `IF/ELSE: ramo "IF (vero)" non collegato` });
+    if (!elseEdge) warnings.push({ nodeId: node.id, message: `IF/ELSE: ramo "ELSE (falso)" non collegato` });
   });
 
   const status = errors.length > 0 ? 'broken' : warnings.length > 0 ? 'warning' : 'active';
