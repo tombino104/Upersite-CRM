@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import IconComponent from './IconComponent';
 
 const BASIC_COLORS = [
   '#000000', '#E74C3C', '#E67E22', '#F1C40F', '#2ECC71',
@@ -18,6 +19,11 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const [showInternalLinkMenu, setShowInternalLinkMenu] = useState(null); // 'file' | 'note' | null
   const [isFullScreen, setIsFullScreen] = useState(false);
 
+  // Menu contestuale per selezione testo
+  const [textSelection, setTextSelection] = useState(null); // { text, range, position } | null
+  const isMenuInteractingRef = useRef(false); // Flag per prevenire chiusura durante interazione
+  const preventMenuReopenRef = useRef(false); // Flag per prevenire riapertura subito dopo formattazione
+
   // Track the initial value to detect dirty state
   const initialValueRef = useRef(value || '');
   const isDirtyRef = useRef(false);
@@ -33,7 +39,242 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     if (onDirtyChange) onDirtyChange(false);
   }, []); // Only on mount
 
-  // Only update innerHTML if it completely differs from the external value AND we are not actively typing in it.
+  // Gestione selezione testo per menu contestuale
+  useEffect(() => {
+    const handleSelection = (e) => {
+      // Non riaprire il menu se abbiamo appena formattato
+      if (preventMenuReopenRef.current) return;
+      
+      // Solo se l'evento è dentro l'editor
+      if (!editorRef.current || !editorRef.current.contains(e.target)) return;
+      
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (selection && selection.toString().trim()) {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          
+          // Posiziona menu affianco al testo (stile Notion)
+          // Appare a destra della selezione, ma se non c'è spazio va a sinistra
+          const menuWidth = 200; // larghezza stimata del menu
+          const windowWidth = window.innerWidth;
+          const rightSpace = windowWidth - rect.right;
+          const leftSpace = rect.left;
+          
+          let x = rect.right + 10; // 10px di spazio dal testo
+          if (rightSpace < menuWidth && leftSpace > menuWidth) {
+            x = rect.left - menuWidth - 10; // Posiziona a sinistra se manca spazio a destra
+          }
+          
+          setTextSelection({
+            text: selection.toString(),
+            range: range,
+            position: {
+              x: x,
+              y: rect.top
+            }
+          });
+        } else {
+          setTextSelection(null);
+        }
+      }, 0);
+    };
+
+    const handleMouseDown = (e) => {
+      // Non chiudere se stiamo interagendo con il menu
+      if (isMenuInteractingRef.current) return;
+      
+      // Chiudi menu solo se clicco fuori dall'editor e fuori dal menu
+      if (!editorRef.current || (!editorRef.current.contains(e.target) && !e.target.closest('.contextual-menu'))) {
+        setTextSelection(null);
+        savedSelectionRef.current = null;
+      }
+    };
+    
+    document.addEventListener('mouseup', handleSelection);
+    document.addEventListener('mousedown', handleMouseDown);
+    
+    return () => {
+      document.removeEventListener('mouseup', handleSelection);
+      document.removeEventListener('mousedown', handleMouseDown);
+    };
+  }, []);
+
+  // Chiudi tutti i menu quando si clicca fuori
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.rte-btn') && !e.target.closest('.rte-dropdown') && !e.target.closest('.contextual-menu')) {
+        setTextSelection(null);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Salva la selezione corrente per il menu contestuale
+  const savedSelectionRef = useRef(null);
+  
+  // Funzioni per menu contestuale
+  const applyTextFormat = (format, value = null) => {
+    if (!savedSelectionRef.current) {
+      console.warn('No saved selection');
+      return;
+    }
+    
+    // Focus sull'editor prima di tutto
+    editorRef.current?.focus();
+    
+    // Ripristina la selezione
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(savedSelectionRef.current.cloneRange());
+    
+    // Applica il comando
+    try {
+      const success = document.execCommand(format, false, value);
+      if (success) {
+        handleInput();
+      } else {
+        console.warn(`Command ${format} was not successful`);
+      }
+    } catch (error) {
+      console.warn(`Failed to execute command ${format}:`, error);
+    }
+    
+    // Chiudi il menu e previeni riapertura immediata
+    preventMenuReopenRef.current = true;
+    setTextSelection(null);
+    savedSelectionRef.current = null;
+    
+    // Reset flag dopo un breve delay
+    setTimeout(() => {
+      preventMenuReopenRef.current = false;
+    }, 300);
+  };
+  
+  // Salva la selezione quando si apre il menu
+  const saveSelection = () => {
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0 && selection.toString().trim()) {
+      savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
+      console.log('Selection saved:', savedSelectionRef.current.toString());
+    }
+  };
+  
+  // Handler per onMouseDown che previene il focus sul bottone
+  const handleMenuButtonMouseDown = (e, action) => {
+    e.preventDefault(); // Previene che il focus vada al bottone
+    e.stopPropagation();
+    isMenuInteractingRef.current = true;
+    action();
+    // Reset flag dopo un breve delay
+    setTimeout(() => {
+      isMenuInteractingRef.current = false;
+    }, 100);
+  };
+
+  const ContextualMenu = () => {
+    if (!textSelection) return null;
+    
+    // Salva la selezione quando il menu si apre
+    useEffect(() => {
+      saveSelection();
+    }, []);
+
+    // In fullscreen, posiziona relativamente all'editor wrapper
+    const menuStyle = isFullScreen ? {
+      position: 'absolute',
+      left: `${textSelection.position.x}px`,
+      top: `${textSelection.position.y}px`,
+      zIndex: 1000
+    } : {
+      position: 'fixed',
+      left: `${textSelection.position.x}px`,
+      top: `${textSelection.position.y}px`,
+      zIndex: 1000
+    };
+
+    const MenuComponent = (
+      <div 
+        className="contextual-menu animate-scale-in"
+        style={menuStyle}
+      >
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('bold'))}>
+          <IconComponent name="bold" /> Grassetto
+        </button>
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('italic'))}>
+          <IconComponent name="italic" /> Corsivo
+        </button>
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('underline'))}>
+          <IconComponent name="underline" /> Sottolineato
+        </button>
+        <div className="rte-separator" />
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('strikeThrough'))}>
+          <IconComponent name="strikethrough" /> Barrato
+        </button>
+        <div className="rte-separator" />
+        {/* Colori evidenziazione (sfondo) */}
+        <div className="rte-separator" />
+        <div style={{ padding: '4px 8px', fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>Colori Evidenziazione</div>
+        <div style={{ display: 'flex', gap: '4px', padding: '4px 8px', flexWrap: 'wrap' }}>
+          {['#FF6B6B', '#FFA502', '#FFDD59', '#2ED573', '#1E90FF', '#A55EEA'].map(color => (
+            <button
+              key={color}
+              type="button"
+              onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('hiliteColor', color))}
+              style={{ 
+                width: '20px', 
+                height: '20px', 
+                borderRadius: '4px', 
+                background: color,
+                border: 'none',
+                cursor: 'pointer'
+              }}
+              title={color}
+            />
+          ))}
+        </div>
+        <div style={{ padding: '4px 8px', fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, marginTop: '4px' }}>Pastello</div>
+        <div style={{ display: 'flex', gap: '4px', padding: '4px 8px', flexWrap: 'wrap' }}>
+          {['#FFB3BA', '#FFDFC4', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E6B3FF'].map(color => (
+            <button
+              key={color}
+              type="button"
+              onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('hiliteColor', color))}
+              style={{ 
+                width: '20px', 
+                height: '20px', 
+                borderRadius: '4px', 
+                background: color,
+                border: '1px solid var(--border-light)',
+                cursor: 'pointer'
+              }}
+              title={color}
+            />
+          ))}
+        </div>
+        <div className="rte-separator" />
+        
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => {
+          const url = prompt('Inserisci URL:');
+          if (url) {
+            applyTextFormat('createLink', url);
+          }
+        })}>
+          <IconComponent name="link" /> Aggiungi link
+        </button>
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('removeFormat'))}>
+          ✕ Rimuovi formattazione
+        </button>
+      </div>
+    );
+
+    // In fullscreen renderizza dentro l'editor wrapper, altrimenti nel body
+    return isFullScreen ? MenuComponent : createPortal(MenuComponent, document.body);
+  };
+
+  // Only update innerHTML if it completely differs from external value AND we are not actively typing in it.
   useEffect(() => {
     if (pendingHtmlRef.current !== null) return;
     
@@ -59,8 +300,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   }, [isFullScreen]);
 
   const exec = (cmd, val = null) => {
-    document.execCommand(cmd, false, val);
     editorRef.current?.focus();
+    document.execCommand(cmd, false, val);
     handleInput();
     setShowColors(false);
     setShowHeadings(false);
@@ -419,51 +660,53 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     <div className={`rte-container ${isFullScreen ? 'rte-fullscreen' : ''}`}>
       <div className="rte-toolbar">
         <button type="button" className="rte-btn" onClick={() => fileInputRef.current?.click()} title="Importa File (.txt, .md, .html, .csv)">
-          📥 Importa
+          <IconComponent name="import" /> Importa
         </button>
         <button type="button" className="rte-btn" onClick={exportAsTXT} title="Esporta come .txt">
-          📄 TXT
+          <IconComponent name="txt" /> TXT
         </button>
         <button type="button" className="rte-btn" onClick={exportAsMD} title="Esporta come .md">
-          Ⓜ️ MD
+          <IconComponent name="md" /> MD
         </button>
         <input ref={fileInputRef} type="file" accept=".txt,.md,.html,.csv" style={{ display: 'none' }} onChange={handleFileImport} />
 
         <div className="rte-separator" />
 
         <button type="button" className="rte-btn" onClick={() => exec('bold')} title="Grassetto">
-          <strong>B</strong>
+          <IconComponent name="bold" />
         </button>
         <button type="button" className="rte-btn" onClick={() => exec('italic')} title="Corsivo">
-          <em>I</em>
+          <IconComponent name="italic" />
         </button>
         <button type="button" className="rte-btn" onClick={() => exec('underline')} title="Sottolineato">
-          <u>U</u>
+          <IconComponent name="underline" />
         </button>
         <div className="rte-separator" />
         <button type="button" className="rte-btn" onClick={() => exec('insertUnorderedList')} title="Lista puntata">
-          •
+          <IconComponent name="listUnordered" />
         </button>
         <button type="button" className="rte-btn" onClick={() => exec('insertOrderedList')} title="Lista numerata">
-          1.
+          <IconComponent name="listOrdered" />
         </button>
         <div className="rte-separator" />
 
         {/* Added Slash-style commands to toolbar */}
-        <button type="button" className="rte-btn" onClick={() => applySlashCommand('highlight')} title="Evidenzia">🖍</button>
-        <button type="button" className="rte-btn" onClick={() => applySlashCommand('code')} title="Blocco Codice">💻</button>
-        <button type="button" className="rte-btn" onClick={() => applySlashCommand('divider')} title="Separatore">➖</button>
-        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link')} title="Inserisci Link Esterno">🔗</button>
-        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link_file')} title="Collega File Interno">📁</button>
-        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link_note')} title="Collega Nota Interna">📝</button>
-        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link_folder')} title="Collega Cartella Locale">🗂️</button>
-        <button type="button" className="rte-btn" onClick={() => imageInputRef.current?.click()} title="Inserisci Immagine">🖼️</button>
+        <button type="button" className="rte-btn" onClick={() => applySlashCommand('code')} title="Blocco Codice">
+          <IconComponent name="code" />
+        </button>
+        <button type="button" className="rte-btn" onClick={() => applySlashCommand('link')} title="Inserisci Link Esterno">
+          <IconComponent name="link" />
+        </button>
+        <button type="button" className="rte-btn" onClick={() => imageInputRef.current?.click()} title="Inserisci Immagine">
+          <IconComponent name="image" />
+        </button>
         <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
-
-        <div className="rte-separator" />
 
         <button type="button" className="rte-btn" onClick={() => exec('strikeThrough')} title="Barrato">
           <s>S</s>
+        </button>
+        <button type="button" className="rte-btn" onClick={() => exec('formatBlock', 'blockquote')} title="Blocco citazione">
+          ❝
         </button>
         <div className="rte-separator" />
 
@@ -520,12 +763,13 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           ✕
         </button>
 
-        <div style={{ flex: 1 }} />
-
         <button type="button" className="rte-btn" onClick={() => setIsFullScreen(!isFullScreen)} title="Espandi a pieno schermo" style={{ fontWeight: 'bold' }}>
           {isFullScreen ? '↙ Piccoli' : '⛶ Pieno Schermo'}
         </button>
       </div>
+
+      {/* Menu contestuale per selezione testo */}
+      <ContextualMenu />
 
       <div className="rte-editor-wrapper" style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div
@@ -615,9 +859,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
         .rte-toolbar {
           display: flex;
+          justify-content: center;
           align-items: center;
-          gap: 2px;
-          padding: 6px 8px;
+          gap: 4px;
+          padding: 8px 16px;
           background: var(--bg-input);
           border-bottom: 1px solid var(--border-light);
           flex-wrap: wrap;
@@ -626,14 +871,19 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         .rte-btn {
           border: none;
           background: transparent;
-          padding: 4px 8px;
+          padding: 8px 12px;
           border-radius: var(--radius-sm);
           cursor: pointer;
           font-family: var(--font);
-          font-size: 0.8125rem;
+          font-size: 0.875rem;
           color: var(--text-secondary);
           transition: all var(--duration-fast);
           line-height: 1;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          white-space: nowrap;
+          min-height: 32px;
         }
 
         .rte-btn:hover {
@@ -654,6 +904,46 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           height: 16px;
           background: var(--border);
           margin: 0 4px;
+        }
+
+        .contextual-menu {
+          position: fixed;
+          background: var(--bg-card);
+          border: 1px solid var(--border-light);
+          border-radius: 6px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+          padding: 4px;
+          z-index: 1000;
+          min-width: 160px;
+          max-width: 240px;
+        }
+
+        .contextual-menu button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          padding: 6px 8px;
+          border: none;
+          background: transparent;
+          text-align: left;
+          font-size: 0.8125rem;
+          color: var(--text-primary);
+          cursor: pointer;
+          border-radius: 4px;
+          transition: all 0.15s ease;
+          white-space: nowrap;
+        }
+
+        .contextual-menu button:hover {
+          background: var(--bg-hover);
+        }
+
+        .contextual-menu .rte-separator {
+          width: 100%;
+          height: 1px;
+          background: var(--border);
+          margin: 4px 0;
         }
 
         .rte-dropdown {
