@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import IconComponent from './IconComponent';
+import { aiTextService } from '../utils/aiTextService';
 
 const BASIC_COLORS = [
   '#000000', '#E74C3C', '#E67E22', '#F1C40F', '#2ECC71',
@@ -17,12 +18,20 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const [slashMenuParams, setSlashMenuParams] = useState(null); // { top, left, filter }
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const [showInternalLinkMenu, setShowInternalLinkMenu] = useState(null); // 'file' | 'note' | null
+  const [internalLinkPosition, setInternalLinkPosition] = useState(null); // { top, left } | null
   const [isFullScreen, setIsFullScreen] = useState(false);
 
   // Menu contestuale per selezione testo
   const [textSelection, setTextSelection] = useState(null); // { text, range, position } | null
   const isMenuInteractingRef = useRef(false); // Flag per prevenire chiusura durante interazione
   const preventMenuReopenRef = useRef(false); // Flag per prevenire riapertura subito dopo formattazione
+  
+  // AI Writing Tools
+  const [showAIMenu, setShowAIMenu] = useState(false);
+  const [selectedText, setSelectedText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState('');
+  const aiSelectionRef = useRef(null); // Persist selection across re-renders
 
   // Track the initial value to detect dirty state
   const initialValueRef = useRef(value || '');
@@ -173,6 +182,93 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       isMenuInteractingRef.current = false;
     }, 100);
   };
+  
+  // Gestione AI Writing Tools
+  const handleAITool = async (tool) => {
+    if (!selectedText) return;
+    
+    setAiLoading(true);
+    setAiResult('');
+    
+    try {
+      let result;
+      switch (tool) {
+        case 'rewrite':
+          result = await aiTextService.rewrite(selectedText);
+          break;
+        case 'summarize':
+          result = await aiTextService.summarize(selectedText);
+          break;
+        case 'improve':
+          result = await aiTextService.improve(selectedText);
+          break;
+        case 'expand':
+          result = await aiTextService.expand(selectedText);
+          break;
+        case 'translate':
+          const targetLang = prompt('In quale lingua vuoi tradurre? (es: inglese, francese, spagnolo):');
+          if (targetLang) {
+            result = await aiTextService.translate(selectedText, targetLang);
+          } else {
+            setAiLoading(false);
+            return;
+          }
+          break;
+        case 'ideas':
+          result = await aiTextService.generateIdeas(selectedText);
+          break;
+        case 'grammar':
+          result = await aiTextService.fixGrammar(selectedText);
+          break;
+        default:
+          throw new Error('Strumento non riconosciuto');
+      }
+      
+      setAiResult(result);
+    } catch (error) {
+      console.error('AI Error:', error);
+      setAiResult('Errore: ' + error.message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+  
+  const applyAIResult = () => {
+    if (!aiResult || !aiSelectionRef.current) return;
+    
+    // Salva una copia della selezione e del risultato
+    const selectionToRestore = aiSelectionRef.current.cloneRange();
+    const resultText = aiResult;
+    
+    // Chiudi menu AI
+    setShowAIMenu(false);
+    setAiResult('');
+    setSelectedText('');
+    
+    // Usa requestAnimationFrame per assicurarsi che il DOM sia aggiornato
+    requestAnimationFrame(() => {
+      // Focus sull'editor
+      editorRef.current?.focus();
+      
+      // Ripristina la selezione
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(selectionToRestore);
+      
+      // Inserisci il risultato AI
+      document.execCommand('insertText', false, resultText);
+      handleInput();
+      
+      // Reset ref
+      aiSelectionRef.current = null;
+    });
+  };
+  
+  const closeAIMenu = () => {
+    setShowAIMenu(false);
+    setAiResult('');
+    setSelectedText('');
+  };
 
   const ContextualMenu = () => {
     if (!textSelection) return null;
@@ -266,6 +362,23 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         </button>
         <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('removeFormat'))}>
           ✕ Rimuovi formattazione
+        </button>
+        <div className="rte-separator" />
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => {
+          // Apri menu AI
+          const selection = window.getSelection();
+          const text = selection.toString().trim();
+          if (text) {
+            setSelectedText(text);
+            // Save selection to ref for later use
+            if (selection.rangeCount > 0) {
+              aiSelectionRef.current = selection.getRangeAt(0).cloneRange();
+            }
+            setShowAIMenu(true);
+            setTextSelection(null); // Chiudi menu contestuale
+          }
+        })}>
+          <IconComponent name="sparkles" /> AI
         </button>
       </div>
     );
@@ -376,6 +489,31 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       }
     }
 
+    // For link_file and link_note, use slash menu position if available (it works correctly)
+    // Otherwise fall back to cursor position calculation
+    if (cmd === 'link_file' || cmd === 'link_note') {
+      if (slashMenuParams) {
+        // Reuse the working slash menu position
+        setInternalLinkPosition({
+          top: slashMenuParams.top,
+          left: slashMenuParams.left
+        });
+      } else {
+        // Fallback to cursor position
+        const sel = window.getSelection();
+        if (sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const wrapperRect = editorRef.current.parentElement.getBoundingClientRect();
+          const position = {
+            top: rect.bottom - wrapperRect.top + 5,
+            left: rect.left - wrapperRect.left
+          };
+          setInternalLinkPosition(position);
+        }
+      }
+    }
+
     closeSlashMenu();
 
     if (cmd === 'highlight') exec('hiliteColor', '#F1C40F');
@@ -408,8 +546,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       { cmd: 'code', label: 'Blocco Codice', icon: '💻' },
       { cmd: 'divider', label: 'Separatore', icon: '➖' },
       { cmd: 'link', label: 'Link Esterno', icon: '🔗' },
-      { cmd: 'link_file', label: 'Collega File', icon: '📁' },
-      { cmd: 'link_note', label: 'Collega Nota', icon: '📝' },
+            { cmd: 'link_note', label: 'Collega Nota', icon: '📝' },
       { cmd: 'link_folder', label: 'Collega Cartella Locale', icon: '🗂️' },
       { cmd: 'image', label: 'Immagine', icon: '🖼️' }
     ].filter(o => o.label.toLowerCase().includes(slashMenuParams.filter) || o.cmd.includes(slashMenuParams.filter));
@@ -770,6 +907,334 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
       {/* Menu contestuale per selezione testo */}
       <ContextualMenu />
+      
+      {/* AI Writing Tools Modal */}
+      {showAIMenu && createPortal(
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000
+          }}
+          onClick={(e) => e.stopPropagation()} // Previene chiusura al click fuori
+        >
+          <div 
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              padding: '24px',
+              minWidth: '520px',
+              maxWidth: '680px',
+              maxHeight: '85vh',
+              overflow: 'auto',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              border: '1px solid #e5e7eb'
+            }}
+          >
+            {/* Header con X per chiudere */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px',
+              paddingBottom: '16px',
+              borderBottom: '1px solid var(--border-light)'
+            }}>
+              <h3 style={{ margin: 0, color: '#1f2937', fontSize: '1.25rem', fontWeight: 600 }}>
+                <IconComponent name="sparkles" /> Strumenti AI
+              </h3>
+              <button
+                onClick={closeAIMenu}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={(e) => e.target.style.background = '#f3f4f6'}
+                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* Testo selezionato */}
+            <div style={{
+              backgroundColor: '#f9fafb',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '6px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Testo selezionato
+              </div>
+              <div style={{ color: '#1f2937', fontSize: '0.875rem', lineHeight: 1.5 }}>
+                {selectedText.length > 200 ? selectedText.substring(0, 200) + '...' : selectedText}
+              </div>
+            </div>
+            
+            {/* Strumenti AI - Griglia 2x4 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '20px' }}>
+              <button
+                onClick={() => handleAITool('rewrite')}
+                disabled={aiLoading}
+                style={{
+                  padding: '14px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '10px',
+                  backgroundColor: '#ffffff',
+                  cursor: aiLoading ? 'not-allowed' : 'pointer',
+                  color: '#1f2937',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
+              >
+                📝 Riscrivi
+              </button>
+              <button
+                onClick={() => handleAITool('summarize')}
+                disabled={aiLoading}
+                style={{
+                  padding: '14px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '10px',
+                  backgroundColor: '#ffffff',
+                  cursor: aiLoading ? 'not-allowed' : 'pointer',
+                  color: '#1f2937',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
+              >
+                📊 Riassumi
+              </button>
+              <button
+                onClick={() => handleAITool('improve')}
+                disabled={aiLoading}
+                style={{
+                  padding: '14px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '10px',
+                  backgroundColor: '#ffffff',
+                  cursor: aiLoading ? 'not-allowed' : 'pointer',
+                  color: '#1f2937',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
+              >
+                🚀 Migliora
+              </button>
+              <button
+                onClick={() => handleAITool('expand')}
+                disabled={aiLoading}
+                style={{
+                  padding: '14px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '10px',
+                  backgroundColor: '#ffffff',
+                  cursor: aiLoading ? 'not-allowed' : 'pointer',
+                  color: '#1f2937',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
+              >
+                📈 Espandi
+              </button>
+              <button
+                onClick={() => handleAITool('translate')}
+                disabled={aiLoading}
+                style={{
+                  padding: '14px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '10px',
+                  backgroundColor: '#ffffff',
+                  cursor: aiLoading ? 'not-allowed' : 'pointer',
+                  color: '#1f2937',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
+              >
+                🌍 Traduci
+              </button>
+              <button
+                onClick={() => handleAITool('ideas')}
+                disabled={aiLoading}
+                style={{
+                  padding: '14px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '10px',
+                  backgroundColor: '#ffffff',
+                  cursor: aiLoading ? 'not-allowed' : 'pointer',
+                  color: '#1f2937',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
+              >
+                💡 Idee
+              </button>
+              <button
+                onClick={() => handleAITool('grammar')}
+                disabled={aiLoading}
+                style={{
+                  padding: '14px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '10px',
+                  backgroundColor: '#ffffff',
+                  cursor: aiLoading ? 'not-allowed' : 'pointer',
+                  color: '#1f2937',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  gridColumn: 'span 2'
+                }}
+                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
+              >
+                ✅ Correggi Grammatica
+              </button>
+            </div>
+            
+            {/* Loading state */}
+            {aiLoading && (
+              <div style={{
+                textAlign: 'center',
+                padding: '24px',
+                color: '#6b7280'
+              }}>
+                <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🤖</div>
+                <div style={{ fontSize: '0.875rem' }}>Elaborazione in corso...</div>
+              </div>
+            )}
+            
+            {/* Risultato AI */}
+            {aiResult && !aiLoading && (
+              <div>
+                <div style={{ 
+                  fontSize: '0.75rem', 
+                  color: '#9ca3af', 
+                  marginBottom: '8px', 
+                  fontWeight: 500, 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.5px' 
+                }}>
+                  Risultato
+                </div>
+                <div style={{
+                  backgroundColor: '#f9fafb',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb',
+                  marginBottom: '20px',
+                  color: '#1f2937',
+                  whiteSpace: 'pre-wrap',
+                  fontSize: '0.875rem',
+                  lineHeight: 1.6,
+                  maxHeight: '300px',
+                  overflow: 'auto'
+                }}>
+                  {aiResult}
+                </div>
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={applyAIResult}
+                    style={{
+                      padding: '12px 24px',
+                      backgroundColor: '#6366f1',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      transition: 'opacity 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.opacity = '0.9'}
+                    onMouseLeave={(e) => e.target.style.opacity = '1'}
+                  >
+                    ✅ Applica
+                  </button>
+                  <button
+                    onClick={closeAIMenu}
+                    style={{
+                      padding: '12px 24px',
+                      backgroundColor: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      transition: 'opacity 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.opacity = '0.9'}
+                    onMouseLeave={(e) => e.target.style.opacity = '1'}
+                  >
+                    ❌ Annulla
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
 
       <div className="rte-editor-wrapper" style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div
@@ -791,22 +1256,23 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           data-placeholder="Scrivi una nota... (premi '/' per comandi)"
         />
 
-        {showInternalLinkMenu === 'file' && (
-          <div className="rte-dropdown" style={{ position: 'absolute', top: '40px', left: '10px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
+        {showInternalLinkMenu === 'file' && internalLinkPosition && (
+          <div className="rte-dropdown" style={{ position: 'absolute', top: internalLinkPosition.top, left: internalLinkPosition.left, zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
             <div style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Seleziona File da collegare</div>
             {allFiles && allFiles.length > 0 ? allFiles.map(f => (
               <button key={f.id} type="button" onClick={() => {
                 editorRef.current?.focus();
                 insertHtml(`<a href="#" data-internal-id="${f.id}" data-internal-type="file" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📄 ${f.name}</a>&nbsp;`);
                 setShowInternalLinkMenu(null);
+                setInternalLinkPosition(null);
               }}>📄 {f.name}</button>
             )) : <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Nessun file disponibile</div>}
-            <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => setShowInternalLinkMenu(null)}>Annulla</button>
+            <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => { setShowInternalLinkMenu(null); setInternalLinkPosition(null); }}>Annulla</button>
           </div>
         )}
 
-        {showInternalLinkMenu === 'note' && (
-          <div className="rte-dropdown" style={{ position: 'absolute', top: '40px', left: '10px', zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
+        {showInternalLinkMenu === 'note' && internalLinkPosition && (
+          <div className="rte-dropdown" style={{ position: 'absolute', top: internalLinkPosition.top, left: internalLinkPosition.left, zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
             <div style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Seleziona Nota da collegare</div>
             {allNotes && allNotes.length > 0 ? allNotes.map(n => {
               const snippet = (n.text || '').replace(/<[^>]*>/g, '').trim().substring(0, 30) + '...';
@@ -815,10 +1281,11 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
                   editorRef.current?.focus();
                   insertHtml(`<a href="#" data-internal-id="${n.id}" data-internal-type="note" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📝 ${snippet}</a>&nbsp;`);
                   setShowInternalLinkMenu(null);
+                  setInternalLinkPosition(null);
                 }}>📝 {snippet}</button>
               );
             }) : <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Nessuna nota disponibile</div>}
-            <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => setShowInternalLinkMenu(null)}>Annulla</button>
+            <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => { setShowInternalLinkMenu(null); setInternalLinkPosition(null); }}>Annulla</button>
           </div>
         )}
 

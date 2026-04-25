@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { getMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem, formatBytes, getStorageInfo } from '../utils/storage';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
+import { getAvailableModels, getCurrentModel, setAIModel } from '../utils/aiTextService';
 
 export default function SettingsModal({ settings, updateSettings, onClose, setCustomers, customers }) {
     const [currentPassword, setCurrentPassword] = useState('');
@@ -296,7 +297,57 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                         </div>
                     )}
 
-                    {/* App Info Section */}
+                    {/* AI Writing Tools Model Settings */}
+                    <div className="settings-section" style={{ marginBottom: '32px', padding: '20px', background: 'var(--bg-hover)', borderRadius: 'var(--radius-lg)' }}>
+                        <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>🤖 AI Writing Tools</h3>
+                        <div className="form-row">
+                            <div className="detail-group" style={{ flex: 1 }}>
+                                <label className="input-label">Modello AI Predefinito</label>
+                                <select
+                                    className="input"
+                                    value={getCurrentModel().id}
+                                    onChange={e => {
+                                        setAIModel(e.target.value);
+                                        updateSettings({ aiWritingModel: e.target.value });
+                                    }}
+                                    style={{ width: '100%' }}
+                                >
+                                    {getAvailableModels().map(model => (
+                                        <option key={model.id} value={model.id}>
+                                            {model.label} - {model.description}
+                                        </option>
+                                    ))}
+                                </select>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '8px', display: 'block' }}>
+                                    Modello utilizzato per gli strumenti di scrittura AI nel Rich Text Editor. 
+                                    {getCurrentModel().id === 'gemma-3-27b-it' ? ' Gema 3 27B è ottimizzato per l\'italiano.' : ''}
+                                </span>
+                            </div>
+                        </div>
+                        <div style={{ marginTop: '12px', padding: '12px', background: 'var(--bg-input)', borderRadius: 'var(--radius-md)', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                            <strong>Modelli disponibili:</strong>
+                            <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {getAvailableModels().map(model => (
+                                    <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ 
+                                            background: model.id === getCurrentModel().id ? 'var(--primary)' : 'var(--bg-secondary)', 
+                                            color: model.id === getCurrentModel().id ? 'white' : 'var(--text-secondary)',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.7rem',
+                                            fontWeight: 600
+                                        }}>
+                                            {model.badge}
+                                        </span>
+                                        <span style={{ color: model.id === getCurrentModel().id ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                                            {model.label}: {model.description}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="settings-section" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '24px' }}>
                         <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Informazioni App</h3>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'var(--bg-input)', borderRadius: 'var(--radius-md)' }}>

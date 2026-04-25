@@ -2541,7 +2541,17 @@ function NoteModal({ note, onSave, onClose, onOpenFile, onOpenNote, allFiles, al
                         value={text} 
                         onChange={setText} 
                         onDirtyChange={setIsDirty} 
-                        onInternalLinkClick={(id, type) => type === 'file' ? (onOpenFile && onOpenFile(id)) : (onOpenNote && onOpenNote(id))} 
+                        onInternalLinkClick={(id, type) => {
+                            if (type === 'file') {
+                                onOpenFile && onOpenFile(id);
+                            } else {
+                                // Close modal first, then open the new note
+                                onClose();
+                                setTimeout(() => {
+                                    onOpenNote && onOpenNote(id);
+                                }, 10);
+                            }
+                        }} 
                         allFiles={allFiles} 
                         allNotes={allNotes} 
                     />
