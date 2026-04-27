@@ -899,6 +899,8 @@ export default function App() {
         aiUsageStats={aiUsageStats}
         onUpdateChatHistory={updateChatHistory}
         onUpdateAiUsageStats={updateAiUsageStats}
+        settings={settings}
+        updateSettings={updateSettings}
       />
 
       {/* Click outside to close menu */}

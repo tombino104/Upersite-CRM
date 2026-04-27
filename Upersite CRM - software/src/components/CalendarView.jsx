@@ -128,6 +128,7 @@ export default function CalendarView({ customers, onClose, onSelectCustomer, ini
         <main className="calendar-modal-body">
           {view === 'Mese' && <MonthView date={currentDate} events={allEvents} onOpenClient={(customer) => {
     onSelectCustomer(customer);
+    handleClose();
     setTimeout(() => {
       const event = new CustomEvent('setActiveTab', { detail: 'finance' });
       window.dispatchEvent(event);
@@ -135,6 +136,7 @@ export default function CalendarView({ customers, onClose, onSelectCustomer, ini
   }} />}
           {view === 'Settimana' && <WeekView date={currentDate} events={allEvents} onOpenClient={(customer) => {
     onSelectCustomer(customer);
+    handleClose();
     setTimeout(() => {
       const event = new CustomEvent('setActiveTab', { detail: 'finance' });
       window.dispatchEvent(event);
@@ -142,6 +144,7 @@ export default function CalendarView({ customers, onClose, onSelectCustomer, ini
   }} />}
           {view === 'Giorno' && <DayView date={currentDate} events={allEvents} onOpenClient={(customer) => {
     onSelectCustomer(customer);
+    handleClose();
     setTimeout(() => {
       const event = new CustomEvent('setActiveTab', { detail: 'finance' });
       window.dispatchEvent(event);

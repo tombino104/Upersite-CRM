@@ -305,17 +305,19 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
         </optgroup>
         <optgroup label="✅ Task">
           <option value="create_task">Crea task</option>
+          <option value="create_recurring_task">Crea task ricorrente</option>
           <option value="create_subtask">Crea sotto-task</option>
           <option value="update_task">Aggiorna task</option>
-          <option value="complete_task">Segna task come completato/da fare</option>
+          <option value="complete_task">Completa task</option>
         </optgroup>
         <optgroup label="📝 Note">
           <option value="create_note">Crea nota</option>
-          <option value="append_note">Aggiungi testo a nota esistente</option>
+          <option value="append_note">Aggiungi a nota</option>
         </optgroup>
-        <optgroup label="💾 Sistema">
-          <option value="create_backup">Crea backup</option>
-          <option value="export_backup">Esporta backup</option>
+        <optgroup label="� Sistema">
+          <option value="backup">Esegui backup</option>
+          <option value="export_data">Esporta dati</option>
+          <option value="recurring_action">Azione ricorrente</option>
         </optgroup>
       </select>
 
@@ -338,6 +340,71 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
           tags={tags}
           label={formData.actionType === 'add_tag' ? 'Tag da aggiungere' : 'Tag da rimuovere'}
         />
+      </>)}
+
+      {/* ── Crea task ricorrente ── */}
+      {formData.actionType === 'create_recurring_task' && (<>
+        {renderCustomerPicker('Cliente su cui creare il task ricorrente')}
+        <label style={lbl}>Titolo task</label>
+        <input style={ip} value={conf.title || ''} onChange={e => setConf('title', e.target.value)} placeholder="Es: Report settimanale" />
+        <label style={lbl}>Priorità</label>
+        <select style={ip} value={conf.priority || 'Media'} onChange={e => setConf('priority', e.target.value)}>
+          {PRIORITIES.map(p => <option key={p}>{p}</option>)}
+        </select>
+        <label style={lbl}>Ricorrenza</label>
+        <select style={ip} value={conf.recurrence || 'giornaliera'} onChange={e => setConf('recurrence', e.target.value)}>
+          <option value="giornaliera">Giornaliera</option>
+          <option value="settimanale">Settimanale</option>
+          <option value="mensile">Mensile</option>
+          <option value="personalizzata">Personalizzata</option>
+        </select>
+        {conf.recurrence === 'personalizzata' && (
+          <>
+            <label style={lbl}>Intervallo (giorni)</label>
+            <input type="number" min="1" style={ip} value={conf.customInterval || ''} onChange={e => setConf('customInterval', e.target.value)} placeholder="30" />
+          </>
+        )}
+        <label style={lbl}>Scadenza</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <select style={{ ...ip, flex: 1 }} value={conf.dueDateType || 'nessuna'} onChange={e => setConf('dueDateType', e.target.value)}>
+            {['nessuna', 'giorni dopo', 'settimane dopo', 'mesi dopo'].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+          </select>
+          {conf.dueDateType && conf.dueDateType !== 'nessuna' && conf.dueDateType !== 'custom' && (
+            <input type="number" min="1" style={{ ...ip, flex: 1 }} value={conf.dueDateValue || ''} onChange={e => setConf('dueDateValue', e.target.value)} placeholder="N." />
+          )}
+          {conf.dueDateType === 'custom' && (
+            <input type="date" style={{ ...ip, flex: 1 }} value={conf.dueDateValue || ''} onChange={e => setConf('dueDateValue', e.target.value)} />
+          )}
+        </div>
+        <label style={lbl}>Descrizione (supporta variabili)</label>
+        <textarea style={{ ...ip, minHeight: 60, resize: 'vertical' }} value={conf.description || ''} onChange={e => setConf('description', e.target.value)} placeholder="Usa {{cliente.nome}} per variabili dinamiche" />
+      </>)}
+
+      {/* ── Azione ricorrente ── */}
+      {formData.actionType === 'recurring_action' && (<>
+        <label style={lbl}>Tipo azione da ripetere</label>
+        <select style={ip} value={conf.recurringActionType || ''} onChange={e => setConf('recurringActionType', e.target.value)}>
+          <option value="">Seleziona azione...</option>
+          <option value="backup">Backup automatico</option>
+          <option value="export_data">Esporta dati</option>
+          <option value="create_task">Crea task</option>
+          <option value="create_note">Crea nota</option>
+        </select>
+        <label style={lbl}>Ricorrenza</label>
+        <select style={ip} value={conf.recurrence || 'giornaliera'} onChange={e => setConf('recurrence', e.target.value)}>
+          <option value="giornaliera">Giornaliera</option>
+          <option value="settimanale">Settimanale</option>
+          <option value="mensile">Mensile</option>
+          <option value="personalizzata">Personalizzata</option>
+        </select>
+        {conf.recurrence === 'personalizzata' && (
+          <>
+            <label style={lbl}>Intervallo (minuti)</label>
+            <input type="number" min="1" style={ip} value={conf.customInterval || ''} onChange={e => setConf('customInterval', e.target.value)} placeholder="30" />
+          </>
+        )}
+        <label style={lbl}>Parametri aggiuntivi (opzionale)</label>
+        <textarea style={{ ...ip, minHeight: 60, resize: 'vertical' }} value={conf.extraParams || ''} onChange={e => setConf('extraParams', e.target.value)} placeholder="Parametri in formato JSON o testo libero" />
       </>)}
 
       {/* ── Crea task ── */}

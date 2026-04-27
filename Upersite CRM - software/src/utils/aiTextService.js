@@ -78,8 +78,8 @@ export function getCurrentModel() {
 }
 
 // Funzione per chiamare API Gemini
-async function callGemini(prompt) {
-  const model = getConfiguredModel();
+async function callGemini(prompt, modelId = null) {
+  const model = modelId ? AI_MODELS.find(m => m.id === modelId) || getConfiguredModel() : getConfiguredModel();
   const apiUrl = `https://generativelanguage.googleapis.com/${model.apiVersion}/models/${model.id}:generateContent?key=${GEMINI_API_KEY}`;
   
   const requestBody = {
@@ -149,8 +149,8 @@ export const aiTextService = {
     return await callGemini(AI_PROMPTS.rewrite(text));
   },
   
-  async summarize(text) {
-    return await callGemini(AI_PROMPTS.summarize(text));
+  async summarize(text, modelId = null) {
+    return await callGemini(AI_PROMPTS.summarize(text), modelId);
   },
   
   async improve(text) {

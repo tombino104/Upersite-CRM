@@ -294,29 +294,32 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
                                             color: 'var(--text-primary)', 
                                             fontSize: '0.95rem', 
                                             textDecoration: t.completed ? 'line-through' : 'none', 
-                                            opacity: t.completed ? 0.6 : 1,
-                                            cursor: 'default',
                                             flex: 1,
-                                            alignSelf: 'center'
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
                                         }}
-                                        title="Testo del todo"
                                     >
                                         {t.text}
+                                        {(t.description || '').trim() && (
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>📝</span>
+                                        )}
                                     </span>
                                     <button
                                         className="btn btn-ghost btn-icon-sm"
                                         onClick={() => startEditingTodo(t.id, t.text, t.priority)}
                                         title="Modifica attività"
                                         style={{ 
-                                            fontSize: '0.75rem', 
+                                            fontSize: '0.7rem', 
                                             color: 'var(--text-tertiary)', 
-                                            padding: '2px',
+                                            padding: '1px',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            height: '24px',
-                                            width: '24px',
-                                            lineHeight: '1'
+                                            height: '20px',
+                                            width: '20px',
+                                            lineHeight: '1',
+                                            flexShrink: 0
                                         }}
                                     >
                                         ✏️
@@ -335,23 +338,11 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
                                             {new Date(t.dueDate).toLocaleDateString('it-IT')}
                                         </span>
                                     )}
-                                    {hasDetails && <span style={{ color: 'var(--text-tertiary)' }}>📎</span>}
-                                </div>
+                                                                    </div>
                             )}
                         </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <button
-                            className="btn btn-ghost btn-icon-sm"
-                            onClick={() => {
-                                const path = prompt('Inserisci il percorso della cartella locale per questo task:');
-                                if (path !== null) updateTodoField(t.id, 'folderPath', path.trim());
-                            }}
-                            title="Collega Cartella Locale"
-                            style={{ color: t.folderPath ? 'var(--primary)' : 'var(--text-tertiary)' }}
-                        >
-                            🗂️
-                        </button>
                         <button
                             className="btn btn-ghost btn-icon-sm"
                             onClick={() => setOpenDetails(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
@@ -940,6 +931,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
     const [initialPreviewFile, setInitialPreviewFile] = useState(null);
     const [initialSelectedNote, setInitialSelectedNote] = useState(null);
     const [showSmartReport, setShowSmartReport] = useState(false);
+    const [deletePassword, setDeletePassword] = useState('');
+    const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
     const handleOpenFile = async (fileId) => {
         const f = form.files?.find(x => x.id === fileId);
         if (f) {
@@ -993,9 +986,11 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
-                if (showUnsavedConfirm || showDeleteConfirm || deleteTarget) {
+                if (showUnsavedConfirm || showDeleteConfirm || deleteTarget || showPasswordConfirm) {
                     setShowUnsavedConfirm(false);
                     setShowDeleteConfirm(false);
+                    setShowPasswordConfirm(false);
+                    setDeletePassword('');
                     setDeleteTarget(null);
                     return;
                 }
@@ -1008,7 +1003,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [hasChanges, showUnsavedConfirm, showDeleteConfirm, deleteTarget]);
+    }, [hasChanges, showUnsavedConfirm, showDeleteConfirm, deleteTarget, showPasswordConfirm]);
     const prevConfig = useRef({ pkg: form.packageType, addons: JSON.stringify(form.addons) });
     // Auto-calculate total price based on package and selected addons
     useEffect(() => {
@@ -1057,7 +1052,42 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
         }
     };
     const confirmDelete = (type, id) => {
-        setDeleteTarget({ type, id });
+        if (type === 'customer') {
+            setShowPasswordConfirm(true);
+            setDeleteTarget({ type, id });
+        } else {
+            setDeleteTarget({ type, id });
+        }
+    };
+
+    const verifyDeletePassword = () => {
+        // Usa la password master di sistema del CRM
+        const masterPassword = getMasterPassword() || "admin";
+        const cleanPassword = deletePassword.trim();
+        
+        console.log('Password inserita:', cleanPassword);
+        console.log('Password attesa:', masterPassword);
+        
+        if (cleanPassword === masterPassword) {
+            setShowPasswordConfirm(false);
+            setDeletePassword('');
+            // Procedi con l'eliminazione
+            if (deleteTarget.type === 'customer') {
+                onDelete(form.id);
+                onClose();
+            } else {
+                executeDelete();
+            }
+        } else {
+            alert('Password errata!');
+            setDeletePassword('');
+        }
+    };
+
+    const cancelPasswordConfirm = () => {
+        setShowPasswordConfirm(false);
+        setDeletePassword('');
+        setDeleteTarget(null);
     };
     const formatPhone = (input) => {
         const raw = (input || '').toString().trim();
@@ -1107,6 +1137,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
             }));
         } else if (type === 'note') {
             update('notes', form.notes.filter(n => n.id !== id));
+        } else if (type === 'tickets') {
+            update('tickets', form.tickets.filter(t => t.id !== id));
         } else if (type === 'todo') {
             const removeRecursive = (items) => (items || []).filter(t => t.id !== id).map(t => {
                 if (t.subtasks && t.subtasks.length > 0) {
@@ -1279,7 +1311,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                     </div>
                 )}
                 {/* Delete Confirmation overlay */}
-                {deleteTarget && (() => {
+                {deleteTarget && deleteTarget.type !== 'customer' && (() => {
                     // Check if this is a recurring todo
                     const isRecurTodo = deleteTarget.type === 'todo' && (() => {
                         const findRec = (items) => {
@@ -1347,15 +1379,36 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                 <div className="modal-footer">
                     {!isNew && (
                         <div style={{ marginRight: 'auto' }}>
-                            {showDeleteConfirm ? (
-                                <div className="detail-delete-confirm animate-fade-in">
-                                    <span>Eliminare il cliente?</span>
-                                    <button className="btn btn-danger btn-sm" onClick={() => onDelete(form.id)}>Elimina</button>
-                                    <button className="btn btn-ghost btn-sm" onClick={() => setShowDeleteConfirm(false)}>Annulla</button>
+                            {showPasswordConfirm ? (
+                                <div className="detail-delete-confirm animate-fade-in" style={{ padding: '12px', minWidth: '250px' }}>
+                                    <div style={{ marginBottom: '8px', fontSize: '0.9rem', fontWeight: 500 }}>
+                                        🔐 Password per eliminare
+                                    </div>
+                                    <input
+                                        type="password"
+                                        className="input"
+                                        value={deletePassword}
+                                        onChange={e => setDeletePassword(e.target.value)}
+                                        placeholder="Inserisci password..."
+                                        style={{ marginBottom: '8px', fontSize: '0.9rem' }}
+                                        autoFocus
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') verifyDeletePassword();
+                                            if (e.key === 'Escape') cancelPasswordConfirm();
+                                        }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <button className="btn btn-danger btn-sm" onClick={verifyDeletePassword}>
+                                            Elimina
+                                        </button>
+                                        <button className="btn btn-ghost btn-sm" onClick={cancelPasswordConfirm}>
+                                            Annulla
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
                                 <button className="btn btn-ghost" style={{ color: 'var(--danger)' }}
-                                    onClick={() => setShowDeleteConfirm(true)}>
+                                    onClick={() => confirmDelete('customer', form.id)}>
                                     🗑 Elimina Cliente
                                 </button>
                             )}

@@ -319,8 +319,31 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                     ))}
                                 </select>
                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '8px', display: 'block' }}>
-                                    Modello utilizzato per gli strumenti di scrittura AI nel Rich Text Editor. 
+                                    Modello utilizzato per gli strumenti di scrittura AI nel Rich Text Editor.
                                     {getCurrentModel().id === 'gemma-3-27b-it' ? ' Gema 3 27B è ottimizzato per l\'italiano.' : ''}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="form-row" style={{ marginTop: '16px' }}>
+                            <div className="detail-group" style={{ flex: 1 }}>
+                                <label className="input-label">Modello AI per Riassunti</label>
+                                <select
+                                    className="input"
+                                    value={settings.aiSummaryModel || getCurrentModel().id}
+                                    onChange={e => {
+                                        updateSettings({ aiSummaryModel: e.target.value });
+                                    }}
+                                    style={{ width: '100%' }}
+                                >
+                                    {getAvailableModels().map(model => (
+                                        <option key={model.id} value={model.id}>
+                                            {model.label} - {model.description}
+                                        </option>
+                                    ))}
+                                </select>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '8px', display: 'block' }}>
+                                    Modello specifico per il pulsante "Riassunto AI" nelle note.
                                 </span>
                             </div>
                         </div>
@@ -344,6 +367,83 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                         </span>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="settings-section" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '24px' }}>
+                        <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ottimizzazione AI</h3>
+                        
+                        <div style={{ marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'var(--bg-input)', borderRadius: 'var(--radius-md)' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.9rem', fontWeight: 500, marginBottom: '4px' }}>Ottimizzazione Token</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                                        Invia solo dati rilevanti al chatbot AI (task attivi, tickets aperti, rate da pagare)
+                                    </div>
+                                </div>
+                                <label className="switch" style={{ 
+                                    position: 'relative', 
+                                    display: 'inline-block',
+                                    width: '44px',
+                                    height: '24px'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={settings.aiOptimization || false}
+                                        onChange={e => updateSettings({ aiOptimization: e.target.checked })}
+                                        style={{ opacity: 0, width: 0, height: 0 }}
+                                    />
+                                    <span style={{
+                                        position: 'absolute',
+                                        cursor: 'pointer',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        backgroundColor: settings.aiOptimization ? 'var(--primary)' : '#ccc',
+                                        transition: '.4s',
+                                        borderRadius: '24px'
+                                    }}>
+                                        <span style={{
+                                            position: 'absolute',
+                                            height: '18px',
+                                            width: '18px',
+                                            left: settings.aiOptimization ? '26px' : '3px',
+                                            bottom: '3px',
+                                            backgroundColor: 'white',
+                                            transition: '.4s',
+                                            borderRadius: '50%'
+                                        }}></span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div style={{ padding: '12px', background: 'var(--bg-input)', borderRadius: 'var(--radius-md)' }}>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 500, marginBottom: '8px' }}>Statistiche Token Globali</div>
+                            <div style={{ display: 'flex', gap: '24px', fontSize: '0.85rem' }}>
+                                <div>
+                                    <div style={{ color: 'var(--text-tertiary)', marginBottom: '2px' }}>Token usati</div>
+                                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                        {settings.tokenStats?.totalUsed?.toLocaleString('it-IT') || 0}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'var(--text-tertiary)', marginBottom: '2px' }}>Token risparmiati</div>
+                                    <div style={{ fontWeight: 600, color: 'var(--success)' }}>
+                                        {settings.tokenStats?.totalSaved?.toLocaleString('it-IT') || 0}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'var(--text-tertiary)', marginBottom: '2px' }}>Risparmio</div>
+                                    <div style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                                        {settings.tokenStats?.totalUsed > 0 
+                                            ? Math.round((settings.tokenStats.totalSaved / (settings.tokenStats.totalUsed + settings.tokenStats.totalSaved)) * 100) + '%'
+                                            : '0%'
+                                        }
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

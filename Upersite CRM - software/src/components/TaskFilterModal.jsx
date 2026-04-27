@@ -5,6 +5,7 @@ export default function TaskFilterModal({ customers, onClose, onSelectCustomer }
   const [customerFilter, setCustomerFilter] = useState('all');
   const [exportFormat, setExportFormat] = useState('md');
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [activeTab, setActiveTab] = useState('list'); // 'list' or 'eisenhower'
 
   // Extract all tasks from all customers
   const allTasks = useMemo(() => {
@@ -77,6 +78,36 @@ export default function TaskFilterModal({ customers, onClose, onSelectCustomer }
     });
   };
 
+  // Eisenhower classification function
+  const classifyTask = (task) => {
+    const hasDueDate = !!task.dueDate;
+    const daysLeft = hasDueDate ? Math.ceil((new Date(task.dueDate) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+    const isUrgent = hasDueDate && daysLeft <= 3;
+    const isImportant = task.priority === 'Alta' || (task.priority === 'Media' && (!hasDueDate || daysLeft <= 7));
+    
+    if (isUrgent && isImportant) return 'Q1';
+    if (!isUrgent && isImportant) return 'Q2';
+    if (isUrgent && !isImportant) return 'Q3';
+    return 'Q4';
+  };
+
+  // Organize tasks into Eisenhower quadrants
+  const matrixTasks = useMemo(() => {
+    const quadrants = {
+      Q1: [], // Urgent + Important
+      Q2: [], // Not Urgent + Important
+      Q3: [], // Urgent + Not Important
+      Q4: []  // Not Urgent + Not Important
+    };
+
+    filteredTasks.forEach(task => {
+      const quadrant = classifyTask(task);
+      quadrants[quadrant].push(task);
+    });
+
+    return quadrants;
+  }, [filteredTasks]);
+
   const getPriorityColor = (priority) => {
     switch (priority) {
       case 'Alta': return 'var(--danger)';
@@ -85,6 +116,54 @@ export default function TaskFilterModal({ customers, onClose, onSelectCustomer }
       default: return 'var(--text-secondary)';
     }
   };
+
+  // Task Card Component
+  const TaskCard = ({ task, onClick }) => (
+    <div
+      onClick={onClick}
+      style={{
+        padding: '8px 12px',
+        border: '1px solid var(--border-light)',
+        borderRadius: 'var(--radius-sm)',
+        background: 'var(--bg-card)',
+        cursor: 'pointer',
+        transition: 'all 0.2s',
+        fontSize: '0.85rem'
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--bg-input)';
+        e.currentTarget.style.transform = 'translateY(-1px)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'var(--bg-card)';
+        e.currentTarget.style.transform = 'translateY(0)';
+      }}
+    >
+      <div style={{ fontWeight: 500, color: 'var(--text-primary)', marginBottom: '4px' }}>
+        {task.text}
+      </div>
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '0.75rem' }}>
+        <span style={{ 
+          padding: '2px 6px', 
+          borderRadius: '3px', 
+          fontSize: '0.7rem', 
+          fontWeight: 600, 
+          color: 'white',
+          backgroundColor: getPriorityColor(task.priority)
+        }}>
+          {task.priority}
+        </span>
+        <span style={{ color: 'var(--text-secondary)' }}>
+          {task.customerName}
+        </span>
+        {task.dueDate && (
+          <span style={{ color: 'var(--text-tertiary)' }}>
+            {formatDate(task.dueDate)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 
   const exportToMarkdown = (format = exportFormat) => {
     const extractAllTasks = (customers) => {
@@ -274,210 +353,415 @@ export default function TaskFilterModal({ customers, onClose, onSelectCustomer }
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1200 }}>
       <div className="modal-content animate-scale-in" style={{ maxWidth: '1200px', width: '95vw', maxHeight: '90vh', padding: '24px' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 6h18"></path>
-              <path d="M7 12h10"></path>
-              <path d="M10 18h4"></path>
-            </svg>
-            Tutti i Task da Fare
-          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"></path>
+                <path d="M7 12h10"></path>
+                <path d="M10 18h4"></path>
+              </svg>
+              {activeTab === 'list' ? 'Tutti i Task da Fare' : 'Matrice di Eisenhower'}
+            </h3>
+            
+            {/* Tab Navigation */}
+            <div style={{ display: 'flex', background: 'var(--bg-input)', borderRadius: 'var(--radius-md)', padding: '2px' }}>
+              <button
+                className={`btn ${activeTab === 'list' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setActiveTab('list')}
+                style={{ 
+                  fontSize: '0.85rem', 
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-sm)'
+                }}
+              >
+                Elenco
+              </button>
+              <button
+                className={`btn ${activeTab === 'eisenhower' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setActiveTab('eisenhower')}
+                style={{ 
+                  fontSize: '0.85rem', 
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-sm)'
+                }}
+              >
+                Matrice Eisenhower
+              </button>
+            </div>
+          </div>
           <button className="btn btn-ghost btn-icon" onClick={onClose}>✕</button>
         </div>
 
-        {/* Filters */}
-        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '200px' }}>
-            <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Priorità</label>
-            <div className="app-dropdown-wrapper">
-              <select 
-                className="app-dropdown-select" 
-                value={priorityFilter} 
-                onChange={e => setPriorityFilter(e.target.value)}
-              >
-                <option value="all">Tutte le priorità</option>
-                <option value="Alta">Alta</option>
-                <option value="Media">Media</option>
-                <option value="Bassa">Bassa</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '250px' }}>
-            <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Cliente</label>
-            <div className="app-dropdown-wrapper">
-              <select 
-                className="app-dropdown-select" 
-                value={customerFilter} 
-                onChange={e => setCustomerFilter(e.target.value)}
-              >
-                <option value="all">Tutti i clienti</option>
-                {customers.map(customer => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', marginLeft: 'auto' }}>
-            <div className="app-menu-wrapper" style={{ position: 'relative' }}>
-              <button 
-                className="btn btn-primary btn-sm" 
-                onClick={() => setShowExportDropdown(!showExportDropdown)}
-                title="Esporta tutti i task"
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '6px',
-                  fontSize: '0.85rem',
-                  padding: '8px 12px',
-                  backgroundColor: 'var(--primary)',
-                  color: 'white'
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                Esporta
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </button>
-              {showExportDropdown && (
-                <div className="app-dropdown animate-scale-in" style={{ 
-                  top: '100%', 
-                  right: '0', 
-                  marginTop: '4px', 
-                  minWidth: '120px',
-                  backgroundColor: 'var(--primary)',
-                  border: '1px solid var(--primary)'
-                }}>
-                  <button 
-                    className="app-dropdown-item" 
-                    onClick={() => { setExportFormat('md'); setShowExportDropdown(false); exportToMarkdown('md'); }}
-                    style={{ 
-                      color: 'white', 
-                      padding: '8px 12px',
-                      fontSize: '0.8rem'
-                    }}
-                  >
-                    Esporta .md
-                  </button>
-                  <button 
-                    className="app-dropdown-item" 
-                    onClick={() => { setExportFormat('txt'); setShowExportDropdown(false); exportToMarkdown('txt'); }}
-                    style={{ 
-                      color: 'white', 
-                      padding: '8px 12px',
-                      fontSize: '0.8rem'
-                    }}
-                  >
-                    Esporta .txt
-                  </button>
-                </div>
-              )}
-            </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>
-              {filteredTasks.length} task trovati
-            </div>
-          </div>
-        </div>
-
-        {/* Tasks Table */}
-        <div style={{ maxHeight: '60vh', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)' }}>
-          {filteredTasks.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '16px' }}>
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
-                  <path d="M3 6h18"></path>
-                  <path d="M7 12h10"></path>
-                  <path d="M10 18h4"></path>
-                </svg>
+        {/* Filters - Only show in list tab */}
+        {activeTab === 'list' && (
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '200px' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Priorità</label>
+              <div className="app-dropdown-wrapper">
+                <select 
+                  className="app-dropdown-select" 
+                  value={priorityFilter} 
+                  onChange={e => setPriorityFilter(e.target.value)}
+                >
+                  <option value="all">Tutte le priorità</option>
+                  <option value="Alta">Alta</option>
+                  <option value="Media">Media</option>
+                  <option value="Bassa">Bassa</option>
+                </select>
               </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '8px' }}>Nessun task trovato</div>
-              <div style={{ fontSize: '0.9rem' }}>Prova a cambiare i filtri per vedere più risultati</div>
             </div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-input)', borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>Task</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>Cliente</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>Priorità</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>Scadenza</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTasks.map((task, index) => (
-                  <tr 
-                    key={task.id}
-                    onClick={() => handleTaskClick(task)}
-                    style={{ 
-                      cursor: 'pointer',
-                      borderBottom: '1px solid var(--border-light)',
-                      transition: 'background-color 0.2s',
-                      backgroundColor: index % 2 === 0 ? 'var(--bg-input)' : 'transparent'
-                    }}
-                  >
-                    <td style={{ padding: '12px', verticalAlign: 'top' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{task.text}</span>
-                        {task.parentTask && (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-                            → Sottotask di: {task.parentTask.text}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ padding: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ 
-                          width: '24px', 
-                          height: '24px', 
-                          borderRadius: '50%', 
-                          background: 'var(--primary-ghost)', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          fontSize: '0.7rem', 
-                          fontWeight: 700, 
-                          color: 'var(--primary)',
-                          flexShrink: 0
-                        }}>
-                          {task.customerName.charAt(0).toUpperCase()}
-                        </div>
-                        <span style={{ color: 'var(--text-secondary)' }}>{task.customerName}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '12px' }}>
-                      <span 
-                        style={{ 
-                          padding: '4px 8px', 
-                          borderRadius: '4px', 
-                          fontSize: '0.75rem', 
-                          fontWeight: 600, 
-                          color: 'white',
-                          backgroundColor: getPriorityColor(task.priority),
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {task.priority}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                      {formatDate(task.dueDate)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '250px' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Cliente</label>
+              <div className="app-dropdown-wrapper">
+                <select 
+                  className="app-dropdown-select" 
+                  value={customerFilter} 
+                  onChange={e => setCustomerFilter(e.target.value)}
+                >
+                  <option value="all">Tutti i clienti</option>
+                  {customers.map(customer => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', marginLeft: 'auto' }}>
+              <div className="app-menu-wrapper" style={{ position: 'relative' }}>
+                <button 
+                  className="btn btn-primary btn-sm" 
+                  onClick={() => setShowExportDropdown(!showExportDropdown)}
+                  title="Esporta tutti i task"
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    fontSize: '0.85rem',
+                    padding: '8px 12px',
+                    backgroundColor: 'var(--primary)',
+                    color: 'white'
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  Esporta
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                {showExportDropdown && (
+                  <div className="app-dropdown animate-scale-in" style={{ 
+                    top: '100%', 
+                    right: '0', 
+                    marginTop: '4px', 
+                    minWidth: '120px',
+                    backgroundColor: 'var(--primary)',
+                    border: '1px solid var(--primary)'
+                  }}>
+                    <button 
+                      className="app-dropdown-item" 
+                      onClick={() => { setExportFormat('md'); setShowExportDropdown(false); exportToMarkdown('md'); }}
+                      style={{ 
+                        color: 'white', 
+                        padding: '8px 12px',
+                        fontSize: '0.8rem'
+                      }}
+                    >
+                      Esporta .md
+                    </button>
+                    <button 
+                      className="app-dropdown-item" 
+                      onClick={() => { setExportFormat('txt'); setShowExportDropdown(false); exportToMarkdown('txt'); }}
+                      style={{ 
+                        color: 'white', 
+                        padding: '8px 12px',
+                        fontSize: '0.8rem'
+                      }}
+                    >
+                      Esporta .txt
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', fontWeight: 500 }}>
+                {filteredTasks.length} task trovati
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Automatic classification indicator for Eisenhower tab */}
+        {activeTab === 'eisenhower' && (
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '8px', 
+            marginBottom: '20px',
+            padding: '8px 12px',
+            background: 'var(--bg-input)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: '0.85rem',
+            color: 'var(--text-secondary)'
+          }}>
+            <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓</span>
+            Classificazione automatica basata su priorità e scadenze
+          </div>
+        )}
+
+        {/* Content - List View or Eisenhower Matrix */}
+        {activeTab === 'list' ? (
+          /* List View */
+          <div style={{ maxHeight: '60vh', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)' }}>
+            {filteredTasks.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '16px' }}>
+                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                    <path d="M3 6h18"></path>
+                    <path d="M7 12h10"></path>
+                    <path d="M10 18h4"></path>
+                  </svg>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '8px' }}>Nessun task trovato</div>
+                <div style={{ fontSize: '0.9rem' }}>Prova a cambiare i filtri per vedere più risultati</div>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-input)', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>Task</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>Cliente</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>Priorità</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-primary)' }}>Scadenza</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTasks.map((task, index) => (
+                    <tr 
+                      key={task.id}
+                      onClick={() => handleTaskClick(task)}
+                      style={{ 
+                        cursor: 'pointer',
+                        borderBottom: '1px solid var(--border-light)',
+                        transition: 'background-color 0.2s',
+                        backgroundColor: index % 2 === 0 ? 'var(--bg-input)' : 'transparent'
+                      }}
+                    >
+                      <td style={{ padding: '12px', verticalAlign: 'top' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{task.text}</span>
+                          {task.parentTask && (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                              → Sottotask di: {task.parentTask.text}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ 
+                            width: '24px', 
+                            height: '24px', 
+                            borderRadius: '50%', 
+                            background: 'var(--primary-ghost)', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            fontSize: '0.7rem', 
+                            fontWeight: 700, 
+                            color: 'var(--primary)',
+                            flexShrink: 0
+                          }}>
+                            {task.customerName.charAt(0).toUpperCase()}
+                          </div>
+                          <span style={{ color: 'var(--text-secondary)' }}>{task.customerName}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <span 
+                          style={{ 
+                            padding: '4px 8px', 
+                            borderRadius: '4px', 
+                            fontSize: '0.75rem', 
+                            fontWeight: 600, 
+                            color: 'white',
+                            backgroundColor: getPriorityColor(task.priority),
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {task.priority}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                        {formatDate(task.dueDate)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
+          /* Eisenhower Matrix */
+          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', minHeight: '400px' }}>
+              {/* Q1: Urgent + Important */}
+              <div style={{ 
+                border: '2px solid var(--danger)', 
+                borderRadius: 'var(--radius-md)', 
+                padding: '16px',
+                background: 'rgba(220, 53, 69, 0.05)'
+              }}>
+                <div style={{ 
+                  fontWeight: 600, 
+                  color: 'var(--danger)', 
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <div style={{ 
+                    width: '12px', 
+                    height: '12px', 
+                    borderRadius: '50%', 
+                    background: 'var(--danger)' 
+                  }}></div>
+                  Q1: Urgente + Importante
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '12px' }}>Fai Subito</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {matrixTasks.Q1.length === 0 ? (
+                    <div style={{ color: 'var(--text-tertiary)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                      Nessun task in questo quadrante
+                    </div>
+                  ) : (
+                    matrixTasks.Q1.map(task => (
+                      <TaskCard key={task.id} task={task} onClick={() => handleTaskClick(task)} />
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Q2: Not Urgent + Important */}
+              <div style={{ 
+                border: '2px solid var(--warning)', 
+                borderRadius: 'var(--radius-md)', 
+                padding: '16px',
+                background: 'rgba(255, 193, 7, 0.05)'
+              }}>
+                <div style={{ 
+                  fontWeight: 600, 
+                  color: 'var(--warning)', 
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <div style={{ 
+                    width: '12px', 
+                    height: '12px', 
+                    borderRadius: '50%', 
+                    background: 'var(--warning)' 
+                  }}></div>
+                  Q2: Non Urgente + Importante
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '12px' }}>Pianifica</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {matrixTasks.Q2.length === 0 ? (
+                    <div style={{ color: 'var(--text-tertiary)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                      Nessun task in questo quadrante
+                    </div>
+                  ) : (
+                    matrixTasks.Q2.map(task => (
+                      <TaskCard key={task.id} task={task} onClick={() => handleTaskClick(task)} />
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Q3: Urgent + Not Important */}
+              <div style={{ 
+                border: '2px solid var(--success)', 
+                borderRadius: 'var(--radius-md)', 
+                padding: '16px',
+                background: 'rgba(40, 167, 69, 0.05)'
+              }}>
+                <div style={{ 
+                  fontWeight: 600, 
+                  color: 'var(--success)', 
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <div style={{ 
+                    width: '12px', 
+                    height: '12px', 
+                    borderRadius: '50%', 
+                    background: 'var(--success)' 
+                  }}></div>
+                  Q3: Urgente + Non Importante
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '12px' }}>Delega</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {matrixTasks.Q3.length === 0 ? (
+                    <div style={{ color: 'var(--text-tertiary)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                      Nessun task in questo quadrante
+                    </div>
+                  ) : (
+                    matrixTasks.Q3.map(task => (
+                      <TaskCard key={task.id} task={task} onClick={() => handleTaskClick(task)} />
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Q4: Not Urgent + Not Important */}
+              <div style={{ 
+                border: '2px solid var(--text-tertiary)', 
+                borderRadius: 'var(--radius-md)', 
+                padding: '16px',
+                background: 'rgba(108, 117, 125, 0.05)'
+              }}>
+                <div style={{ 
+                  fontWeight: 600, 
+                  color: 'var(--text-tertiary)', 
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <div style={{ 
+                    width: '12px', 
+                    height: '12px', 
+                    borderRadius: '50%', 
+                    background: 'var(--text-tertiary)' 
+                  }}></div>
+                  Q4: Non Urgente + Non Importante
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '12px' }}>Elimina</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {matrixTasks.Q4.length === 0 ? (
+                    <div style={{ color: 'var(--text-tertiary)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                      Nessun task in questo quadrante
+                    </div>
+                  ) : (
+                    matrixTasks.Q4.map(task => (
+                      <TaskCard key={task.id} task={task} onClick={() => handleTaskClick(task)} />
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        
         <style>{`
           .modal-overlay {
             position: fixed;

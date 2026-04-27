@@ -403,6 +403,8 @@ async function executeAction(action, context, crmActions) {
 
 // ─── Runner principale ───
 export async function runWorkflow(workflow, triggerEvent, crmActions, appState = {}) {
+  console.log(`[WorkflowRunner] Avvio workflow: ${workflow.name} (trigger: ${triggerEvent.type})`);
+  
   const log = {
     id: generateId(),
     workflowId: workflow.id,
@@ -417,15 +419,18 @@ export async function runWorkflow(workflow, triggerEvent, crmActions, appState =
 
   try {
     const context = buildContext(triggerEvent, appState);
+    console.log(`[WorkflowRunner] Contesto build:`, { customer: context.cliente?.nome, hasTask: !!context.task });
 
     // Verifica condizioni di esecuzione
     if (workflow.executionConditions) {
       const { requireLogin, background } = workflow.executionConditions;
+      console.log(`[WorkflowRunner] Condizioni: requireLogin=${requireLogin}, background=${background}, isLoggedIn=${context.app?.isLoggedIn}`);
       // requireLogin = esegui SOLO se loggato (e non in background mode)
       if (requireLogin && !background && !context.app?.isLoggedIn) {
         log.status = 'skipped';
         log.error = 'Richiesto login utente';
         log.completedAt = new Date().toISOString();
+        console.log(`[WorkflowRunner] Workflow saltato: richiesto login`);
         return log;
       }
     }
@@ -437,14 +442,17 @@ export async function runWorkflow(workflow, triggerEvent, crmActions, appState =
     if (!triggerNode) {
       throw new Error('Nessun trigger trovato nel workflow');
     }
+    console.log(`[WorkflowRunner] Trigger trovato: ${triggerNode.data?.eventType || 'non configurato'}`);
 
     // Verifica che l'evento del trigger corrisponda
     if (triggerNode.data?.eventType && triggerNode.data.eventType !== triggerEvent.type) {
       log.status = 'skipped';
       log.error = `Trigger non corrispondente: atteso ${triggerNode.data.eventType}, ricevuto ${triggerEvent.type}`;
       log.completedAt = new Date().toISOString();
+      console.log(`[WorkflowRunner] Trigger non corrispondente: atteso ${triggerNode.data.eventType}, ricevuto ${triggerEvent.type}`);
       return log;
     }
+    console.log(`[WorkflowRunner] Trigger corrispondente, avvio esecuzione nodi`);
 
     // Percorri il grafo seguendo le connessioni
     let currentNodeId = triggerNode.id;
@@ -454,7 +462,11 @@ export async function runWorkflow(workflow, triggerEvent, crmActions, appState =
     while (currentNodeId && !visited.has(currentNodeId) && log.steps.length < MAX_STEPS) {
       visited.add(currentNodeId);
       const node = nodes.find(n => n.id === currentNodeId);
-      if (!node) break;
+      if (!node) {
+        console.log(`[WorkflowRunner] Nodo ${currentNodeId} non trovato`);
+        break;
+      }
+      console.log(`[WorkflowRunner] Esecuzione nodo: ${node.type} (${node.data?.label || 'senza label'})`);
 
       const stepLog = {
         nodeId: node.id,
@@ -468,6 +480,7 @@ export async function runWorkflow(workflow, triggerEvent, crmActions, appState =
         // Il trigger è il punto di partenza, non esegue azioni
         stepLog.result = 'trigger';
         log.steps.push(stepLog);
+        console.log(`[WorkflowRunner] Nodo trigger eseguito`);
 
       } else if (node.type === 'conditionNode') {
         const conditions = node.data?.conditions || [];
@@ -475,16 +488,19 @@ export async function runWorkflow(workflow, triggerEvent, crmActions, appState =
         const passed = evaluateConditionGroup(conditions, logic, context);
         stepLog.result = passed ? 'passed' : 'failed';
         log.steps.push(stepLog);
+        console.log(`[WorkflowRunner] Condizione ${logic}: ${passed ? 'PASSATA' : 'FALLITA'}`);
 
         if (!passed) {
           // Condizione fallita: termina il workflow (non è un errore)
           log.status = 'completed';
           log.completedAt = new Date().toISOString();
           log.steps.push({ ...stepLog, nodeType: '_end', label: 'Condizione non soddisfatta', result: 'stopped' });
+          console.log(`[WorkflowRunner] Workflow terminato: condizione non soddisfatta`);
           return log;
         }
 
       } else if (node.type === 'actionNode') {
+        console.log(`[WorkflowRunner] Azione: ${node.data?.actionType}`);
         const result = await executeAction(
           { actionType: node.data?.actionType, config: node.data?.config || {} },
           context,
@@ -492,6 +508,7 @@ export async function runWorkflow(workflow, triggerEvent, crmActions, appState =
         );
         stepLog.result = result;
         log.steps.push(stepLog);
+        console.log(`[WorkflowRunner] Risultato azione:`, result);
         if (!result.success) {
           throw new Error(result.detail);
         }
@@ -556,11 +573,13 @@ export async function runWorkflow(workflow, triggerEvent, crmActions, appState =
 
     log.status = 'completed';
     log.completedAt = new Date().toISOString();
+    console.log(`[WorkflowRunner] Workflow completato con successo: ${workflow.name}`);
 
   } catch (err) {
     log.status = 'error';
     log.error = err.message;
     log.completedAt = new Date().toISOString();
+    console.error(`[WorkflowRunner] Errore workflow ${workflow.name}:`, err.message);
   }
 
   return log;

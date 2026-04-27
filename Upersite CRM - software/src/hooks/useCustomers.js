@@ -80,16 +80,29 @@ export function useCustomers() {
 
     // ─── Workflow Engine ───
     const triggerWorkflows = useCallback(async (eventType, eventPayload) => {
+        console.log(`[WorkflowEngine] Evento ricevuto: ${eventType}`, eventPayload);
+        
         const activeWorkflows = workflowsRef.current.filter(wf =>
             wf.enabled !== false && wf.status !== 'broken'
         );
+        
+        console.log(`[WorkflowEngine] Workflow attivi: ${activeWorkflows.length}`);
 
         const matchingWorkflows = activeWorkflows.filter(wf => {
             const triggerNode = (wf.nodes || []).find(n => n.type === 'triggerNode');
-            return triggerNode && triggerNode.data?.eventType === eventType;
+            const matches = triggerNode && triggerNode.data?.eventType === eventType;
+            if (triggerNode) {
+                console.log(`[WorkflowEngine] Workflow "${wf.name}": trigger=${triggerNode.data?.eventType}, match=${matches}`);
+            }
+            return matches;
         });
 
-        if (matchingWorkflows.length === 0) return;
+        console.log(`[WorkflowEngine] Workflow matching: ${matchingWorkflows.length}`);
+
+        if (matchingWorkflows.length === 0) {
+            console.log(`[WorkflowEngine] Nessun workflow trovato per evento: ${eventType}`);
+            return;
+        }
 
         const appState = { isLoggedIn: isLoggedInRef.current, isUnlocked: isLoggedInRef.current };
 
@@ -108,8 +121,10 @@ export function useCustomers() {
         };
 
         for (const wf of matchingWorkflows) {
+            console.log(`[WorkflowEngine] Esecuzione workflow: ${wf.name}`);
             try {
                 const log = await runWorkflow(wf, { type: eventType, ...eventPayload }, crmActions, appState);
+                console.log(`[WorkflowEngine] Workflow "${wf.name}" completato: ${log.status}`, log);
                 setWorkflowLogs(prev => [...prev.slice(-199), log]);
             } catch (err) {
                 console.error(`[WorkflowEngine] Errore nel workflow ${wf.name}:`, err);
@@ -129,6 +144,8 @@ export function useCustomers() {
             const dayOfMonth = now.getDate();
             const dateStr = now.toISOString().split('T')[0];
 
+            console.log(`[Scheduler] Check ore ${timeStr} - ${workflowsRef.current.length} workflow totali`);
+
             workflowsRef.current.forEach(wf => {
                 if (wf.enabled === false || wf.status === 'broken') return;
                 const triggerNode = (wf.nodes || []).find(n => n.type === 'triggerNode');
@@ -136,13 +153,21 @@ export function useCustomers() {
 
                 const { eventType, eventConfig = {} } = triggerNode.data || {};
 
+                if (eventType?.startsWith('schedule.')) {
+                    console.log(`[Scheduler] Workflow "${wf.name}": ${eventType} alle ${eventConfig.time}`);
+                }
+
                 if (eventType === 'schedule.daily' && eventConfig.time === timeStr) {
+                    console.log(`[Scheduler] ATTIVAZIONE daily: ${wf.name}`);
                     triggerWorkflows('schedule.daily', { scheduledTime: timeStr });
                 } else if (eventType === 'schedule.weekly' && eventConfig.time === timeStr && eventConfig.day === dayName) {
+                    console.log(`[Scheduler] ATTIVAZIONE weekly: ${wf.name}`);
                     triggerWorkflows('schedule.weekly', { scheduledTime: timeStr, day: dayName });
                 } else if (eventType === 'schedule.monthly' && eventConfig.time === timeStr && parseInt(eventConfig.dayOfMonth) === dayOfMonth) {
+                    console.log(`[Scheduler] ATTIVAZIONE monthly: ${wf.name}`);
                     triggerWorkflows('schedule.monthly', { scheduledTime: timeStr, dayOfMonth });
                 } else if (eventType === 'schedule.date' && eventConfig.date === dateStr && eventConfig.time === timeStr) {
+                    console.log(`[Scheduler] ATTIVAZIONE date: ${wf.name}`);
                     triggerWorkflows('schedule.date', { scheduledDate: dateStr, scheduledTime: timeStr });
                 }
             });
@@ -257,18 +282,76 @@ export function useCustomers() {
                         triggerWorkflows(WorkflowEventTypes.TAG_REMOVED, { customer: updated, cliente: updated, tag });
                     });
                 }
-                // Nota creata
-                if (updates.notes && updates.notes.length > (c.notes || []).length) {
-                    const newNote = updates.notes[updates.notes.length - 1];
-                    triggerWorkflows(WorkflowEventTypes.NOTE_CREATED_ON_CUSTOMER, {
-                        customer: updated, cliente: updated, note: newNote, nota: newNote,
+                // Nota creata (rilevazione per ID, più robusta della lunghezza)
+                if (updates.notes) {
+                    const oldNoteIds = new Set((c.notes || []).map(n => n.id));
+                    const newNotes = updates.notes.filter(n => n.id && !oldNoteIds.has(n.id));
+                    newNotes.forEach(newNote => {
+                        console.log(`[WorkflowEngine] Nuova nota rilevata: ${newNote.id}`);
+                        triggerWorkflows(WorkflowEventTypes.NOTE_CREATED_ON_CUSTOMER, {
+                            customer: updated, cliente: updated, note: newNote, nota: newNote,
+                        });
                     });
                 }
-                // Task creato
-                if (updates.todo && updates.todo.length > (c.todo || []).length) {
-                    const newTask = updates.todo[updates.todo.length - 1];
-                    triggerWorkflows(WorkflowEventTypes.TASK_CREATED, {
-                        customer: updated, cliente: updated, task: newTask,
+                // Task creato (rilevazione per ID, più robusta della lunghezza)
+                if (updates.todo) {
+                    const extractAllIds = (tasks) => {
+                        const ids = [];
+                        (tasks || []).forEach(t => {
+                            ids.push(t.id);
+                            if (t.subtasks) ids.push(...extractAllIds(t.subtasks));
+                        });
+                        return ids;
+                    };
+                    const oldTaskIds = new Set(extractAllIds(c.todo));
+                    const findNewTasks = (tasks) => {
+                        const newTasks = [];
+                        (tasks || []).forEach(t => {
+                            if (t.id && !oldTaskIds.has(t.id)) {
+                                newTasks.push(t);
+                            }
+                            if (t.subtasks) newTasks.push(...findNewTasks(t.subtasks));
+                        });
+                        return newTasks;
+                    };
+                    const newTasks = findNewTasks(updates.todo);
+                    console.log(`[WorkflowEngine] Nuovi task rilevati: ${newTasks.length}`);
+                    newTasks.forEach(newTask => {
+                        triggerWorkflows(WorkflowEventTypes.TASK_CREATED, {
+                            customer: updated, cliente: updated, task: newTask,
+                        });
+                    });
+                }
+                // Task completato
+                if (updates.todo) {
+                    const findCompletedTasks = (oldTasks, newTasks) => {
+                        const completed = [];
+                        const oldMap = new Map();
+                        const buildMap = (tasks) => {
+                            (tasks || []).forEach(t => {
+                                oldMap.set(t.id, t);
+                                if (t.subtasks) buildMap(t.subtasks);
+                            });
+                        };
+                        buildMap(oldTasks);
+                        const checkCompleted = (tasks) => {
+                            (tasks || []).forEach(t => {
+                                const old = oldMap.get(t.id);
+                                if (old && !old.completed && t.completed) {
+                                    completed.push(t);
+                                }
+                                if (t.subtasks) checkCompleted(t.subtasks);
+                            });
+                        };
+                        checkCompleted(newTasks);
+                        return completed;
+                    };
+                    const completedTasks = findCompletedTasks(c.todo, updates.todo);
+                    completedTasks.forEach(task => {
+                        console.log(`[WorkflowEngine] Task completato: ${task.id}`);
+                        triggerWorkflows(WorkflowEventTypes.TASK_COMPLETED, {
+                            customer: updated, cliente: updated, task: task,
+                        });
                     });
                 }
                 // Pagamento registrato

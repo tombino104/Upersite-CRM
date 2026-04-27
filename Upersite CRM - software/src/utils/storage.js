@@ -74,7 +74,17 @@ export const defaultData = {
 
         currency: 'EUR',
 
-        backupPath: ''
+        backupPath: '',
+
+        aiOptimization: false
+
+    },
+
+    tokenStats: {
+
+        totalUsed: 0,
+
+        totalSaved: 0
 
     }
 

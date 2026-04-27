@@ -1,6 +1,6 @@
 // Utilità per il versioning dell'applicazione
 
-export const APP_VERSION = '1.6.1-stable';
+export const APP_VERSION = '1.8.0-stable';
 
 export const VERSION_TYPES = {
   MAJOR: 'major',

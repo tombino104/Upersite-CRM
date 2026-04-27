@@ -75,7 +75,9 @@ export default function GeminiChat({
     chatHistory = [],
     aiUsageStats = { date: '', count: 0 },
     onUpdateChatHistory,
-    onUpdateAiUsageStats
+    onUpdateAiUsageStats,
+    settings = {},
+    updateSettings
 }) {
     // Ripristina il modello salvato o usa il default
     const savedModelId = localStorage.getItem(MODEL_STORAGE_KEY) || AI_MODELS[0].id;
@@ -83,6 +85,7 @@ export default function GeminiChat({
     const [showModelMenu, setShowModelMenu] = useState(false);
 
     const [isOpen, setIsOpen] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [currentSessionId, setCurrentSessionId] = useState(null);
@@ -162,27 +165,182 @@ export default function GeminiChat({
         setIsLoading(true);
 
         try {
-            const dbSummary = {
-                clienti: customers.map(c => ({
-                    id: c.id,
-                    nome: c.name,
-                    azienda: c.company,
-                    stato: c.status,
-                    rate: (c.installments || []).map(i => ({ scadenza: i.dueDate, importo: i.amount, pagata: i.paid })),
-                    task: (c.todo || []).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
-                    note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => n.text) // Esclude i report SmartReport
-                })),
-                eventi: (events || []).map(e => ({
-                    id: e.id,
-                    titolo: e.title,
-                    data: e.date,
-                    tipo: 'evento_globale'
-                }))
-            };
+            let dbSummary, fullTokenCount = 0, optimizedTokenCount = 0;
+            
+            // Funzione per contare token
+            const countTokens = (data) => Math.round(JSON.stringify(data).length / 4);
+            
+            if (settings.aiOptimization) {
+                // Dati ottimizzati
+                dbSummary = {
+                    clienti: customers.map(c => ({
+                        id: c.id,
+                        nome: c.name,
+                        azienda: c.company,
+                        stato: c.status,
+                        tags: c.tags || [],
+                        rate: (c.installments || []).filter(i => !i.paid).map(i => ({ 
+                            id: i.id,
+                            scadenza: i.dueDate, 
+                            importo: i.amount, 
+                            pagata: i.paid,
+                            descrizione: i.description || ''
+                        })),
+                        task: (c.todo || []).filter(t => !t.completed).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
+                        tickets: (c.tickets || []).filter(t => t.isOpen).map(t => ({
+                            id: t.id,
+                            link: t.link,
+                            priorita: t.priority || 2,
+                            stato: t.isOpen ? 'aperto' : 'chiuso',
+                            note: t.description || '',
+                            noteCollegate: (t.linkedNotes || []).map(nid => {
+                                const note = (c.notes || []).find(n => n.id === nid);
+                                return note ? note.text.substring(0, 100) + '...' : '';
+                            }).filter(Boolean),
+                            creatoIl: t.createdAt
+                        })),
+                        links: (c.links || []).map(l => ({
+                            id: l.id,
+                            etichetta: l.label,
+                            url: l.url,
+                            note: l.note || '',
+                            creatoIl: l.createdAt
+                        })),
+                        note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => n.text) // Esclude i report SmartReport
+                    })),
+                    eventi: (events || []).filter(e => {
+                        const eventDate = new Date(e.date);
+                        const today = new Date();
+                        return eventDate >= today; // solo eventi futuri
+                    }).map(e => ({
+                        id: e.id,
+                        titolo: e.title,
+                        data: e.date,
+                        tipo: 'evento_globale'
+                    }))
+                };
+                
+                // Calcola token ottimizzati
+                optimizedTokenCount = countTokens(dbSummary);
+                
+                // Calcola token completi per statistica
+                const fullData = {
+                    clienti: customers.map(c => ({
+                        id: c.id,
+                        nome: c.name,
+                        azienda: c.company,
+                        stato: c.status,
+                        tags: c.tags || [],
+                        rate: (c.installments || []).map(i => ({ 
+                            id: i.id,
+                            scadenza: i.dueDate, 
+                            importo: i.amount, 
+                            pagata: i.paid,
+                            descrizione: i.description || ''
+                        })),
+                        task: (c.todo || []).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
+                        tickets: (c.tickets || []).map(t => ({
+                            id: t.id,
+                            link: t.link,
+                            priorita: t.priority || 2,
+                            stato: t.isOpen ? 'aperto' : 'chiuso',
+                            note: t.description || '',
+                            noteCollegate: (t.linkedNotes || []).map(nid => {
+                                const note = (c.notes || []).find(n => n.id === nid);
+                                return note ? note.text.substring(0, 100) + '...' : '';
+                            }).filter(Boolean),
+                            creatoIl: t.createdAt
+                        })),
+                        links: (c.links || []).map(l => ({
+                            id: l.id,
+                            etichetta: l.label,
+                            url: l.url,
+                            note: l.note || '',
+                            creatoIl: l.createdAt
+                        })),
+                        note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => n.text)
+                    })),
+                    eventi: (events || []).map(e => ({
+                        id: e.id,
+                        titolo: e.title,
+                        data: e.date,
+                        tipo: 'evento_globale'
+                    }))
+                };
+                fullTokenCount = countTokens(fullData);
+                
+                // Aggiorna statistiche
+                const currentStats = settings.tokenStats || { totalUsed: 0, totalSaved: 0 };
+                const savedTokens = fullTokenCount - optimizedTokenCount;
+                
+                updateSettings({
+                    tokenStats: {
+                        totalUsed: currentStats.totalUsed + optimizedTokenCount,
+                        totalSaved: currentStats.totalSaved + savedTokens
+                    }
+                });
+                
+            } else {
+                // Dati completi
+                dbSummary = {
+                    clienti: customers.map(c => ({
+                        id: c.id,
+                        nome: c.name,
+                        azienda: c.company,
+                        stato: c.status,
+                        tags: c.tags || [],
+                        rate: (c.installments || []).map(i => ({ 
+                            id: i.id,
+                            scadenza: i.dueDate, 
+                            importo: i.amount, 
+                            pagata: i.paid,
+                            descrizione: i.description || ''
+                        })),
+                        task: (c.todo || []).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
+                        tickets: (c.tickets || []).map(t => ({
+                            id: t.id,
+                            link: t.link,
+                            priorita: t.priority || 2,
+                            stato: t.isOpen ? 'aperto' : 'chiuso',
+                            note: t.description || '',
+                            noteCollegate: (t.linkedNotes || []).map(nid => {
+                                const note = (c.notes || []).find(n => n.id === nid);
+                                return note ? note.text.substring(0, 100) + '...' : '';
+                            }).filter(Boolean),
+                            creatoIl: t.createdAt
+                        })),
+                        links: (c.links || []).map(l => ({
+                            id: l.id,
+                            etichetta: l.label,
+                            url: l.url,
+                            note: l.note || '',
+                            creatoIl: l.createdAt
+                        })),
+                        note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => n.text) // Esclude i report SmartReport
+                    })),
+                    eventi: (events || []).map(e => ({
+                        id: e.id,
+                        titolo: e.title,
+                        data: e.date,
+                        tipo: 'evento_globale'
+                    }))
+                };
+                
+                // Aggiorna statistiche (solo token usati)
+                fullTokenCount = countTokens(dbSummary);
+                const currentStats = settings.tokenStats || { totalUsed: 0, totalSaved: 0 };
+                
+                updateSettings({
+                    tokenStats: {
+                        totalUsed: currentStats.totalUsed + fullTokenCount,
+                        totalSaved: currentStats.totalSaved
+                    }
+                });
+            }
 
             const systemPrompt = `Sei Upersite AI Assistant, l'assistente IA intelligente ufficiale di Upersite Studio. Hai accesso al Database in sola lettura. Non puoi inventare dati o informazioni, piuttosto afferma di non saperle.
             Non scrivere informazioni non richieste, per esempio se ti chiedo i task da fare non mescolare dentro anche i contenuti delle note. Categorizza le richieste generiche (ovvero se ti chiedo per esempio i task che devo fare specifica anche per chi devo farli).
-            Hai accesso ai dati dei clienti e agli eventi del calendario globale. Quando ti chiedono informazioni sul calendario, non includere i task/rate dei clienti.
+            Hai accesso ai dati completi dei clienti inclusi: tickets, rate dettagliate, links, tags, task, note e agli eventi del calendario globale. Quando ti chiedono informazioni sul calendario, non includere i task/rate/tickets dei clienti.
                         Prima di dare le informazioni in output verifica che siano realmente QUELLE RICHIESTE. 
 IL TUO ALFABETO (FORMATTAZIONE):
 - # Titolo Grande
@@ -339,7 +497,7 @@ ${JSON.stringify(dbSummary)}`;
     const usageColor = usagePercent > 90 ? 'var(--danger)' : usagePercent > 60 ? 'var(--warning)' : 'var(--primary)';
 
     return (
-        <div className="gemini-chat-root">
+        <div className={`gemini-chat-root ${isFullscreen ? 'fullscreen-active' : ''}`}>
             {/* FAB */}
             <button
                 className={`gemini-fab ${isOpen ? 'active' : ''}`}
@@ -350,7 +508,7 @@ ${JSON.stringify(dbSummary)}`;
             </button>
 
             {/* CHAT WINDOW */}
-            <div className={`gemini-window ${isOpen ? 'open' : ''}`}>
+            <div className={`gemini-window ${isOpen ? 'open' : ''} ${isFullscreen ? 'fullscreen' : ''}`}>
 
                 {/* HEADER */}
                 <div className="gemini-header">
@@ -426,6 +584,15 @@ ${JSON.stringify(dbSummary)}`;
                             className="gemini-icon-btn gemini-newchat-btn"
                             onClick={startNewChat}
                             title="Nuova Chat"
+                        />
+                        <button
+                            className={`gemini-icon-btn gemini-fullscreen-btn ${isFullscreen ? 'active' : ''}`}
+                            onClick={() => setIsFullscreen(!isFullscreen)}
+                            title={isFullscreen ? "Riduci chat" : "Espandi a schermo intero"}
+                            style={{
+                                background: isFullscreen ? 'var(--primary)' : 'var(--primary-ghost)',
+                                color: isFullscreen ? 'white' : 'var(--primary)'
+                            }}
                         />
                     </div>
                 </div>
@@ -580,6 +747,12 @@ ${JSON.stringify(dbSummary)}`;
                     position: fixed; bottom: 30px; right: 30px; z-index: 9999;
                     font-family: var(--font);
                 }
+                .gemini-window {
+                    z-index: 9998;
+                }
+                .gemini-window.fullscreen {
+                    z-index: 9999;
+                }
 
                 /* FAB */
                 .gemini-fab {
@@ -602,7 +775,64 @@ ${JSON.stringify(dbSummary)}`;
                     pointer-events: none; opacity: 0; transform: translateY(30px) scale(0.9);
                     transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
                 }
+                
+                /* Backdrop overlay per fullscreen - sotto il chatbot */
+                .gemini-chat-root::before {
+                    content: '';
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.15);
+                    backdrop-filter: blur(2px);
+                    z-index: 9997;
+                    opacity: 0;
+                    pointer-events: none;
+                    transition: opacity 0.3s ease;
+                }
+                .gemini-chat-root.fullscreen-active::before {
+                    opacity: 1;
+                    pointer-events: auto;
+                }
                 .gemini-window.open { pointer-events: auto; opacity: 1; transform: translateY(0) scale(1); }
+                
+                /* Fullscreen mode */
+                .gemini-window.fullscreen {
+                    position: fixed;
+                    width: 490px;
+                    height: 650px;
+                    bottom: 80px;
+                    right: 0;
+                    top: auto;
+                    left: auto;
+                    border-radius: 28px;
+                    transition: all 0.6s cubic-bezier(0.16,1,0.3,1);
+                    backdrop-filter: blur(20px);
+                    background: rgba(255,255,255,0.98);
+                    transform: scale(0.8);
+                    opacity: 0;
+                }
+                .gemini-window.fullscreen.open {
+                    width: calc(100vw - 40px);
+                    height: calc(100vh - 40px);
+                    top: 20px;
+                    left: 20px;
+                    bottom: auto;
+                    right: auto;
+                    border-radius: 20px;
+                    transform: scale(1);
+                    opacity: 1;
+                }
+                .gemini-window.fullscreen .gemini-messages {
+                    padding: 24px 24px 16px;
+                }
+                .gemini-window.fullscreen .gemini-input-area input {
+                    font-size: 0.95rem;
+                    padding: 14px 18px;
+                }
+                .gemini-window.fullscreen .msg-bubble {
+                    max-width: 90%;
+                    font-size: 0.92rem;
+                    padding: 14px 18px;
+                }
 
                 /* Header */
                 .gemini-header {
@@ -698,6 +928,22 @@ ${JSON.stringify(dbSummary)}`;
                 .gemini-newchat-btn::after {
                     content: ''; position: absolute; width: 2px; height: 14px; background: currentColor;
                     top: 50%; left: 50%; transform: translate(-50%, -50%);
+                }
+                
+                /* Fullscreen icon (SVG) */
+                .gemini-fullscreen-btn::before {
+                    content: '';
+                    position: absolute;
+                    top: 50%; left: 50%;
+                    transform: translate(-50%, -50%);
+                    width: 16px; height: 16px;
+                    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3'/%3E%3C/svg%3E");
+                    background-size: contain;
+                    background-repeat: no-repeat;
+                    background-position: center;
+                }
+                .gemini-fullscreen-btn.active::before {
+                    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7'/%3E%3C/svg%3E");
                 }
 
                 /* Body layout */

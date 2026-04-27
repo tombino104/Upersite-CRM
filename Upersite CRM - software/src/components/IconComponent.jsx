@@ -138,6 +138,17 @@ const ICONS = {
       <path d="M4 12h8m-4-4v8"></path>
       <path d="M20 4h-4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"></path>
     </svg>
+  ),
+  brain: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v.5H9.5a2.5 2.5 0 0 1-2.5-2.5V2h2.5z"></path>
+      <path d="M14.5 2a2.5 2.5 0 0 1 2.5 2.5v.5H14.5a2.5 2.5 0 0 1-2.5-2.5V2h2.5z"></path>
+      <path d="M12 5v1"></path>
+      <path d="M4.5 7A2.5 2.5 0 0 1 7 9.5H4.5A2.5 2.5 0 0 1 2 7V4.5A2.5 2.5 0 0 1 4.5 2v5z"></path>
+      <path d="M19.5 7A2.5 2.5 0 0 0 17 9.5h2.5A2.5 2.5 0 0 0 22 7V4.5A2.5 2.5 0 0 0 19.5 2v5z"></path>
+      <path d="M7 12a5 5 0 0 1 5-5v10a5 5 0 0 1-5-5z"></path>
+      <path d="M17 12a5 5 0 0 0-5-5v10a5 5 0 0 0 5-5z"></path>
+    </svg>
   )
 };
 
