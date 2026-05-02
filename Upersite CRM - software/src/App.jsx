@@ -15,6 +15,7 @@ import UserProfileModal from './components/UserProfileModal';
 import TaskFilterModal from './components/TaskFilterModal';
 import TicketDashboardModal from './components/TicketDashboardModal';
 import AutomationEditor from './components/AutomationEditor/AutomationEditor';
+import RecentTransactionsModal from './components/RecentTransactionsModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
@@ -266,6 +267,7 @@ export default function App() {
   const [showTaskFilter, setShowTaskFilter] = useState(false);
   const [showTicketDashboard, setShowTicketDashboard] = useState(false);
   const [showAutomationEditor, setShowAutomationEditor] = useState(false);
+  const [showRecentTransactions, setShowRecentTransactions] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const searchInputRef = useRef(null);
@@ -762,6 +764,8 @@ export default function App() {
           onOpenCharts={(type) => setShowCharts({ show: true, chartType: type })}
           onOpenClients={() => setShowDataGridView(true)}
           onOpenOverdue={() => setShowOverdue(true)}
+          onSelectCustomer={setSelectedCustomer}
+          onOpenTransactions={() => setShowRecentTransactions(true)}
         />
 
         {viewMode === 'kanban' ? (
@@ -830,6 +834,15 @@ export default function App() {
       {showOverdue && (
         <OverdueModal customers={customers} onSelectCustomer={setSelectedCustomer} onClose={() => setShowOverdue(false)} />
       )}
+
+      {showRecentTransactions && (
+        <RecentTransactionsModal
+          customers={customers}
+          onSelectCustomer={setSelectedCustomer}
+          onClose={() => setShowRecentTransactions(false)}
+        />
+      )}
+
 
       {showClientList && (
         <ClientListModal
