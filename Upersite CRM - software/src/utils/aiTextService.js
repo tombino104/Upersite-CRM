@@ -1,17 +1,17 @@
-// Servizio AI per Writing Tools - Gemma 3 27B
-// Utilizza l'API Gemini con modello Gemma 3 27B per elaborazione testo
+// Servizio AI per Writing Tools - Gemma 4 31B
+// Utilizza l'API Gemini con modello Gemma 4 31B per elaborazione testo
 
 const GEMINI_API_KEY = "CHIAVE_RIMOSSA_VEDI_.env.local";
 
 // Configurazione modelli disponibili
 const AI_MODELS = [
   {
-    id: 'gemma-3-27b-it',
+    id: 'gemma-4-31b-it',
     apiVersion: 'v1beta',
-    label: 'Gemma 3 27B',
-    rpd: 14400,
-    badge: '14.4k/g',
-    description: 'Modello ottimizzato per italiano (14.4k RPD)',
+    label: 'Gemma 4 31B',
+    rpd: 1500,
+    badge: '1.5k/g',
+    description: 'Modello Gemma 4 da 31B (1.5k RPD)',
     default: true
   },
   {

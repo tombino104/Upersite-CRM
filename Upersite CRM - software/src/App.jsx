@@ -16,6 +16,7 @@ import TaskFilterModal from './components/TaskFilterModal';
 import TicketDashboardModal from './components/TicketDashboardModal';
 import AutomationEditor from './components/AutomationEditor/AutomationEditor';
 import RecentTransactionsModal from './components/RecentTransactionsModal';
+import CRMAnalyticsModal from './components/CRMAnalyticsModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
@@ -267,6 +268,7 @@ export default function App() {
   const [showTaskFilter, setShowTaskFilter] = useState(false);
   const [showTicketDashboard, setShowTicketDashboard] = useState(false);
   const [showAutomationEditor, setShowAutomationEditor] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
   const [showRecentTransactions, setShowRecentTransactions] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
@@ -279,6 +281,26 @@ export default function App() {
       Notification.requestPermission();
     }
   }, []);
+
+  const {
+    customers, tags, settings, events, hasSynced,
+    chatHistory, aiUsageStats, userProfile,
+    workflows, workflowLogs,
+    addCustomer, updateCustomer, deleteCustomer, setCustomers,
+    updateSettings, updateTags, updateEvents,
+    updateChatHistory, updateAiUsageStats, updateUserProfile,
+    saveWorkflow, deleteWorkflow,
+    notifyLogin, notifyLogout,
+  } = useCustomers();
+
+  // Toggle custom cursor class on body based on settings
+  useEffect(() => {
+    if (settings && settings.customCursor) {
+      document.body.classList.add('custom-cursor-enabled');
+    } else {
+      document.body.classList.remove('custom-cursor-enabled');
+    }
+  }, [settings?.customCursor]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -303,23 +325,12 @@ export default function App() {
         else if (showCalendar) setShowCalendar(false);
         else if (showUserProfile) setShowUserProfile(false);
         else if (showTaskFilter) setShowTaskFilter(false);
-      else if (showTicketDashboard) setShowTicketDashboard(false);
+        else if (showTicketDashboard) setShowTicketDashboard(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showCharts, showOverdue, showClientList, showSettings, showDataGridView, showTagMenu, showNotifications, showTaskFilter, showTicketDashboard]);
-
-  const {
-    customers, tags, settings, events, hasSynced,
-    chatHistory, aiUsageStats, userProfile,
-    workflows, workflowLogs,
-    addCustomer, updateCustomer, deleteCustomer, setCustomers,
-    updateSettings, updateTags, updateEvents,
-    updateChatHistory, updateAiUsageStats, updateUserProfile,
-    saveWorkflow, deleteWorkflow,
-    notifyLogin, notifyLogout,
-  } = useCustomers();
 
   // Unified preferences sync
   const viewMode = settings.viewMode || 'kanban';
@@ -327,7 +338,7 @@ export default function App() {
 
   const filteredCustomers = useSearch(customers, searchQuery);
 
-  const allTags = useMemo(() => 
+  const allTags = useMemo(() =>
     [...new Set([...tags, ...customers.flatMap(c => c.tags || [])])].filter(Boolean),
     [tags, customers]
   );
@@ -638,31 +649,31 @@ export default function App() {
                 <line x1="16" y1="17" x2="8" y2="17"></line>
                 <polyline points="10,9 9,9 8,9"></polyline>
               </svg>
-              {customers.reduce((count, customer) => 
+              {customers.reduce((count, customer) =>
                 count + (customer.tickets || []).filter(ticket => ticket.isOpen).length, 0
               ) > 0 && (
-                <span style={{
-                  position: 'absolute',
-                  top: '-8px',
-                  right: '8px',
-                  background: 'var(--danger)',
-                  color: '#fff',
-                  fontSize: '0.65rem',
-                  fontWeight: 'bold',
-                  minWidth: '18px',
-                  height: '18px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '0 4px',
-                  borderRadius: '10px',
-                  border: '2px solid var(--bg-primary)'
-                }}>
-                  {customers.reduce((count, customer) => 
-                    count + (customer.tickets || []).filter(ticket => ticket.isOpen).length, 0
-                  )}
-                </span>
-              )}
+                  <span style={{
+                    position: 'absolute',
+                    top: '-8px',
+                    right: '8px',
+                    background: 'var(--danger)',
+                    color: '#fff',
+                    fontSize: '0.65rem',
+                    fontWeight: 'bold',
+                    minWidth: '18px',
+                    height: '18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px',
+                    borderRadius: '10px',
+                    border: '2px solid var(--bg-primary)'
+                  }}>
+                    {customers.reduce((count, customer) =>
+                      count + (customer.tickets || []).filter(ticket => ticket.isOpen).length, 0
+                    )}
+                  </span>
+                )}
             </button>
           </div>
 
@@ -934,6 +945,53 @@ export default function App() {
         />
       )}
 
+      {/* CRM Analytics Modal */}
+      {showAnalytics && (
+        <CRMAnalyticsModal
+          customers={customers}
+          onClose={() => setShowAnalytics(false)}
+        />
+      )}
+
+      {/* Analytics Button */}
+      <button
+        onClick={() => setShowAnalytics(true)}
+        title="Panoramica Business"
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          left: '240px',
+          width: 60,
+          height: 60,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'linear-gradient(135deg, #0984E3, #0652DD)',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          boxShadow: '0 10px 40px rgba(9,132,227,0.4)',
+          transition: 'all 0.4s cubic-bezier(0.175,0.885,0.32,1.275)',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'scale(1.12) rotate(-4deg)';
+          e.currentTarget.style.boxShadow = '0 15px 50px rgba(9,132,227,0.65)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+          e.currentTarget.style.boxShadow = '0 10px 40px rgba(9,132,227,0.4)';
+        }}
+      >
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+          <line x1="2" y1="20" x2="22" y2="20" />
+        </svg>
+      </button>
+
       {/* Automation Button */}
       <button
         onClick={() => setShowAutomationEditor(true)}
@@ -941,7 +999,7 @@ export default function App() {
         style={{
           position: 'fixed',
           bottom: '30px',
-          left: '30px',
+          left: '100px',
           width: 60,
           height: 60,
           borderRadius: '50%',
@@ -968,6 +1026,46 @@ export default function App() {
       >
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      </button>
+
+      {/* Monitor Button */}
+      <button
+        onClick={() => window.open('https://dashboard.uptimerobot.com/monitors', '_blank')}
+        title="Monitoraggio"
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          left: '170px',
+          width: 60,
+          height: 60,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'linear-gradient(135deg, #10B981, #059669)',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          boxShadow: '0 10px 40px rgba(16, 185, 129, 0.4)',
+          transition: 'all 0.4s cubic-bezier(0.175,0.885,0.32,1.275)',
+          fontSize: '1.5rem',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'scale(1.1) rotate(5deg)';
+          e.currentTarget.style.boxShadow = '0 15px 50px rgba(16, 185, 129, 0.6)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+          e.currentTarget.style.boxShadow = '0 10px 40px rgba(16, 185, 129, 0.4)';
+        }}
+      >
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="9" y1="9" x2="15" y2="9"></line>
+          <line x1="9" y1="15" x2="15" y2="15"></line>
+          <circle cx="17" cy="17" r="3"></circle>
         </svg>
       </button>
 

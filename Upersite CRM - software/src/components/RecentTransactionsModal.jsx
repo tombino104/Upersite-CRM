@@ -91,7 +91,7 @@ const RecentTransactionsModal = memo(({ customers, onClose, onSelectCustomer }) 
                       border: `1px solid ${borderColor}`
                     }}
                   >
-                    <div className="transaction-amount">${transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</div>
+                    <div className="transaction-amount">€{transaction.amount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR</div>
                     <div className="transaction-customer">{transaction.customerName}</div>
                     <div className="transaction-status" style={{ color: statusColor }}>
                       {statusText} {statusIcon}

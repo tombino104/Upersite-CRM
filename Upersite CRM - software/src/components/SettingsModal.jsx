@@ -182,6 +182,50 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                     onChange={e => updateSettings({ defaultInstallments: parseInt(e.target.value) || 1 })}
                                     min="1" max="24" />
                             </div>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'var(--bg-input)', borderRadius: 'var(--radius-md)', marginTop: '8px' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.9rem', fontWeight: 500, marginBottom: '4px' }}>🖱️ Cursore Personalizzato CRM</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                                        Abilita i cursori custom per puntatore, manina di click e cursore di testo all'interno dell'app
+                                    </div>
+                                </div>
+                                <label className="switch" style={{
+                                    position: 'relative',
+                                    display: 'inline-block',
+                                    width: '44px',
+                                    height: '24px'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={settings.customCursor || false}
+                                        onChange={e => updateSettings({ customCursor: e.target.checked })}
+                                        style={{ opacity: 0, width: 0, height: 0 }}
+                                    />
+                                    <span style={{
+                                        position: 'absolute',
+                                        cursor: 'pointer',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        backgroundColor: settings.customCursor ? 'var(--primary)' : '#ccc',
+                                        transition: '.4s',
+                                        borderRadius: '24px'
+                                    }}>
+                                        <span style={{
+                                            position: 'absolute',
+                                            height: '18px',
+                                            width: '18px',
+                                            left: settings.customCursor ? '26px' : '3px',
+                                            bottom: '3px',
+                                            backgroundColor: 'white',
+                                            transition: '.4s',
+                                            borderRadius: '50%'
+                                        }}></span>
+                                    </span>
+                                </label>
+                            </div>
                         </div>
                     </div>
 
@@ -320,7 +364,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                 </select>
                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '8px', display: 'block' }}>
                                     Modello utilizzato per gli strumenti di scrittura AI nel Rich Text Editor.
-                                    {getCurrentModel().id === 'gemma-3-27b-it' ? ' Gema 3 27B è ottimizzato per l\'italiano.' : ''}
+                                    {getCurrentModel().id === 'gemma-4-31b-it' ? ' Gemma 4 31B è ottimizzato per l\'italiano.' : ''}
                                 </span>
                             </div>
                         </div>
@@ -352,8 +396,8 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                             <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                 {getAvailableModels().map(model => (
                                     <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ 
-                                            background: model.id === getCurrentModel().id ? 'var(--primary)' : 'var(--bg-secondary)', 
+                                        <span style={{
+                                            background: model.id === getCurrentModel().id ? 'var(--primary)' : 'var(--bg-secondary)',
                                             color: model.id === getCurrentModel().id ? 'white' : 'var(--text-secondary)',
                                             padding: '2px 6px',
                                             borderRadius: '4px',
@@ -373,7 +417,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
 
                     <div className="settings-section" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '24px' }}>
                         <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ottimizzazione AI</h3>
-                        
+
                         <div style={{ marginBottom: '16px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'var(--bg-input)', borderRadius: 'var(--radius-md)' }}>
                                 <div>
@@ -382,8 +426,8 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                         Invia solo dati rilevanti al chatbot AI (task attivi, tickets aperti, rate da pagare)
                                     </div>
                                 </div>
-                                <label className="switch" style={{ 
-                                    position: 'relative', 
+                                <label className="switch" style={{
+                                    position: 'relative',
                                     display: 'inline-block',
                                     width: '44px',
                                     height: '24px'
@@ -438,7 +482,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                 <div>
                                     <div style={{ color: 'var(--text-tertiary)', marginBottom: '2px' }}>Risparmio</div>
                                     <div style={{ fontWeight: 600, color: 'var(--primary)' }}>
-                                        {settings.tokenStats?.totalUsed > 0 
+                                        {settings.tokenStats?.totalUsed > 0
                                             ? Math.round((settings.tokenStats.totalSaved / (settings.tokenStats.totalUsed + settings.tokenStats.totalSaved)) * 100) + '%'
                                             : '0%'
                                         }
@@ -464,6 +508,6 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                 </div>
             </div>
 
-            </>
+        </>
     );
 }

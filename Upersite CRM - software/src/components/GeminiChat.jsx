@@ -20,12 +20,13 @@ const AI_MODELS = [
         description: 'Alta capacità (500 RPD)',
     },
     {
-        id: 'gemma-3-27b-it',
+        id: 'gemma-4-31b-it',
         apiVersion: 'v1beta',      // endpoint per i modelli Gemma
-        label: 'Gemma 3 27B',
-        rpd: 14400,
-        badge: '14.4k/g',
-        description: 'Poco contesto e intelligenza (14.4k RPD)',
+        label: 'Gemma 4 31B',
+        rpd: 1500,
+        badge: '1.5k/g',
+        description: 'Modello Gemma 4 da 31B (1.5k RPD)',
+        default: true
     },
 ];
 
@@ -52,6 +53,7 @@ function formatText(text) {
         .replace(/## (.*?)(\n|$)/g, '<h2>$1</h2>')
         .replace(/# (.*?)(\n|$)/g, '<h1>$1</h1>')
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        // Rimuovo supporto per *testo* per evitare conflitti con elenchi
         .replace(/^- (.*?)$/gm, '<li>$1</li>')
         .replace(/^\* (.*?)$/gm, '<li>$1</li>')
         .replace(/^\d+\. (.*?)$/gm, '<li>$1</li>');
@@ -177,6 +179,7 @@ export default function GeminiChat({
                         id: c.id,
                         nome: c.name,
                         azienda: c.company,
+                        sito: c.website,
                         stato: c.status,
                         tags: c.tags || [],
                         rate: (c.installments || []).filter(i => !i.paid).map(i => ({ 
@@ -287,6 +290,7 @@ export default function GeminiChat({
                         id: c.id,
                         nome: c.name,
                         azienda: c.company,
+                        sito: c.website,
                         stato: c.status,
                         tags: c.tags || [],
                         rate: (c.installments || []).map(i => ({ 
@@ -338,23 +342,29 @@ export default function GeminiChat({
                 });
             }
 
-            const systemPrompt = `Sei Upersite AI Assistant, l'assistente IA intelligente ufficiale di Upersite Studio. Hai accesso al Database in sola lettura. Non puoi inventare dati o informazioni, piuttosto afferma di non saperle.
-            Non scrivere informazioni non richieste, per esempio se ti chiedo i task da fare non mescolare dentro anche i contenuti delle note. Categorizza le richieste generiche (ovvero se ti chiedo per esempio i task che devo fare specifica anche per chi devo farli).
-            Hai accesso ai dati completi dei clienti inclusi: tickets, rate dettagliate, links, tags, task, note e agli eventi del calendario globale. Quando ti chiedono informazioni sul calendario, non includere i task/rate/tickets dei clienti.
-                        Prima di dare le informazioni in output verifica che siano realmente QUELLE RICHIESTE. 
-IL TUO ALFABETO (FORMATTAZIONE):
+            const systemPrompt = `Sei Upersite AI Assistant, l'assistente IA intelligente di Upersite Studio. Hai accesso al Database in sola lettura. Non inventare dati.
+            Fornisci SOLO le informazioni richieste, senza aggiungere dettagli non richiesti. Se ti chiedo i task, elenca solo i task senza includere note o altri contenuti.
+            Hai accesso a: clienti, tickets, rate, links, task, note e eventi globali.
+            
+FORMATTAZIONE OBBLIGATORIA:
 - # Titolo Grande
-- ## Titolo Medio
+- ## Titolo Medio  
 - ### Titolo Piccolo (nomi clienti)
-- **Grassetto** (importi, date, parole chiave)
-- - Lista puntata
+- **Grassetto** per importi (€), date (GG/MM/AAAA) e nomi clienti
+- - Lista puntata (usa solo il trattino)
+- **SOLO ** per il grassetto, MAI * singolo
 
-REGOLE DI RISPOSTA:
-1. Sii coinciso ma completo. Vai a capo spesso.
-2. Usa il Grassetto per nomi clienti, cifre (€) e date (GG/MM/AAAA).
-3. Data Corrente (se richiesta): ${new Date().toLocaleDateString('it-IT')}
- 
-DATABASE CONTEXT (JSON):
+REGOLE:
+1. Sii conciso ma completo
+2. Vai spesso a capo
+3. Usa il grassetto per cifre, date e nomi
+4. Data corrente: ${new Date().toLocaleDateString('it-IT')}
+5. NON mostrare MAI il tuo ragionamento
+6. NON elencare cosa stai facendo
+7. Rispondi direttamente alle domande
+8. MAI fare checklist o auto-verifiche
+
+DATABASE CONTEXT:
 ${JSON.stringify(dbSummary)}`;
 
             // Usa l'ID modello reale E l'endpoint API corretto per il modello selezionato

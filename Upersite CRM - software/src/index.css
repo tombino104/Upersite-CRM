@@ -717,8 +717,8 @@ body {
 
 /* ── Customer Detail Modal ── */
 .detail-modal {
-  max-width: 1100px;
-  max-height: 90vh;
+  max-width: 1250px;
+  max-height: 97vh;
   display: flex;
   flex-direction: column;
 }
@@ -788,7 +788,7 @@ body {
 }
 
 .detail-body {
-  padding: 24px;
+  padding: 28px;
   flex: 1;
   overflow-y: auto;
 }
@@ -1005,8 +1005,8 @@ body {
 
 /* ── Customer Detail Specific ── */
 .detail-modal {
-  max-width: 1100px;
-  max-height: 95vh;
+  max-width: 1250px;
+  max-height: 97vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1078,7 +1078,7 @@ body {
 .detail-body {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 28px;
 }
 
 /* ── Confirmation Overlays ── */
@@ -1435,4 +1435,93 @@ body {
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* ── Custom CRM Cursors ── */
+body.custom-cursor-enabled,
+body.custom-cursor-enabled * {
+  cursor: url('/mouse-icons/puntatore.png') 0 0, auto;
+}
+
+body.custom-cursor-enabled a,
+body.custom-cursor-enabled a *,
+body.custom-cursor-enabled button,
+body.custom-cursor-enabled button *,
+body.custom-cursor-enabled [role="button"],
+body.custom-cursor-enabled [role="button"] *,
+body.custom-cursor-enabled select,
+body.custom-cursor-enabled select *,
+body.custom-cursor-enabled label,
+body.custom-cursor-enabled label *,
+body.custom-cursor-enabled summary,
+body.custom-cursor-enabled summary *,
+body.custom-cursor-enabled input[type="submit"],
+body.custom-cursor-enabled input[type="button"],
+body.custom-cursor-enabled input[type="checkbox"],
+body.custom-cursor-enabled input[type="radio"],
+body.custom-cursor-enabled .clickable,
+body.custom-cursor-enabled .clickable *,
+body.custom-cursor-enabled [onclick],
+body.custom-cursor-enabled [onclick] *,
+body.custom-cursor-enabled .folder-internal-link,
+body.custom-cursor-enabled .folder-internal-link *,
+body.custom-cursor-enabled .rte-btn,
+body.custom-cursor-enabled .rte-btn *,
+body.custom-cursor-enabled .tab-btn,
+body.custom-cursor-enabled .tab-btn *,
+body.custom-cursor-enabled .detail-tab,
+body.custom-cursor-enabled .detail-tab *,
+body.custom-cursor-enabled .customer-card,
+body.custom-cursor-enabled .customer-card *,
+body.custom-cursor-enabled .note-item,
+body.custom-cursor-enabled .note-item *,
+body.custom-cursor-enabled .file-item,
+body.custom-cursor-enabled .file-item *,
+body.custom-cursor-enabled .tag-badge,
+body.custom-cursor-enabled .tag-badge *,
+body.custom-cursor-enabled .tag-remove,
+body.custom-cursor-enabled .tag-remove *,
+body.custom-cursor-enabled .switch,
+body.custom-cursor-enabled .switch *,
+body.custom-cursor-enabled .btn,
+body.custom-cursor-enabled .btn *,
+body.custom-cursor-enabled .btn-ghost,
+body.custom-cursor-enabled .btn-ghost *,
+body.custom-cursor-enabled .btn-icon,
+body.custom-cursor-enabled .btn-icon *,
+body.custom-cursor-enabled .automation-node,
+body.custom-cursor-enabled .automation-node *,
+body.custom-cursor-enabled .workflow-canvas,
+body.custom-cursor-enabled .draggable,
+body.custom-cursor-enabled .detail-avatar-wrapper,
+body.custom-cursor-enabled .detail-avatar-wrapper *,
+body.custom-cursor-enabled .config-package-card,
+body.custom-cursor-enabled .config-package-card *,
+body.custom-cursor-enabled .config-addon-item,
+body.custom-cursor-enabled .config-addon-item *,
+body.custom-cursor-enabled .installment-check,
+body.custom-cursor-enabled .installment-check *,
+body.custom-cursor-enabled .flatpickr-day,
+body.custom-cursor-enabled .flatpickr-day *,
+body.custom-cursor-enabled .flatpickr-months *,
+body.custom-cursor-enabled .flatpickr-weekdays *,
+body.custom-cursor-enabled .modal-close,
+body.custom-cursor-enabled .modal-close * {
+  cursor: url('/mouse-icons/mano.png') 8 0, pointer !important;
+}
+
+body.custom-cursor-enabled input[type="text"],
+body.custom-cursor-enabled input[type="password"],
+body.custom-cursor-enabled input[type="email"],
+body.custom-cursor-enabled input[type="number"],
+body.custom-cursor-enabled input[type="search"],
+body.custom-cursor-enabled input[type="tel"],
+body.custom-cursor-enabled input[type="url"],
+body.custom-cursor-enabled input:not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]),
+body.custom-cursor-enabled textarea,
+body.custom-cursor-enabled [contenteditable],
+body.custom-cursor-enabled [contenteditable] *,
+body.custom-cursor-enabled .rte-editor,
+body.custom-cursor-enabled .rte-editor * {
+  cursor: url('/mouse-icons/cursore-testo.png') 8 8, text !important;
 }

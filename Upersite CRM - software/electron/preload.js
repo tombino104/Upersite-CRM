@@ -8,7 +8,11 @@ window.addEventListener('DOMContentLoaded', () => {
 window.electronAPI = {
     openPath: async (path) => {
         try {
-            await shell.openPath(path);
+            // shell.openPath returns an error string if it fails, or an empty string if successful
+            const errorMsg = await shell.openPath(path);
+            if (errorMsg) {
+                throw new Error(errorMsg);
+            }
         } catch (error) {
             console.error('Errore nell\'aprire il percorso:', error);
             throw error;

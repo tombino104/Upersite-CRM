@@ -20,12 +20,20 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const [showInternalLinkMenu, setShowInternalLinkMenu] = useState(null); // 'file' | 'note' | null
   const [internalLinkPosition, setInternalLinkPosition] = useState(null); // { top, left } | null
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [linkModalParams, setLinkModalParams] = useState(null); // { type: 'url' | 'folder' }
+  const [linkInputVal, setLinkInputVal] = useState('');
+  const [linkInputName, setLinkInputName] = useState('');
+
+  // Reset slash menu index when filter changes
+  useEffect(() => {
+    setSlashSelectedIndex(0);
+  }, [slashMenuParams?.filter]);
 
   // Menu contestuale per selezione testo
   const [textSelection, setTextSelection] = useState(null); // { text, range, position } | null
   const isMenuInteractingRef = useRef(false); // Flag per prevenire chiusura durante interazione
   const preventMenuReopenRef = useRef(false); // Flag per prevenire riapertura subito dopo formattazione
-  
+
   // AI Writing Tools
   const [showAIMenu, setShowAIMenu] = useState(false);
   const [selectedText, setSelectedText] = useState('');
@@ -62,28 +70,28 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     const handleSelection = (e) => {
       // Non riaprire il menu se abbiamo appena formattato
       if (preventMenuReopenRef.current) return;
-      
+
       // Solo se l'evento è dentro l'editor
       if (!editorRef.current || !editorRef.current.contains(e.target)) return;
-      
+
       setTimeout(() => {
         const selection = window.getSelection();
         if (selection && selection.toString().trim()) {
           const range = selection.getRangeAt(0);
           const rect = range.getBoundingClientRect();
-          
+
           // Posiziona menu affianco al testo (stile Notion)
           // Appare a destra della selezione, ma se non c'è spazio va a sinistra
           const menuWidth = 200; // larghezza stimata del menu
           const windowWidth = window.innerWidth;
           const rightSpace = windowWidth - rect.right;
           const leftSpace = rect.left;
-          
+
           let x = rect.right + 10; // 10px di spazio dal testo
           if (rightSpace < menuWidth && leftSpace > menuWidth) {
             x = rect.left - menuWidth - 10; // Posiziona a sinistra se manca spazio a destra
           }
-          
+
           setTextSelection({
             text: selection.toString(),
             range: range,
@@ -101,17 +109,17 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     const handleMouseDown = (e) => {
       // Non chiudere se stiamo interagendo con il menu
       if (isMenuInteractingRef.current) return;
-      
+
       // Chiudi menu solo se clicco fuori dall'editor e fuori dal menu
       if (!editorRef.current || (!editorRef.current.contains(e.target) && !e.target.closest('.contextual-menu'))) {
         setTextSelection(null);
         savedSelectionRef.current = null;
       }
     };
-    
+
     document.addEventListener('mouseup', handleSelection);
     document.addEventListener('mousedown', handleMouseDown);
-    
+
     return () => {
       document.removeEventListener('mouseup', handleSelection);
       document.removeEventListener('mousedown', handleMouseDown);
@@ -125,52 +133,82 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         setTextSelection(null);
       }
     };
-    
+
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
   // Salva la selezione corrente per il menu contestuale
   const savedSelectionRef = useRef(null);
-  
+
   // Funzioni per menu contestuale
   const applyTextFormat = (format, value = null) => {
     if (!savedSelectionRef.current) {
       console.warn('No saved selection');
       return;
     }
-    
+
     // Focus sull'editor prima di tutto
     editorRef.current?.focus();
-    
+
     // Ripristina la selezione
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(savedSelectionRef.current.cloneRange());
-    
+
     // Applica il comando
     try {
-      const success = document.execCommand(format, false, value);
-      if (success) {
+      if (format === 'removeFormat') {
+        document.execCommand('removeFormat', false, null);
+        document.execCommand('hiliteColor', false, 'rgba(0,0,0,0)');
+        document.execCommand('backColor', false, 'rgba(0,0,0,0)');
+        document.execCommand('foreColor', false, 'var(--text-primary)');
+
+        // Clear block level headings and checklists back to standard P
+        const sel = window.getSelection();
+        if (sel.rangeCount > 0) {
+          let node = sel.anchorNode;
+          let block = node;
+          while (block && block !== editorRef.current &&
+            !['P', 'DIV', 'H1', 'H2', 'H3', 'LI'].includes(block.tagName)) {
+            block = block.parentNode;
+          }
+          if (block && block !== editorRef.current) {
+            if (['H1', 'H2', 'H3'].includes(block.tagName)) {
+              const p = document.createElement('p');
+              p.innerHTML = block.innerHTML;
+              block.parentNode.replaceChild(p, block);
+            } else if (block.classList.contains('todo-item')) {
+              const p = document.createElement('p');
+              p.innerHTML = block.querySelector('span')?.innerHTML || block.innerHTML;
+              block.parentNode.replaceChild(p, block);
+            }
+          }
+        }
         handleInput();
       } else {
-        console.warn(`Command ${format} was not successful`);
+        const success = document.execCommand(format, false, value);
+        if (success) {
+          handleInput();
+        } else {
+          console.warn(`Command ${format} was not successful`);
+        }
       }
     } catch (error) {
       console.warn(`Failed to execute command ${format}:`, error);
     }
-    
+
     // Chiudi il menu e previeni riapertura immediata
     preventMenuReopenRef.current = true;
     setTextSelection(null);
     savedSelectionRef.current = null;
-    
+
     // Reset flag dopo un breve delay
     setTimeout(() => {
       preventMenuReopenRef.current = false;
     }, 300);
   };
-  
+
   // Salva la selezione quando si apre il menu
   const saveSelection = () => {
     const selection = window.getSelection();
@@ -179,7 +217,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       console.log('Selection saved:', savedSelectionRef.current.toString());
     }
   };
-  
+
   // Handler per onMouseDown che previene il focus sul bottone
   const handleMenuButtonMouseDown = (e, action) => {
     e.preventDefault(); // Previene che il focus vada al bottone
@@ -191,14 +229,14 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       isMenuInteractingRef.current = false;
     }, 100);
   };
-  
+
   // Gestione AI Writing Tools
   const handleAITool = async (tool) => {
     if (!selectedText) return;
-    
+
     setAiLoading(true);
     setAiResult('');
-    
+
     try {
       let result;
       switch (tool) {
@@ -232,7 +270,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         default:
           throw new Error('Strumento non riconosciuto');
       }
-      
+
       setAiResult(result);
     } catch (error) {
       console.error('AI Error:', error);
@@ -241,38 +279,38 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       setAiLoading(false);
     }
   };
-  
+
   const applyAIResult = () => {
     if (!aiResult || !aiSelectionRef.current) return;
-    
+
     // Salva una copia della selezione e del risultato
     const selectionToRestore = aiSelectionRef.current.cloneRange();
     const resultText = aiResult;
-    
+
     // Chiudi menu AI
     setShowAIMenu(false);
     setAiResult('');
     setSelectedText('');
-    
+
     // Usa requestAnimationFrame per assicurarsi che il DOM sia aggiornato
     requestAnimationFrame(() => {
       // Focus sull'editor
       editorRef.current?.focus();
-      
+
       // Ripristina la selezione
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(selectionToRestore);
-      
+
       // Inserisci il risultato AI
       document.execCommand('insertText', false, resultText);
       handleInput();
-      
+
       // Reset ref
       aiSelectionRef.current = null;
     });
   };
-  
+
   const closeAIMenu = () => {
     setShowAIMenu(false);
     setAiResult('');
@@ -286,7 +324,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   // Handle AI Summary for entire note - shows popup instead of replacing
   const handleAISummary = async () => {
     if (!editorRef.current) return;
-    
+
     const fullText = editorRef.current.innerText;
     if (!fullText.trim()) {
       alert('La nota è vuota. Scrivi qualcosa prima di riassumere.');
@@ -295,12 +333,12 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
     setIsSummarizing(true);
     setSummaryText('');
-    
+
     try {
       // Leggi il modello specifico per i riassunti dalle impostazioni
       const settings = JSON.parse(localStorage.getItem('upersite_settings') || '{}');
       const summaryModel = settings.aiSummaryModel || null;
-      
+
       const summary = await aiTextService.summarize(fullText, summaryModel);
       setSummaryText(summary);
       setShowSummaryPopup(true);
@@ -315,7 +353,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   // Convert markdown to HTML for summary popup
   const renderMarkdown = (text) => {
     if (!text) return '';
-    
+
     let html = text
       // Bold: **text** or __text__
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -334,25 +372,25 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       .replace(/^\d+\. (.*$)/gim, '<li>$1</li>')
       // Line breaks
       .replace(/\n/g, '<br>');
-    
+
     // Wrap lists
     html = html.replace(/(<li>.*<\/li>)/g, '<ul>$1</ul>');
     // Fix nested lists
     html = html.replace(/<\/ul><ul>/g, '');
-    
+
     return html;
   };
 
   // Parse anchors and headings from content - in order of appearance
   const parseAnchors = useCallback(() => {
     if (!editorRef.current) return [];
-    
+
     const parsedAnchors = [];
     let anchorCounter = 0;
     let h1Counter = 0;
     let h2Counter = 0;
     let h3Counter = 0;
-    
+
     // Use TreeWalker to traverse in document order
     const walker = document.createTreeWalker(
       editorRef.current,
@@ -360,7 +398,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       null,
       false
     );
-    
+
     let node;
     while ((node = walker.nextNode()) !== null) {
       // Check for H1 headings
@@ -417,7 +455,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         }
       }
     }
-    
+
     return parsedAnchors;
   }, []);
 
@@ -433,49 +471,88 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   }, [value, parseAnchors]);
 
 
-  // IntersectionObserver to track active anchor during scrolling - TEMPORARILY DISABLED
-  // useEffect(() => {
-  //   if (!editorRef.current || anchors.length === 0) return;
-  //   
-  //   const observer = new IntersectionObserver(
-  //     (entries) => {
-  //       entries.forEach((entry) => {
-  //         if (entry.isIntersecting) {
-  //           // Find the anchor corresponding to this element
-  //           const anchor = anchors.find(a => a.element === entry.target);
-  //           if (anchor) {
-  //             setActiveAnchorId(anchor.id);
-  //           }
-  //         }
-  //       });
-  //     },
-  //     {
-  //       root: editorRef.current,
-  //       threshold: 0.5,
-  //       rootMargin: '-10% 0px -10% 0px'
-  //     }
-  //   );
-  //   
-  //   // Observe all anchor elements
-  //   anchors.forEach((anchor) => {
-  //     if (anchor.element) {
-  //       observer.observe(anchor.element);
-  //     }
-  //   });
-  //   
-  //   return () => observer.disconnect();
-  // }, [anchors]);
+  // Dynamic scroll listener to track active anchor in real-time
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const handleScroll = () => {
+      if (anchors.length === 0) return;
+      const editorRect = editor.getBoundingClientRect();
+      const editorTop = editorRect.top;
+
+      let currentAnchor = null;
+
+      anchors.forEach((anchor) => {
+        let el = null;
+        if (anchor.type === 'h1') {
+          const h1Elements = editor.querySelectorAll('h1');
+          el = h1Elements[parseInt(anchor.id.split('-')[1])];
+        } else if (anchor.type === 'h2') {
+          const h2Elements = editor.querySelectorAll('h2');
+          el = h2Elements[parseInt(anchor.id.split('-')[1])];
+        } else if (anchor.type === 'h3') {
+          const h3Elements = editor.querySelectorAll('h3');
+          el = h3Elements[parseInt(anchor.id.split('-')[1])];
+        } else if (anchor.type === 'anchor') {
+          const anchorName = anchor.name;
+          const walker = document.createTreeWalker(
+            editor,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+          );
+          let node;
+          while ((node = walker.nextNode()) !== null) {
+            if (node.textContent.includes('#' + anchorName + ';')) {
+              el = node.parentElement;
+              break;
+            }
+          }
+        }
+
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const distance = rect.top - editorTop;
+
+          if (distance < 150) {
+            currentAnchor = anchor;
+          }
+        }
+      });
+
+      const isAtBottom = editor.scrollHeight - editor.scrollTop <= editor.clientHeight + 10;
+
+      if (isAtBottom && anchors.length > 0) {
+        currentAnchor = anchors[anchors.length - 1];
+      } else if (!currentAnchor && anchors.length > 0) {
+        currentAnchor = anchors[0];
+      }
+
+      if (currentAnchor && currentAnchor.id !== activeAnchorId) {
+        setActiveAnchorId(currentAnchor.id);
+      }
+    };
+
+    editor.addEventListener('scroll', handleScroll);
+    const timer = setTimeout(handleScroll, 100);
+
+    return () => {
+      editor.removeEventListener('scroll', handleScroll);
+      clearTimeout(timer);
+    };
+  }, [anchors, activeAnchorId]);
 
   // Scroll to anchor/heading smoothly
   const scrollToAnchor = useCallback((anchor) => {
     if (!editorRef.current) return;
-    
+
     // Set this anchor as active
     setActiveAnchorId(anchor.id);
-    
+
     // Try to find element by type and index
     let targetElement = null;
-    
+
     if (anchor.type === 'h1') {
       const h1Elements = editorRef.current.querySelectorAll('h1');
       targetElement = h1Elements[parseInt(anchor.id.split('-')[1])];
@@ -502,18 +579,18 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         }
       }
     }
-    
+
     if (targetElement) {
       targetElement.scrollIntoView({
         behavior: 'smooth',
         block: 'center'
       });
-      
+
       // Evidenzia temporaneamente l'elemento
       const originalBackground = targetElement.style.backgroundColor;
       targetElement.style.backgroundColor = 'var(--primary-ghost)';
       targetElement.style.transition = 'background-color 0.3s ease';
-      
+
       // Rimuovi l'evidenziazione dopo 2 secondi
       setTimeout(() => {
         targetElement.style.backgroundColor = originalBackground;
@@ -521,10 +598,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     }
   }, []);
 
-  
+
   const ContextualMenu = () => {
     if (!textSelection) return null;
-    
+
     // Salva la selezione quando il menu si apre
     useEffect(() => {
       saveSelection();
@@ -544,7 +621,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     };
 
     const MenuComponent = (
-      <div 
+      <div
         className="contextual-menu animate-scale-in"
         style={menuStyle}
       >
@@ -557,7 +634,6 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('underline'))}>
           <IconComponent name="underline" /> Sottolineato
         </button>
-        <div className="rte-separator" />
         <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('strikeThrough'))}>
           <IconComponent name="strikethrough" /> Barrato
         </button>
@@ -571,10 +647,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
               key={color}
               type="button"
               onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('hiliteColor', color))}
-              style={{ 
-                width: '20px', 
-                height: '20px', 
-                borderRadius: '4px', 
+              style={{
+                width: '20px',
+                height: '20px',
+                borderRadius: '4px',
                 background: color,
                 border: 'none',
                 cursor: 'pointer'
@@ -590,10 +666,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
               key={color}
               type="button"
               onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('hiliteColor', color))}
-              style={{ 
-                width: '20px', 
-                height: '20px', 
-                borderRadius: '4px', 
+              style={{
+                width: '20px',
+                height: '20px',
+                borderRadius: '4px',
                 background: color,
                 border: '1px solid var(--border-light)',
                 cursor: 'pointer'
@@ -603,15 +679,19 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           ))}
         </div>
         <div className="rte-separator" />
-        
-        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => {
-          const url = prompt('Inserisci URL:');
-          if (url) {
-            applyTextFormat('createLink', url);
-          }
-        })}>
-          <IconComponent name="link" /> Aggiungi link
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('justifyLeft'))}>
+          <IconComponent name="alignLeft" /> Sinistra
         </button>
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('justifyCenter'))}>
+          <IconComponent name="alignCenter" /> Centrato
+        </button>
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('justifyRight'))}>
+          <IconComponent name="alignRight" /> Destra
+        </button>
+        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('justifyFull'))}>
+          <IconComponent name="alignJustify" /> Giustificato
+        </button>
+        <div className="rte-separator" />
         <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('removeFormat'))}>
           ✕ Rimuovi formattazione
         </button>
@@ -642,7 +722,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   // Only update innerHTML if it completely differs from external value AND we are not actively typing in it.
   useEffect(() => {
     if (pendingHtmlRef.current !== null) return;
-    
+
     if (editorRef.current && value !== editorRef.current.innerHTML) {
       if (document.activeElement !== editorRef.current) {
         editorRef.current.innerHTML = value || '';
@@ -666,14 +746,14 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
   const exec = (cmd, val = null) => {
     editorRef.current?.focus();
-    
+
     // Special handling for formatBlock to ensure it works
     if (cmd === 'formatBlock') {
       const selection = window.getSelection();
       if (selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
         const selectedText = range.toString();
-        
+
         // If nothing is selected, just apply the format
         if (!selectedText) {
           document.execCommand(cmd, false, val);
@@ -687,7 +767,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     } else {
       document.execCommand(cmd, false, val);
     }
-    
+
     handleInput();
     setShowColors(false);
     setShowHeadings(false);
@@ -698,10 +778,216 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     exec('insertHTML', html);
   };
 
+  const changeBlockTag = (tagName, targetElement = null) => {
+    editorRef.current?.focus();
+    const sel = window.getSelection();
+
+    let block = targetElement;
+    if (!block && sel.rangeCount) {
+      let node = sel.anchorNode;
+      block = node;
+      while (block && block !== editorRef.current &&
+        !['P', 'DIV', 'H1', 'H2', 'H3', 'LI', 'BLOCKQUOTE'].includes(block.tagName)) {
+        block = block.parentNode;
+      }
+      if (!block || block === editorRef.current) {
+        let child = sel.anchorNode;
+        while (child && child.parentNode !== editorRef.current) {
+          child = child.parentNode;
+        }
+        if (child) block = child;
+      }
+    }
+
+    if (block && block !== editorRef.current) {
+      if (block.tagName && block.tagName.toLowerCase() === tagName.toLowerCase()) return;
+
+      const newBlock = document.createElement(tagName);
+      if (block.nodeType === Node.TEXT_NODE) {
+        newBlock.innerHTML = block.textContent || '<br>';
+      } else {
+        newBlock.innerHTML = block.innerHTML || '<br>';
+      }
+
+      block.parentNode.replaceChild(newBlock, block);
+
+      // Move cursor to the same position
+      const newRange = document.createRange();
+      newRange.selectNodeContents(newBlock);
+      newRange.collapse(false); // end
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    } else {
+      exec('formatBlock', `<${tagName}>`);
+    }
+    handleInput();
+  };
+
+  const insertChecklist = (targetElement = null) => {
+    editorRef.current?.focus();
+    let block = targetElement;
+    if (!block) {
+      const sel = window.getSelection();
+      if (sel.rangeCount) {
+        let node = sel.anchorNode;
+        block = node;
+        while (block && block !== editorRef.current &&
+          !['P', 'DIV', 'H1', 'H2', 'H3', 'LI', 'BLOCKQUOTE'].includes(block.tagName)) {
+          block = block.parentNode;
+        }
+        if (!block || block === editorRef.current) {
+          let child = sel.anchorNode;
+          while (child && child.parentNode !== editorRef.current) {
+            child = child.parentNode;
+          }
+          if (child) block = child;
+        }
+      }
+    }
+
+    if (block && block !== editorRef.current) {
+      const newTodo = document.createElement('div');
+      newTodo.className = 'todo-item';
+      newTodo.style.display = 'flex';
+      newTodo.style.alignItems = 'center';
+      newTodo.style.gap = '8px';
+      newTodo.style.marginBottom = '4px';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.setAttribute('contenteditable', 'false');
+
+      const textSpan = document.createElement('span');
+      textSpan.style.flex = '1';
+      if (block.nodeType === Node.TEXT_NODE) {
+        textSpan.innerHTML = block.textContent || '&nbsp;';
+      } else {
+        textSpan.innerHTML = block.innerHTML || '&nbsp;';
+      }
+
+      newTodo.appendChild(checkbox);
+      newTodo.appendChild(textSpan);
+
+      block.parentNode.replaceChild(newTodo, block);
+
+      // Focus cursor inside textSpan
+      const sel = window.getSelection();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(textSpan);
+      newRange.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    } else {
+      const html = `<div class="todo-item" style="display:flex; align-items:center; gap:8px; margin-bottom:4px;"><input type="checkbox" contenteditable="false" /><span style="flex:1;">&nbsp;</span></div>`;
+      insertHtml(html);
+    }
+    handleInput();
+  };
+
+  const insertCodeBlock = (targetElement = null) => {
+    editorRef.current?.focus();
+    let block = targetElement;
+    if (!block) {
+      const sel = window.getSelection();
+      if (sel.rangeCount) {
+        let node = sel.anchorNode;
+        block = node;
+        while (block && block !== editorRef.current &&
+          !['P', 'DIV', 'H1', 'H2', 'H3', 'LI', 'BLOCKQUOTE'].includes(block.tagName)) {
+          block = block.parentNode;
+        }
+        if (!block || block === editorRef.current) {
+          let child = sel.anchorNode;
+          while (child && child.parentNode !== editorRef.current) {
+            child = child.parentNode;
+          }
+          if (child) block = child;
+        }
+      }
+    }
+
+    if (block && block !== editorRef.current) {
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      let content = block.nodeType === Node.TEXT_NODE ? (block.textContent || '') : (block.innerHTML || '');
+      // Clean any slash triggers
+      content = content.replace(/(?:^|\n)(?:\/[a-zA-Z]*)$/, '').trim();
+      code.innerHTML = content || '&nbsp;';
+      pre.appendChild(code);
+
+      // Ensure there is a trailing paragraph after the code block
+      let nextBlock = block.nextSibling;
+      if (!nextBlock) {
+        nextBlock = document.createElement('p');
+        nextBlock.innerHTML = '<br>';
+        block.parentNode.appendChild(nextBlock);
+      }
+
+      block.parentNode.replaceChild(pre, block);
+
+      // Move cursor inside code block
+      const sel = window.getSelection();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(code);
+      newRange.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    } else {
+      insertHtml('<pre><code>&nbsp;</code></pre><p><br></p>');
+    }
+    handleInput();
+  };
+
+  const changeBlockToList = (listType, targetElement = null) => {
+    editorRef.current?.focus();
+    const sel = window.getSelection();
+
+    let block = targetElement;
+    if (!block && sel.rangeCount) {
+      let node = sel.anchorNode;
+      block = node;
+      while (block && block !== editorRef.current &&
+        !['P', 'DIV', 'H1', 'H2', 'H3', 'LI', 'BLOCKQUOTE'].includes(block.tagName)) {
+        block = block.parentNode;
+      }
+      if (!block || block === editorRef.current) {
+        let child = sel.anchorNode;
+        while (child && child.parentNode !== editorRef.current) {
+          child = child.parentNode;
+        }
+        if (child) block = child;
+      }
+    }
+
+    if (block && block !== editorRef.current) {
+      const listElement = document.createElement(listType === 'ol' ? 'ol' : 'ul');
+      listElement.style.marginBottom = '1em';
+      const li = document.createElement('li');
+      if (block.nodeType === Node.TEXT_NODE) {
+        li.innerHTML = block.textContent || '&nbsp;';
+      } else {
+        li.innerHTML = block.innerHTML || '&nbsp;';
+      }
+      listElement.appendChild(li);
+
+      block.parentNode.replaceChild(listElement, block);
+
+      // Move cursor to the same position inside the LI
+      const newRange = document.createRange();
+      newRange.selectNodeContents(li);
+      newRange.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    } else {
+      exec(listType === 'ol' ? 'insertOrderedList' : 'insertUnorderedList');
+    }
+    handleInput();
+  };
+
   const handleInput = () => {
     if (!editorRef.current) return;
     const html = editorRef.current.innerHTML;
-    
+
     pendingHtmlRef.current = html;
 
     // Update dirty state
@@ -749,11 +1035,30 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const closeSlashMenu = () => setSlashMenuParams(null);
 
   const applySlashCommand = (cmd) => {
-    // Delete the slash trigger text
+    // Save block reference before trigger text deletion
     const sel = window.getSelection();
+    let targetBlock = null;
     if (sel.rangeCount && slashMenuParams) {
       const range = sel.getRangeAt(0);
       const textNode = sel.anchorNode;
+
+      let block = textNode;
+      while (block && block !== editorRef.current &&
+        !['P', 'DIV', 'H1', 'H2', 'H3', 'LI', 'BLOCKQUOTE'].includes(block.tagName)) {
+        block = block.parentNode;
+      }
+      if (block && block !== editorRef.current) {
+        targetBlock = block;
+      } else {
+        let child = textNode;
+        while (child && child.parentNode !== editorRef.current) {
+          child = child.parentNode;
+        }
+        if (child) {
+          targetBlock = child;
+        }
+      }
+
       const textParam = textNode.textContent.substring(0, range.startOffset);
       const match = textParam.match(/(?:^|\n)(?:\/)([\\w]*)$/);
       if (match) {
@@ -789,14 +1094,26 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
     closeSlashMenu();
 
-    if (cmd === 'highlight') exec('hiliteColor', '#F1C40F');
-    else if (cmd === 'code') insertHtml('<pre style="background:#f4f5f9;padding:10px;border-radius:4px;"><code>Codice...</code></pre><br>');
+    if (cmd === 'h1') changeBlockTag('h1', targetBlock);
+    else if (cmd === 'h2') changeBlockTag('h2', targetBlock);
+    else if (cmd === 'bullet_list') changeBlockToList('ul', targetBlock);
+    else if (cmd === 'numbered_list') changeBlockToList('ol', targetBlock);
+    else if (cmd === 'todo') insertChecklist(targetBlock);
+    else if (cmd === 'separator') return; // Do nothing for separator
+    else if (cmd === 'highlight') exec('hiliteColor', '#F1C40F');
+    else if (cmd === 'code') insertCodeBlock(targetBlock);
+    else if (cmd === 'quote') changeBlockTag('blockquote', targetBlock);
     else if (cmd === 'divider') insertHtml('<hr><br>');
     else if (cmd === 'link') {
-      const url = prompt('Inserisci URL:');
-      if (url) {
-        insertHtml(`<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>&nbsp;`);
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
+        setLinkInputName(sel.toString() || '');
+      } else {
+        setLinkInputName('');
       }
+      setLinkInputVal('');
+      setLinkModalParams({ type: 'url' });
     } else if (cmd === 'link_file') {
       setShowInternalLinkMenu('file');
     } else if (cmd === 'link_note') {
@@ -804,43 +1121,375 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     } else if (cmd === 'image') {
       imageInputRef.current?.click();
     } else if (cmd === 'link_folder') {
-      const path = prompt('Inserisci il percorso assoluto della cartella (es: C:\\Lavori\\Cliente):');
-      if (path && path.trim()) {
-        const name = path.split(/[\\\/]/).filter(Boolean).pop() || path;
-        insertHtml(`<a href="#" class="folder-internal-link" data-path="${path.replace(/\\/g, '\\\\')}" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📁 ${name}</a>&nbsp;`);
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
+        setLinkInputName(sel.toString() || '');
+      } else {
+        setLinkInputName('');
       }
+      setLinkInputVal('');
+      setLinkModalParams({ type: 'folder' });
     }
+  };
+
+  const handleApplyLink = () => {
+    if (!linkInputVal.trim()) return;
+
+    // Restore selection to inject exactly where cursor was
+    if (savedSelectionRef.current && editorRef.current) {
+      editorRef.current.focus();
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedSelectionRef.current);
+    }
+
+    const url = linkInputVal.trim();
+    if (linkModalParams.type === 'url') {
+      const name = linkInputName.trim() || url;
+      insertHtml(`<a href="${url}" target="_blank" rel="noopener noreferrer">${name}</a>&nbsp;`);
+    } else {
+      const path = url;
+      const name = linkInputName.trim() || (path.split(/[\\\/]/).filter(Boolean).pop() || path);
+      insertHtml(`<a href="#" class="folder-internal-link" data-path="${path.replace(/\\/g, '\\\\')}" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📁 ${name}</a>&nbsp;`);
+    }
+
+    setLinkModalParams(null);
   };
 
   const getSlashOptions = () => {
     if (!slashMenuParams) return [];
     return [
-      { cmd: 'highlight', label: 'Evidenzia', icon: '🖍' },
-      { cmd: 'code', label: 'Blocco Codice', icon: '💻' },
-      { cmd: 'divider', label: 'Separatore', icon: '➖' },
-      { cmd: 'link', label: 'Link Esterno', icon: '🔗' },
-      { cmd: 'link_note', label: 'Collega Nota', icon: '📝' },
-      { cmd: 'link_folder', label: 'Collega Cartella Locale', icon: '🗂️' },
-      { cmd: 'image', label: 'Immagine', icon: '🖼️' }
+      { cmd: 'h1', label: 'h1', icon: 'heading' },
+      { cmd: 'h2', label: 'h2', icon: 'heading' },
+      { cmd: 'bullet_list', label: 'Lista Puntata', icon: 'listUnordered' },
+      { cmd: 'numbered_list', label: 'Lista Numerata', icon: 'listOrdered' },
+      { cmd: 'todo', label: 'Checklist / Todo', icon: 'checklist' },
+      { cmd: 'quote', label: 'Citazione', icon: 'quote' },
+      { cmd: 'separator', label: '', icon: '', isSeparator: true },
+      { cmd: 'divider', label: 'Separatore', icon: 'align' },
+      { cmd: 'image', label: 'Immagine', icon: 'image' },
+      { cmd: 'link', label: 'Link Esterno', icon: 'link' },
+      { cmd: 'highlight', label: 'Evidenzia', icon: 'highlight' },
+      { cmd: 'code', label: 'Blocco Codice', icon: 'code' },
+      { cmd: 'link_note', label: 'Collega Nota', icon: 'note' },
+      { cmd: 'link_folder', label: 'Collega Cartella Locale', icon: 'folder' }
     ].filter(o => o.label.toLowerCase().includes(slashMenuParams.filter) || o.cmd.includes(slashMenuParams.filter));
   };
 
   const handleKeyDown = (e) => {
+    // 1. Gestione Slash Menu se aperto
     if (slashMenuParams) {
       const options = getSlashOptions();
       if (e.key === 'Escape') {
         closeSlashMenu();
         e.preventDefault();
+        return;
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSlashSelectedIndex(prev => (prev + 1) % options.length);
+        let nextIndex = (slashSelectedIndex + 1) % options.length;
+        // Skip separator items
+        while (options[nextIndex].isSeparator) {
+          nextIndex = (nextIndex + 1) % options.length;
+        }
+        setSlashSelectedIndex(nextIndex);
+        return;
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSlashSelectedIndex(prev => (prev - 1 + options.length) % options.length);
+        let prevIndex = (slashSelectedIndex - 1 + options.length) % options.length;
+        // Skip separator items
+        while (options[prevIndex].isSeparator) {
+          prevIndex = (prevIndex - 1 + options.length) % options.length;
+        }
+        setSlashSelectedIndex(prevIndex);
+        return;
       } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (options[slashSelectedIndex]) {
+        if (options.length > 0 && options[slashSelectedIndex] && !options[slashSelectedIndex].isSeparator) {
+          e.preventDefault();
           applySlashCommand(options[slashSelectedIndex].cmd);
+          return;
+        }
+      }
+    }
+
+    // 2. Gestione Enter all'interno di una checklist (todo-item)
+    if (e.key === 'Enter') {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let node = selection.anchorNode;
+        let todoItem = null;
+        while (node && node !== editorRef.current) {
+          if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains('todo-item')) {
+            todoItem = node;
+            break;
+          }
+          node = node.parentNode;
+        }
+
+        if (todoItem) {
+          e.preventDefault();
+          const newTodo = document.createElement('div');
+          newTodo.className = 'todo-item';
+          newTodo.style.display = 'flex';
+          newTodo.style.alignItems = 'center';
+          newTodo.style.gap = '8px';
+          newTodo.style.marginBottom = '4px';
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.setAttribute('contenteditable', 'false');
+
+          const textSpan = document.createElement('span');
+          textSpan.style.flex = '1';
+          textSpan.innerHTML = '&nbsp;';
+
+          newTodo.appendChild(checkbox);
+          newTodo.appendChild(textSpan);
+
+          todoItem.parentNode.insertBefore(newTodo, todoItem.nextSibling);
+
+          const newRange = document.createRange();
+          newRange.setStart(textSpan, 0);
+          newRange.setEnd(textSpan, 0);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+
+          handleInput();
+          return;
+        }
+      }
+    }
+
+    // 2b. Gestione Enter all'interno di una lista per uscire se vuota (LI)
+    if (e.key === 'Enter') {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let node = selection.anchorNode;
+        let li = null;
+        while (node && node !== editorRef.current) {
+          if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'LI') {
+            li = node;
+            break;
+          }
+          node = node.parentNode;
+        }
+
+        if (li) {
+          const textContent = li.textContent.replace(/\u200B/g, '').trim();
+          if (textContent === '' || textContent === '\u00A0') {
+            e.preventDefault();
+            const listElement = li.parentNode; // UL or OL
+
+            // Create a new paragraph to replace the empty list item
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+
+            // If the empty LI is the only item in the list, replace the whole list with the paragraph
+            if (listElement.children.length <= 1) {
+              listElement.parentNode.replaceChild(p, listElement);
+            } else {
+              // If it's the last item, remove it from list and insert paragraph after list
+              if (listElement.lastElementChild === li) {
+                listElement.removeChild(li);
+                listElement.parentNode.insertBefore(p, listElement.nextSibling);
+              } else if (listElement.firstElementChild === li) {
+                // If it's the first item, remove it and insert paragraph before list
+                listElement.removeChild(li);
+                listElement.parentNode.insertBefore(p, listElement);
+              } else {
+                // If it's in the middle, split the list
+                const nextItems = [];
+                let sibling = li.nextElementSibling;
+                while (sibling) {
+                  nextItems.push(sibling);
+                  sibling = sibling.nextElementSibling;
+                }
+
+                const secondList = document.createElement(listElement.tagName);
+                nextItems.forEach(item => {
+                  listElement.removeChild(item);
+                  secondList.appendChild(item);
+                });
+
+                listElement.removeChild(li);
+                listElement.parentNode.insertBefore(p, listElement.nextSibling);
+                listElement.parentNode.insertBefore(secondList, p.nextSibling);
+              }
+            }
+
+            // Move cursor to the new paragraph
+            const newRange = document.createRange();
+            newRange.setStart(p, 0);
+            newRange.setEnd(p, 0);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+
+            handleInput();
+            return;
+          }
+        }
+      }
+    }
+
+    // 2c. Gestione Enter all'interno di una citazione per uscire se vuota (BLOCKQUOTE)
+    if (e.key === 'Enter') {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let node = selection.anchorNode;
+        let bq = null;
+        while (node && node !== editorRef.current) {
+          if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BLOCKQUOTE') {
+            bq = node;
+            break;
+          }
+          node = node.parentNode;
+        }
+
+        if (bq) {
+          const textContent = bq.textContent.replace(/\u200B/g, '').trim();
+          if (textContent === '' || textContent === '\u00A0') {
+            e.preventDefault();
+
+            // Revert empty blockquote back to standard paragraph
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            bq.parentNode.replaceChild(p, bq);
+
+            // Move cursor to the new paragraph
+            const newRange = document.createRange();
+            newRange.setStart(p, 0);
+            newRange.setEnd(p, 0);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+
+            handleInput();
+            return;
+          }
+        }
+      }
+    }
+
+    // 2d. Gestione tastiera all'interno del Blocco Codice (PRE/CODE)
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let node = selection.anchorNode;
+        let pre = null;
+        while (node && node !== editorRef.current) {
+          if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'PRE') {
+            pre = node;
+            break;
+          }
+          node = node.parentNode;
+        }
+
+        if (pre) {
+          // Shift+Enter, Ctrl+Enter, o Cmd+Enter per uscire dal blocco codice e creare un paragrafo normale sotto
+          if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            let nextBlock = pre.nextSibling;
+            if (!nextBlock || nextBlock.nodeName === 'BR') {
+              nextBlock = document.createElement('p');
+              nextBlock.innerHTML = '<br>';
+              pre.parentNode.insertBefore(nextBlock, pre.nextSibling);
+            }
+
+            // Sposta il cursore al paragrafo successivo
+            const newRange = document.createRange();
+            newRange.setStart(nextBlock, 0);
+            newRange.setEnd(nextBlock, 0);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+            handleInput();
+            return;
+          }
+
+          if (e.key === 'ArrowDown') {
+            // Verifica se il cursore è alla fine del contenuto pre
+            const textContent = pre.textContent || '';
+            const isAtEnd = (range.startContainer === pre || range.startContainer.parentNode === pre || range.startContainer.parentNode.parentNode === pre) &&
+              (range.startOffset === range.startContainer.length || !range.startContainer.length);
+
+            if (isAtEnd || (range.startContainer.textContent && range.startOffset === range.startContainer.textContent.length)) {
+              let nextBlock = pre.nextSibling;
+              if (nextBlock) {
+                e.preventDefault();
+                const newRange = document.createRange();
+                newRange.setStart(nextBlock, 0);
+                newRange.setEnd(nextBlock, 0);
+                selection.removeAllRanges();
+                selection.addRange(newRange);
+                return;
+              }
+            }
+          }
+
+          if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+            // Previene la creazione nativa di blocchi annidati e inserisce un semplice a capo \n
+            e.preventDefault();
+            const textNode = selection.anchorNode;
+            const offset = selection.anchorOffset;
+
+            if (textNode.nodeType === Node.TEXT_NODE) {
+              const text = textNode.textContent;
+              textNode.textContent = text.substring(0, offset) + '\n' + text.substring(offset);
+
+              const newRange = document.createRange();
+              newRange.setStart(textNode, offset + 1);
+              newRange.setEnd(textNode, offset + 1);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+            } else {
+              const newlineNode = document.createTextNode('\n');
+              range.insertNode(newlineNode);
+              range.setStartAfter(newlineNode);
+              range.setEndAfter(newlineNode);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            }
+            handleInput();
+            return;
+          }
+        }
+      }
+    }
+
+    // 3. Gestione Backspace all'interno di una checklist vuota
+    if (e.key === 'Backspace') {
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let node = selection.anchorNode;
+        let todoItem = null;
+        while (node && node !== editorRef.current) {
+          if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains('todo-item')) {
+            todoItem = node;
+            break;
+          }
+          node = node.parentNode;
+        }
+
+        if (todoItem) {
+          const textContent = todoItem.textContent.trim();
+          if (textContent === '' || textContent === '\u00A0' || range.startOffset === 0) {
+            e.preventDefault();
+            const p = document.createElement('p');
+            p.innerHTML = todoItem.querySelector('span')?.innerHTML || '<br>';
+            todoItem.parentNode.replaceChild(p, todoItem);
+
+            const newRange = document.createRange();
+            newRange.selectNodeContents(p);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+
+            handleInput();
+            return;
+          }
         }
       }
     }
@@ -937,13 +1586,13 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     if (node.nodeType === Node.TEXT_NODE) {
       return node.nodeValue;
     }
-    
+
     if (node.nodeType === Node.ELEMENT_NODE) {
       const tagName = node.tagName.toLowerCase();
-      
+
       // Block level elements that should have newlines around them
       const isBlock = ['h1', 'h2', 'h3', 'p', 'div', 'li', 'pre', 'hr'].includes(tagName);
-      
+
       node.childNodes.forEach(child => {
         text += getFormattedText(child);
       });
@@ -968,10 +1617,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
   const exportAsTXT = () => {
     if (!editorRef.current) return;
-    
+
     // Create a clone to manipulate if needed
     const clone = editorRef.current.cloneNode(true);
-    
+
     // Formatting titles with symbols
     clone.querySelectorAll('h1').forEach(h => h.prepend("# "));
     clone.querySelectorAll('h2').forEach(h => h.prepend("## "));
@@ -1010,12 +1659,33 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const handleEditorClick = (e) => {
     const target = e.target;
 
+    // Gestione click su checkbox
+    if (target.tagName === 'INPUT' && target.type === 'checkbox') {
+      if (target.checked) {
+        target.setAttribute('checked', 'true');
+        const sibling = target.nextSibling || target.parentElement.querySelector('span');
+        if (sibling && sibling !== target) {
+          sibling.style.textDecoration = 'line-through';
+          sibling.style.opacity = '0.5';
+        }
+      } else {
+        target.removeAttribute('checked');
+        const sibling = target.nextSibling || target.parentElement.querySelector('span');
+        if (sibling && sibling !== target) {
+          sibling.style.textDecoration = 'none';
+          sibling.style.opacity = '1';
+        }
+      }
+      handleInput(); // salva le modifiche
+      return;
+    }
+
     // Handle internal link clicks
     if (target.tagName === 'A' && (target.classList.contains('internal-link') || target.classList.contains('folder-internal-link'))) {
       e.preventDefault();
       const id = target.getAttribute('data-internal-id');
       const type = target.getAttribute('data-internal-type');
-      
+
       // If it's a folder-internal-link with an onclick, the onclick will handle it (copying the path)
       // If it's an internal-link with data-internal-type="folder-nav", we call the handler
       if (onInternalLinkClick && (id || type)) {
@@ -1067,7 +1737,60 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   }, []);
 
   const editorContent = (
-    <div className={`rte-container ${isFullScreen ? 'rte-fullscreen' : ''}`}>
+    <div className={`rte-container ${isFullScreen ? 'rte-fullscreen' : ''}`} style={isFullScreen ? undefined : { position: 'relative', overflow: 'visible' }}>
+
+      {/* Unified Floating Hover Index on the Left Side */}
+      {showIndex && anchors.length > 0 && (
+        <div className="rte-hover-index-container">
+          {/* Vertical Pill indicator stack - Always visible */}
+          <div className="rte-minimal-pill-nav">
+            {anchors.map((anchor, index) => {
+              const isActive = activeAnchorId === anchor.id;
+              return (
+                <div
+                  key={anchor.id || index}
+                  onClick={() => scrollToAnchor(anchor)}
+                  className={`rte-pill-indicator ${isActive ? 'active' : ''}`}
+                >
+                  <div className="rte-pill-tooltip">
+                    {anchor.name}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Premium Light-colored Table of Contents Menu - Slides in on hover */}
+          <div className="rte-toc-sidebar">
+            <div className="rte-toc-header">
+              📑 Indice
+            </div>
+            <div className="rte-toc-list">
+              {anchors.map((anchor, index) => {
+                const isActive = activeAnchorId === anchor.id;
+                let indentClass = "";
+                if (anchor.level === 2) indentClass = "indent-h2";
+                else if (anchor.level === 3) indentClass = "indent-h3";
+
+                const isLink = anchor.type === 'anchor' || anchor.name.toLowerCase().includes('guadagn') || anchor.name.toLowerCase().includes('link') || anchor.name.toLowerCase().includes('timeline');
+
+                return (
+                  <button
+                    key={anchor.id || index}
+                    onClick={() => scrollToAnchor(anchor)}
+                    className={`rte-toc-item ${indentClass} ${isActive ? 'active' : ''} ${isLink ? 'link-style' : ''}`}
+                    title={anchor.name}
+                  >
+                    {anchor.type === 'anchor' && '🔖 '}
+                    {anchor.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rte-toolbar">
         <button type="button" className="rte-btn" onClick={() => fileInputRef.current?.click()} title="Importa File (.txt, .md, .html, .csv)">
           <IconComponent name="import" /> Importa
@@ -1078,20 +1801,20 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         <button type="button" className="rte-btn" onClick={exportAsMD} title="Esporta come .md">
           <IconComponent name="md" /> MD
         </button>
-        
+
         {/* AI Summary Button */}
-        <button 
-          type="button" 
-          className="rte-btn" 
-          onClick={handleAISummary} 
+        <button
+          type="button"
+          className="rte-btn"
+          onClick={handleAISummary}
           disabled={isSummarizing}
           title={isSummarizing ? 'Riassunto in corso...' : 'Riassunto AI'}
           style={{ color: isSummarizing ? 'var(--text-tertiary)' : 'var(--primary)' }}
         >
-          <IconComponent name="brain" /> 
+          <IconComponent name="brain" />
           {isSummarizing ? '...' : 'AI'}
         </button>
-        
+
         <input ref={fileInputRef} type="file" accept=".txt,.md,.html,.csv" style={{ display: 'none' }} onChange={handleFileImport} />
 
         <div className="rte-separator" />
@@ -1108,12 +1831,14 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         <button type="button" className="rte-btn" onClick={() => exec('strikeThrough')} title="Barrato">
           <s>S</s>
         </button>
-        <div className="rte-separator" />
-        <button type="button" className="rte-btn" onClick={() => exec('insertUnorderedList')} title="Lista puntata">
+        <button type="button" className="rte-btn" onClick={() => changeBlockToList('ul')} title="Lista puntata">
           <IconComponent name="listUnordered" />
         </button>
-        <button type="button" className="rte-btn" onClick={() => exec('insertOrderedList')} title="Lista numerata">
+        <button type="button" className="rte-btn" onClick={() => changeBlockToList('ol')} title="Lista numerata">
           <IconComponent name="listOrdered" />
+        </button>
+        <button type="button" className="rte-btn" onClick={insertChecklist} title="Checklist / Todo">
+          <IconComponent name="checklist" />
         </button>
         <div className="rte-separator" />
 
@@ -1136,10 +1861,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           </button>
           {showHeadings && (
             <div className="rte-dropdown">
-              <button type="button" onClick={() => exec('formatBlock', 'H1')} style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Titolo 1</button>
-              <button type="button" onClick={() => exec('formatBlock', 'H2')} style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>Titolo 2</button>
-              <button type="button" onClick={() => exec('formatBlock', 'H3')} style={{ fontSize: '0.9375rem', fontWeight: 'bold' }}>Titolo 3</button>
-              <button type="button" onClick={() => exec('formatBlock', 'P')} style={{ fontSize: '0.8125rem' }}>Normale</button>
+              <button type="button" onClick={() => changeBlockTag('h1')} style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Titolo 1</button>
+              <button type="button" onClick={() => changeBlockTag('h2')} style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>Titolo 2</button>
+              <button type="button" onClick={() => changeBlockTag('h3')} style={{ fontSize: '0.9375rem', fontWeight: 'bold' }}>Titolo 3</button>
+              <button type="button" onClick={() => changeBlockTag('p')} style={{ fontSize: '0.8125rem' }}>Normale</button>
             </div>
           )}
         </div>
@@ -1182,6 +1907,16 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           ✕
         </button>
 
+        <button
+          type="button"
+          className={`rte-btn ${showIndex ? 'active' : ''}`}
+          onClick={() => setShowIndex(!showIndex)}
+          title="Mostra/Nascondi Indice"
+          style={{ color: showIndex ? 'var(--primary)' : 'var(--text-secondary)', fontWeight: 'bold' }}
+        >
+          📑 Indice
+        </button>
+
         <button type="button" className="rte-btn" onClick={() => setIsFullScreen(!isFullScreen)} title="Espandi a pieno schermo" style={{ fontWeight: 'bold' }}>
           {isFullScreen ? '↙ Piccoli' : '⛶ Pieno Schermo'}
         </button>
@@ -1189,10 +1924,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
       {/* Menu contestuale per selezione testo */}
       <ContextualMenu />
-      
+
       {/* AI Writing Tools Modal */}
       {showAIMenu && createPortal(
-        <div 
+        <div
           style={{
             position: 'fixed',
             top: 0,
@@ -1207,7 +1942,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           }}
           onClick={(e) => e.stopPropagation()} // Previene chiusura al click fuori
         >
-          <div 
+          <div
             style={{
               backgroundColor: '#ffffff',
               borderRadius: '12px',
@@ -1250,7 +1985,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
                 ✕
               </button>
             </div>
-            
+
             {/* Testo selezionato */}
             <div style={{
               backgroundColor: '#f9fafb',
@@ -1266,7 +2001,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
                 {selectedText.length > 200 ? selectedText.substring(0, 200) + '...' : selectedText}
               </div>
             </div>
-            
+
             {/* Strumenti AI - Griglia 2x4 */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '20px' }}>
               <button
@@ -1432,7 +2167,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
                 ✅ Correggi Grammatica
               </button>
             </div>
-            
+
             {/* Loading state */}
             {aiLoading && (
               <div style={{
@@ -1444,17 +2179,17 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
                 <div style={{ fontSize: '0.875rem' }}>Elaborazione in corso...</div>
               </div>
             )}
-            
+
             {/* Risultato AI */}
             {aiResult && !aiLoading && (
               <div>
-                <div style={{ 
-                  fontSize: '0.75rem', 
-                  color: '#9ca3af', 
-                  marginBottom: '8px', 
-                  fontWeight: 500, 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.5px' 
+                <div style={{
+                  fontSize: '0.75rem',
+                  color: '#9ca3af',
+                  marginBottom: '8px',
+                  fontWeight: 500,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
                 }}>
                   Risultato
                 </div>
@@ -1517,10 +2252,76 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         </div>,
         document.body
       )}
+      {/* Custom CRM Link/Folder Modal */}
+      {linkModalParams && createPortal(
+        <div
+          className="link-modal-overlay"
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 11000, padding: '20px'
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setLinkModalParams(null); }}
+        >
+          <div className="animate-scale-in" style={{
+            backgroundColor: 'var(--bg-card)', borderRadius: '24px', padding: '32px',
+            width: '100%', maxWidth: '480px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1px solid var(--border-light)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+              <div style={{ fontSize: '1.5rem', width: '40px', height: '40px', background: 'var(--bg-hover)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {linkModalParams.type === 'url' ? '🔗' : '📁'}
+              </div>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                {linkModalParams.type === 'url' ? 'Inserisci Link' : 'Collega Cartella'}
+              </h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '28px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Nome visualizzato (Opzionale)
+                </label>
+                <input
+                  type="text" className="input" value={linkInputName}
+                  onChange={e => setLinkInputName(e.target.value)}
+                  placeholder={linkModalParams.type === 'url' ? 'Es: Sito Cliente' : 'Es: Cartella Progetto'}
+                  autoFocus={!!linkInputName}
+                  onKeyDown={e => { if (e.key === 'Enter') handleApplyLink(); }}
+                  style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-input)' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  {linkModalParams.type === 'url' ? 'URL' : 'Percorso Assoluto sul PC'}
+                </label>
+                <input
+                  type="text" className="input" value={linkInputVal}
+                  onChange={e => setLinkInputVal(e.target.value)}
+                  placeholder={linkModalParams.type === 'url' ? 'https://...' : 'C:\\Lavori\\Cliente'}
+                  autoFocus={!linkInputName}
+                  onKeyDown={e => { if (e.key === 'Enter') handleApplyLink(); }}
+                  style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg-input)' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" style={{ padding: '10px 24px', borderRadius: '10px' }} onClick={() => setLinkModalParams(null)}>Annulla</button>
+              <button className="btn btn-primary" style={{ padding: '10px 24px', borderRadius: '10px', fontWeight: 600 }} onClick={handleApplyLink} disabled={!linkInputVal.trim()}>
+                Inserisci
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* AI Summary Popup Modal */}
       {showSummaryPopup && createPortal(
-        <div 
+        <div
           className="ai-summary-modal"
           style={{
             position: 'fixed',
@@ -1565,8 +2366,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
                 Riassunto AI
               </h3>
             </div>
-            
-            <div 
+
+            <div
               style={{
                 backgroundColor: '#f9fafb',
                 padding: '20px',
@@ -1581,7 +2382,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
               }}
               dangerouslySetInnerHTML={{ __html: renderMarkdown(summaryText) }}
             />
-            
+
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => {
@@ -1622,74 +2423,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         document.body
       )}
 
-      <div className="rte-main-layout" style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
-        {/* Index Panel - Overlay - solo a pieno schermo */}
-        {showIndex && anchors.length > 0 && isFullScreen && (
-          <div className="rte-index-panel" style={{ 
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: '200px', 
-            background: 'var(--bg-input)', 
-            borderRight: '1px solid var(--border-light)',
-            padding: '12px',
-            overflowY: 'auto',
-            maxHeight: isFullScreen ? 'calc(100vh - 60px)' : '400px',
-            zIndex: 10,
-            boxShadow: '2px 0 8px rgba(0,0,0,0.1)'
-          }}>
-            <div style={{ 
-              fontSize: '0.75rem', 
-              fontWeight: 600, 
-              color: 'var(--text-secondary)', 
-              marginBottom: '12px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px'
-            }}>
-              📑 Indice
-            </div>
-            {anchors.map((anchor, index) => {
-              const isActive = activeAnchorId === anchor.id;
-              return (
-                <button
-                  key={anchor.id || index}
-                  onClick={() => scrollToAnchor(anchor)}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '6px 8px',
-                    marginBottom: '4px',
-                    border: 'none',
-                    borderRadius: '4px',
-                    background: isActive ? 'var(--primary-ghost)' : 'transparent',
-                    cursor: 'pointer',
-                    fontSize: anchor.type === 'h1' ? '0.85rem' : anchor.type === 'h2' ? '0.8rem' : anchor.type === 'h3' ? '0.75rem' : '0.75rem',
-                    fontWeight: anchor.type === 'h1' ? 600 : anchor.type === 'h2' ? 500 : 400,
-                    color: anchor.type === 'anchor' ? 'var(--primary)' : 'var(--text-primary)',
-                    paddingLeft: anchor.level === 3 ? '24px' : anchor.level === 2 ? '16px' : '8px',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'transparent';
-                  }}
-                  title={anchor.name}
-                >
-                  {anchor.type === 'anchor' && '🔖 '}
-                  {anchor.type === 'h1' && 'H1 '}
-                  {anchor.type === 'h2' && '• H2 '}
-                  {anchor.type === 'h3' && '◦ H3 '}
-                  {anchor.name.length > 25 ? anchor.name.substring(0, 25) + '...' : anchor.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
+      <div className="rte-main-layout" style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative', width: '100%' }}>
         <div className="rte-editor-wrapper" style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div
             ref={editorRef}
@@ -1712,60 +2446,66 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
             data-placeholder="Scrivi una nota... (premi '/' per comandi, #nome; per ancore)"
           />
 
-        {showInternalLinkMenu === 'file' && internalLinkPosition && (
-          <div className="rte-dropdown" style={{ position: 'absolute', top: internalLinkPosition.top, left: internalLinkPosition.left, zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
-            <div style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Seleziona File da collegare</div>
-            {allFiles && allFiles.length > 0 ? allFiles.map(f => (
-              <button key={f.id} type="button" onClick={() => {
-                editorRef.current?.focus();
-                insertHtml(`<a href="#" data-internal-id="${f.id}" data-internal-type="file" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📄 ${f.name}</a>&nbsp;`);
-                setShowInternalLinkMenu(null);
-                setInternalLinkPosition(null);
-              }}>📄 {f.name}</button>
-            )) : <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Nessun file disponibile</div>}
-            <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => { setShowInternalLinkMenu(null); setInternalLinkPosition(null); }}>Annulla</button>
-          </div>
-        )}
-
-        {showInternalLinkMenu === 'note' && internalLinkPosition && (
-          <div className="rte-dropdown" style={{ position: 'absolute', top: internalLinkPosition.top, left: internalLinkPosition.left, zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
-            <div style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Seleziona Nota da collegare</div>
-            {allNotes && allNotes.length > 0 ? allNotes.map(n => {
-              const snippet = (n.text || '').replace(/<[^>]*>/g, '').trim().substring(0, 30) + '...';
-              return (
-                <button key={n.id} type="button" onClick={() => {
+          {showInternalLinkMenu === 'file' && internalLinkPosition && (
+            <div className="rte-dropdown" style={{ position: 'absolute', top: internalLinkPosition.top, left: internalLinkPosition.left, zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
+              <div style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Seleziona File da collegare</div>
+              {allFiles && allFiles.length > 0 ? allFiles.map(f => (
+                <button key={f.id} type="button" onClick={() => {
                   editorRef.current?.focus();
-                  insertHtml(`<a href="#" data-internal-id="${n.id}" data-internal-type="note" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📝 ${snippet}</a>&nbsp;`);
+                  insertHtml(`<a href="#" data-internal-id="${f.id}" data-internal-type="file" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📄 ${f.name}</a>&nbsp;`);
                   setShowInternalLinkMenu(null);
                   setInternalLinkPosition(null);
-                }}>📝 {snippet}</button>
-              );
-            }) : <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Nessuna nota disponibile</div>}
-            <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => { setShowInternalLinkMenu(null); setInternalLinkPosition(null); }}>Annulla</button>
-          </div>
-        )}
-
-        {slashMenuParams && (() => {
-          const options = getSlashOptions();
-          if (options.length === 0) return null;
-          return (
-            <div className="rte-slash-menu" style={{ top: slashMenuParams.top, left: slashMenuParams.left }}>
-              <div className="rte-slash-title">Opzioni</div>
-              {options.map((opt, idx) => (
-                <button
-                  key={opt.cmd}
-                  type="button"
-                  className={idx === slashSelectedIndex ? 'active' : ''}
-                  onClick={() => applySlashCommand(opt.cmd)}
-                  onMouseEnter={() => setSlashSelectedIndex(idx)}
-                >
-                  <span style={{ fontSize: '1.2rem', marginRight: '8px' }}>{opt.icon}</span> {opt.label}
-                </button>
-              ))}
+                }}>📄 {f.name}</button>
+              )) : <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Nessun file disponibile</div>}
+              <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => { setShowInternalLinkMenu(null); setInternalLinkPosition(null); }}>Annulla</button>
             </div>
-          );
-        })()}
-      </div>
+          )}
+
+          {showInternalLinkMenu === 'note' && internalLinkPosition && (
+            <div className="rte-dropdown" style={{ position: 'absolute', top: internalLinkPosition.top, left: internalLinkPosition.left, zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
+              <div style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Seleziona Nota da collegare</div>
+              {allNotes && allNotes.length > 0 ? allNotes.map(n => {
+                const snippet = (n.text || '').replace(/<[^>]*>/g, '').trim().substring(0, 30) + '...';
+                return (
+                  <button key={n.id} type="button" onClick={() => {
+                    editorRef.current?.focus();
+                    insertHtml(`<a href="#" data-internal-id="${n.id}" data-internal-type="note" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📝 ${snippet}</a>&nbsp;`);
+                    setShowInternalLinkMenu(null);
+                    setInternalLinkPosition(null);
+                  }}>📝 {snippet}</button>
+                );
+              }) : <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Nessuna nota disponibile</div>}
+              <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => { setShowInternalLinkMenu(null); setInternalLinkPosition(null); }}>Annulla</button>
+            </div>
+          )}
+
+          {slashMenuParams && (() => {
+            const options = getSlashOptions();
+            if (options.length === 0) return null;
+            return (
+              <div className="rte-slash-menu" style={{ top: slashMenuParams.top, left: slashMenuParams.left }}>
+                <div className="rte-slash-title">Opzioni</div>
+                {options.map((opt, idx) => (
+                  opt.isSeparator ? (
+                    <div key={opt.cmd} style={{ borderTop: '1px solid var(--border-light)', margin: '4px 8px' }} />
+                  ) : (
+                    <button
+                      key={opt.cmd}
+                      type="button"
+                      className={idx === slashSelectedIndex ? 'active' : ''}
+                      onClick={() => applySlashCommand(opt.cmd)}
+                      onMouseEnter={() => setSlashSelectedIndex(idx)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <IconComponent name={opt.icon} size={16} />
+                      <span>{opt.label}</span>
+                    </button>
+                  )
+                ))}
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       <style>{`
@@ -2036,6 +2776,36 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           margin-bottom: 4px;
         }
 
+        .rte-editor blockquote {
+          border-left: 4px solid var(--primary);
+          background: var(--bg-input);
+          padding: 8px 16px;
+          margin: 8px 0 16px 0;
+          font-style: italic;
+          color: var(--text-secondary);
+          border-radius: 0 4px 4px 0;
+        }
+
+        .rte-editor pre {
+          background: #f8f9fa;
+          border: 1px solid var(--border-light);
+          padding: 12px;
+          border-radius: 6px;
+          white-space: pre-wrap !important;
+          word-break: break-all !important;
+          font-family: 'Consolas', 'Courier New', Courier, monospace !important;
+          margin: 8px 0;
+          color: #d63384 !important;
+        }
+
+        .rte-editor code {
+          font-family: 'Consolas', 'Courier New', Courier, monospace !important;
+          white-space: pre-wrap !important;
+          word-break: break-all !important;
+          color: #d63384 !important;
+          font-size: 0.9em;
+        }
+
         /* Anchor styles */
         .rte-anchor {
           color: var(--primary) !important;
@@ -2048,21 +2818,222 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           user-select: none;
         }
 
-        /* Index panel styles */
-        .rte-index-panel {
-          scrollbar-width: thin;
-          scrollbar-color: var(--border) transparent;
+        /* Unified Hover Index Container - Floats on the Left Side of editor box */
+        .rte-hover-index-container {
+          position: absolute;
+          left: -40px; /* Float completely outside the editor border on the left side */
+          top: 80px;
+          display: flex;
+          flex-direction: row;
+          align-items: center; /* THIS CENTERS THE SIDEBAR RELATIVE TO THE PILLS */
+          gap: 12px;
+          z-index: 1000;
+          pointer-events: auto;
         }
 
-        .rte-index-panel::-webkit-scrollbar {
+        .rte-fullscreen .rte-hover-index-container {
+          position: fixed;
+          left: 40px; /* Floating on the far left side of the viewport in fullscreen */
+          top: 50%;
+          transform: translateY(-50%);
+        }
+
+        /* Premium Table of Contents Sidebar styles (matching Photo 2) */
+        .rte-toc-sidebar {
+          width: 280px;
+          min-width: 250px;
+          background: #ffffff; /* Clean white background (matching Photo 2) */
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          border-radius: 16px;
+          padding: 20px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06); /* Premium micro-shadow */
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          overflow-y: auto;
+          max-height: 400px;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          
+          /* Hover animation states */
+          opacity: 0;
+          pointer-events: none;
+          transform: translate(-12px, -50%); /* Start hidden and vertically centered */
+          
+          /* Position right next to the pills */
+          position: absolute;
+          left: 40px;
+          top: 50%; /* Center vertically relative to the container */
+        }
+
+        [data-theme="dark"] .rte-toc-sidebar {
+          background: rgba(255, 255, 255, 0.96) !important; /* Keep it light colored! "colori chiari non scuri" */
+          border-color: rgba(0, 0, 0, 0.1) !important;
+        }
+
+        /* Slide open when container is hovered */
+        .rte-hover-index-container:hover .rte-toc-sidebar {
+          opacity: 1;
+          pointer-events: auto;
+          transform: translate(0, -50%); /* Pop out horizontally while staying centered vertically */
+        }
+
+        .rte-toc-header {
+          font-size: 0.8rem;
+          font-weight: 700;
+          color: #888888;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+          padding-bottom: 8px;
+          margin-bottom: 4px;
+        }
+
+        .rte-toc-list {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .rte-toc-item {
+          display: block;
+          width: 100%;
+          text-align: left;
+          border: none;
+          background: transparent;
+          padding: 6px 12px;
+          border-radius: 8px;
+          font-family: var(--font);
+          font-size: 0.875rem;
+          color: #4b5563;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          line-height: 1.4;
+          white-space: normal;
+          word-break: break-word;
+        }
+
+        .rte-toc-item:hover {
+          background: rgba(0, 0, 0, 0.04);
+          color: #111827;
+        }
+
+        .rte-toc-item.active {
+          background: #f3f4f6 !important; /* Soft grey pill background matching Photo 2 */
+          color: #111827 !important; /* Elegant dark text */
+          font-weight: 700 !important;
+        }
+
+        [data-theme="dark"] .rte-toc-item {
+          color: #4b5563;
+        }
+
+        [data-theme="dark"] .rte-toc-item:hover {
+          background: rgba(0, 0, 0, 0.06);
+          color: #111827;
+        }
+
+        [data-theme="dark"] .rte-toc-item.active {
+          background: #e5e7eb !important;
+          color: #111827 !important;
+        }
+
+        .rte-toc-item.indent-h2 {
+          padding-left: 20px;
+          font-size: 0.825rem;
+        }
+
+        .rte-toc-item.indent-h3 {
+          padding-left: 32px;
+          font-size: 0.775rem;
+        }
+
+        .rte-toc-item.link-style {
+          color: #2563eb !important; /* Vibrant blue links from Photo 2 */
+          text-decoration: none;
+        }
+
+        .rte-toc-item.link-style:hover {
+          color: #1d4ed8 !important;
+          text-decoration: underline;
+        }
+
+        /* Minimalist Pill Scroll Mini-Map styles (matching Photo 1) */
+        .rte-minimal-pill-nav {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          background: rgba(255, 255, 255, 0.85); /* Light translucent glassmorphism */
+          padding: 10px 6px;
+          border-radius: 16px;
+          backdrop-filter: blur(8px);
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+          pointer-events: auto;
+          align-items: center;
+        }
+
+        [data-theme="dark"] .rte-minimal-pill-nav {
+          background: rgba(255, 255, 255, 0.92) !important;
+          border-color: rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .rte-pill-indicator {
+          width: 14px;
+          height: 3px;
+          background: rgba(0, 0, 0, 0.15); /* Soft dark grey inactive bars on light bg */
+          border-radius: 2px;
+          cursor: pointer;
+          transition: all 0.2s ease-in-out;
+          position: relative;
+        }
+
+        .rte-pill-indicator:hover {
+          background: rgba(0, 0, 0, 0.5);
+          width: 22px;
+        }
+
+        .rte-pill-indicator.active {
+          background: var(--primary) !important; /* Sleek primary active indicator */
+          width: 26px !important;
+          box-shadow: 0 0 6px rgba(99, 102, 241, 0.5);
+        }
+
+        /* Hover Tooltips for Pill Nav */
+        .rte-pill-tooltip {
+          position: absolute;
+          left: 32px; /* Opens to the right next to pills */
+          top: 50%;
+          transform: translateY(-50%) scale(0.9);
+          background: #ffffff;
+          color: #1f2937;
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 0.725rem;
+          font-weight: 600;
+          white-space: nowrap;
+          opacity: 0;
+          pointer-events: none;
+          transition: all 0.15s ease-in-out;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+          z-index: 1100;
+        }
+
+        .rte-pill-indicator:hover .rte-pill-tooltip {
+          opacity: 1;
+          transform: translateY(-50%) scale(1);
+        }
+
+        .rte-toc-sidebar::-webkit-scrollbar {
           width: 6px;
         }
 
-        .rte-index-panel::-webkit-scrollbar-track {
+        .rte-toc-sidebar::-webkit-scrollbar-track {
           background: transparent;
         }
 
-        .rte-index-panel::-webkit-scrollbar-thumb {
+        .rte-toc-sidebar::-webkit-scrollbar-thumb {
           background: var(--border);
           border-radius: 3px;
         }
@@ -2079,10 +3050,14 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         /* Fullscreen layout adjustments */
         .rte-fullscreen .rte-main-layout {
           flex: 1;
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 20px;
+          gap: 24px;
         }
 
-        .rte-fullscreen .rte-index-panel {
-          max-height: calc(100vh - 60px);
+        .rte-fullscreen .rte-toc-sidebar {
+          max-height: calc(100vh - 120px);
         }
       `}</style>
     </div>
@@ -2135,6 +3110,11 @@ const editorStyles = `
   }
   
   /* Todo checkbox styling in editor */
+  .todo-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+  }
   .rte-editor input[type="checkbox"] {
     width: 16px;
     height: 16px;
