@@ -23,6 +23,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const [linkModalParams, setLinkModalParams] = useState(null); // { type: 'url' | 'folder' }
   const [linkInputVal, setLinkInputVal] = useState('');
   const [linkInputName, setLinkInputName] = useState('');
+  const cursorMarkerRef = useRef(null); // Temporary marker for cursor position
+  // Note link modal states
+  const [noteSearchQuery, setNoteSearchQuery] = useState('');
+  const [noteSelectedIndex, setNoteSelectedIndex] = useState(0);
 
   // Reset slash menu index when filter changes
   useEffect(() => {
@@ -775,7 +779,18 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   };
 
   const insertHtml = (html) => {
-    exec('insertHTML', html);
+    if (cursorMarkerRef.current && editorRef.current) {
+      const marker = cursorMarkerRef.current;
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      while (tempDiv.firstChild) {
+        marker.parentNode.insertBefore(tempDiv.firstChild, marker.nextSibling);
+      }
+      cleanupCursorMarker();
+      handleInput();
+    } else {
+      exec('insertHTML', html);
+    }
   };
 
   const changeBlockTag = (tagName, targetElement = null) => {
@@ -910,8 +925,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       const pre = document.createElement('pre');
       const code = document.createElement('code');
       let content = block.nodeType === Node.TEXT_NODE ? (block.textContent || '') : (block.innerHTML || '');
-      // Clean any slash triggers
-      content = content.replace(/(?:^|\n)(?:\/[a-zA-Z]*)$/, '').trim();
+      // Clean any backslash triggers
+      content = content.replace(/\\([a-zA-Z]*)$/, '').trim();
       code.innerHTML = content || '&nbsp;';
       pre.appendChild(code);
 
@@ -1012,7 +1027,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
       if (node && node.nodeType === Node.TEXT_NODE) {
         const textParam = node.textContent.substring(0, range.startOffset);
-        const match = textParam.match(/(?:^|\n)(?:\/)([\\w]*)$/);
+        const match = textParam.match(/\\(\w*)$/);
         if (match) {
           const rect = range.getBoundingClientRect();
           // Use the relative wrapper for accurate positioning
@@ -1060,34 +1075,48 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       }
 
       const textParam = textNode.textContent.substring(0, range.startOffset);
-      const match = textParam.match(/(?:^|\n)(?:\/)([\\w]*)$/);
+      const match = textParam.match(/\\(\w*)$/);
       if (match) {
         range.setStart(textNode, range.startOffset - match[0].length);
         range.deleteContents();
       }
     }
 
-    // For link_file and link_note, use slash menu position if available (it works correctly)
-    // Otherwise fall back to cursor position calculation
+    // For link_file/link_note: always save the cursor selection so it can be restored after modal interaction
     if (cmd === 'link_file' || cmd === 'link_note') {
-      if (slashMenuParams) {
-        // Reuse the working slash menu position
-        setInternalLinkPosition({
-          top: slashMenuParams.top,
-          left: slashMenuParams.left
-        });
-      } else {
-        // Fallback to cursor position
-        const sel = window.getSelection();
-        if (sel.rangeCount) {
-          const range = sel.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          const wrapperRect = editorRef.current.parentElement.getBoundingClientRect();
-          const position = {
-            top: rect.bottom - wrapperRect.top + 5,
-            left: rect.left - wrapperRect.left
-          };
-          setInternalLinkPosition(position);
+      const currentSel = window.getSelection();
+      if (currentSel && currentSel.rangeCount > 0) {
+        savedSelectionRef.current = currentSel.getRangeAt(0).cloneRange();
+
+        // Insert a temporary marker at cursor position
+        const range = currentSel.getRangeAt(0).cloneRange();
+        const marker = document.createElement('span');
+        marker.id = 'cursor-marker-temp';
+        marker.setAttribute('data-temp-marker', 'true');
+        marker.style.display = 'none';
+        range.collapse(true);
+        range.insertNode(marker);
+        cursorMarkerRef.current = marker;
+      }
+      // For link_file, also calculate position for the inline dropdown
+      if (cmd === 'link_file') {
+        if (slashMenuParams) {
+          setInternalLinkPosition({
+            top: slashMenuParams.top,
+            left: slashMenuParams.left
+          });
+        } else {
+          const sel = window.getSelection();
+          if (sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            const wrapperRect = editorRef.current.parentElement.getBoundingClientRect();
+            const position = {
+              top: rect.bottom - wrapperRect.top + 5,
+              left: rect.left - wrapperRect.left
+            };
+            setInternalLinkPosition(position);
+          }
         }
       }
     }
@@ -1109,6 +1138,16 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       if (sel && sel.rangeCount > 0) {
         savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
         setLinkInputName(sel.toString() || '');
+
+        // Insert a temporary marker at cursor position
+        const range = sel.getRangeAt(0).cloneRange();
+        const marker = document.createElement('span');
+        marker.id = 'cursor-marker-temp';
+        marker.setAttribute('data-temp-marker', 'true');
+        marker.style.display = 'none';
+        range.collapse(true);
+        range.insertNode(marker);
+        cursorMarkerRef.current = marker;
       } else {
         setLinkInputName('');
       }
@@ -1117,6 +1156,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     } else if (cmd === 'link_file') {
       setShowInternalLinkMenu('file');
     } else if (cmd === 'link_note') {
+      setNoteSearchQuery('');
+      setNoteSelectedIndex(0);
       setShowInternalLinkMenu('note');
     } else if (cmd === 'image') {
       imageInputRef.current?.click();
@@ -1125,6 +1166,16 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       if (sel && sel.rangeCount > 0) {
         savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
         setLinkInputName(sel.toString() || '');
+
+        // Insert a temporary marker at cursor position
+        const range = sel.getRangeAt(0).cloneRange();
+        const marker = document.createElement('span');
+        marker.id = 'cursor-marker-temp';
+        marker.setAttribute('data-temp-marker', 'true');
+        marker.style.display = 'none';
+        range.collapse(true);
+        range.insertNode(marker);
+        cursorMarkerRef.current = marker;
       } else {
         setLinkInputName('');
       }
@@ -1133,25 +1184,67 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     }
   };
 
+  const cleanupCursorMarker = () => {
+    if (cursorMarkerRef.current) {
+      cursorMarkerRef.current.remove();
+      cursorMarkerRef.current = null;
+    }
+  };
+
+  // Clean up marker when modal closes
+  useEffect(() => {
+    if (!linkModalParams && !showInternalLinkMenu) {
+      cleanupCursorMarker();
+    }
+  }, [linkModalParams, showInternalLinkMenu]);
+
   const handleApplyLink = () => {
     if (!linkInputVal.trim()) return;
 
-    // Restore selection to inject exactly where cursor was
-    if (savedSelectionRef.current && editorRef.current) {
+    const url = linkInputVal.trim();
+    let htmlToInsert;
+    if (linkModalParams.type === 'url') {
+      const name = linkInputName.trim() || url;
+      htmlToInsert = `<a href="${url}" target="_blank" rel="noopener noreferrer">${name}</a>&nbsp;`;
+    } else {
+      const path = url;
+      const name = linkInputName.trim() || (path.split(/[\\\/]/).filter(Boolean).pop() || path);
+      htmlToInsert = `<a href="#" class="folder-internal-link" data-path="${path.replace(/\\/g, '\\\\')}" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📁 ${name}</a>&nbsp;`;
+    }
+
+    // Use the temporary marker to restore cursor position
+    if (cursorMarkerRef.current && editorRef.current) {
+      const marker = cursorMarkerRef.current;
+
+      // Create a temporary div to hold the HTML
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlToInsert;
+
+      // Insert the HTML content directly after the marker
+      while (tempDiv.firstChild) {
+        marker.parentNode.insertBefore(tempDiv.firstChild, marker.nextSibling);
+      }
+
+      // Remove the marker
+      cleanupCursorMarker();
+
+      handleInput();
+    } else if (savedSelectionRef.current && editorRef.current) {
+      // Fallback to saved selection if marker is not available
       editorRef.current.focus();
       const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(savedSelectionRef.current);
-    }
 
-    const url = linkInputVal.trim();
-    if (linkModalParams.type === 'url') {
-      const name = linkInputName.trim() || url;
-      insertHtml(`<a href="${url}" target="_blank" rel="noopener noreferrer">${name}</a>&nbsp;`);
+      requestAnimationFrame(() => {
+        document.execCommand('insertHTML', false, htmlToInsert);
+        handleInput();
+      });
     } else {
-      const path = url;
-      const name = linkInputName.trim() || (path.split(/[\\\/]/).filter(Boolean).pop() || path);
-      insertHtml(`<a href="#" class="folder-internal-link" data-path="${path.replace(/\\/g, '\\\\')}" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📁 ${name}</a>&nbsp;`);
+      // Final fallback: insert at cursor position
+      editorRef.current?.focus();
+      document.execCommand('insertHTML', false, htmlToInsert);
+      handleInput();
     }
 
     setLinkModalParams(null);
@@ -1172,8 +1265,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       { cmd: 'link', label: 'Link Esterno', icon: 'link' },
       { cmd: 'highlight', label: 'Evidenzia', icon: 'highlight' },
       { cmd: 'code', label: 'Blocco Codice', icon: 'code' },
-      { cmd: 'link_note', label: 'Collega Nota', icon: 'note' },
-      { cmd: 'link_folder', label: 'Collega Cartella Locale', icon: 'folder' }
+      { cmd: 'link_note', label: 'Collega Nota', icon: 'note' }
     ].filter(o => o.label.toLowerCase().includes(slashMenuParams.filter) || o.cmd.includes(slashMenuParams.filter));
   };
 
@@ -1349,22 +1441,55 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         }
 
         if (bq) {
-          const textContent = bq.textContent.replace(/\u200B/g, '').trim();
-          if (textContent === '' || textContent === '\u00A0') {
+          // Shift+Enter, Ctrl+Enter, o Cmd+Enter per uscire dalla citazione e creare un paragrafo normale sotto
+          if (e.shiftKey || e.ctrlKey || e.metaKey) {
             e.preventDefault();
-
-            // Revert empty blockquote back to standard paragraph
             const p = document.createElement('p');
             p.innerHTML = '<br>';
-            bq.parentNode.replaceChild(p, bq);
+            bq.parentNode.insertBefore(p, bq.nextSibling);
 
-            // Move cursor to the new paragraph
             const newRange = document.createRange();
             newRange.setStart(p, 0);
-            newRange.setEnd(p, 0);
+            newRange.collapse(true);
             selection.removeAllRanges();
             selection.addRange(newRange);
+            handleInput();
+            return;
+          }
 
+          // Doppio Invio (Invio su riga vuota) per uscire dalla citazione
+          let currentLineNode = range.startContainer;
+          while (currentLineNode && currentLineNode !== bq) {
+            if (currentLineNode.nodeType === Node.ELEMENT_NODE && ['P', 'DIV', 'LI'].includes(currentLineNode.tagName)) {
+              break;
+            }
+            currentLineNode = currentLineNode.parentNode;
+          }
+
+          const isLineEmpty = !range.startContainer.textContent.trim() ||
+            (currentLineNode && !currentLineNode.textContent.trim());
+
+          if (isLineEmpty) {
+            e.preventDefault();
+
+            // Rimuoviamo la riga vuota corrente se è un sotto-elemento di bq
+            if (currentLineNode && currentLineNode !== bq) {
+              currentLineNode.remove();
+            } else if (range.startContainer.nodeType === Node.TEXT_NODE) {
+              range.startContainer.textContent = range.startContainer.textContent.trimEnd();
+            }
+
+            // Crea paragrafo normale sotto
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            bq.parentNode.insertBefore(p, bq.nextSibling);
+
+            // Sposta il cursore al paragrafo successivo
+            const newRange = document.createRange();
+            newRange.setStart(p, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
             handleInput();
             return;
           }
@@ -1391,17 +1516,14 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           // Shift+Enter, Ctrl+Enter, o Cmd+Enter per uscire dal blocco codice e creare un paragrafo normale sotto
           if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.metaKey)) {
             e.preventDefault();
-            let nextBlock = pre.nextSibling;
-            if (!nextBlock || nextBlock.nodeName === 'BR') {
-              nextBlock = document.createElement('p');
-              nextBlock.innerHTML = '<br>';
-              pre.parentNode.insertBefore(nextBlock, pre.nextSibling);
-            }
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            pre.parentNode.insertBefore(p, pre.nextSibling);
 
             // Sposta il cursore al paragrafo successivo
             const newRange = document.createRange();
-            newRange.setStart(nextBlock, 0);
-            newRange.setEnd(nextBlock, 0);
+            newRange.setStart(p, 0);
+            newRange.collapse(true);
             selection.removeAllRanges();
             selection.addRange(newRange);
             handleInput();
@@ -1416,11 +1538,23 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
             if (isAtEnd || (range.startContainer.textContent && range.startOffset === range.startContainer.textContent.length)) {
               let nextBlock = pre.nextSibling;
-              if (nextBlock) {
+              if (nextBlock && nextBlock.nodeType === Node.ELEMENT_NODE) {
                 e.preventDefault();
                 const newRange = document.createRange();
                 newRange.setStart(nextBlock, 0);
                 newRange.setEnd(nextBlock, 0);
+                selection.removeAllRanges();
+                selection.addRange(newRange);
+                return;
+              } else {
+                e.preventDefault();
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                pre.parentNode.insertBefore(p, pre.nextSibling);
+
+                const newRange = document.createRange();
+                newRange.setStart(p, 0);
+                newRange.collapse(true);
                 selection.removeAllRanges();
                 selection.addRange(newRange);
                 return;
@@ -1434,9 +1568,54 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
             const textNode = selection.anchorNode;
             const offset = selection.anchorOffset;
 
+            // Rileva se siamo su una riga vuota per uscire dal blocco di codice
+            let isBlankLine = false;
             if (textNode.nodeType === Node.TEXT_NODE) {
               const text = textNode.textContent;
-              textNode.textContent = text.substring(0, offset) + '\n' + text.substring(offset);
+              const startOfLine = text.lastIndexOf('\n', offset - 1);
+              const endOfLine = text.indexOf('\n', offset);
+              const lineContent = text.substring(
+                startOfLine === -1 ? 0 : startOfLine + 1,
+                endOfLine === -1 ? text.length : endOfLine
+              ).trim();
+              if (lineContent === '') {
+                isBlankLine = true;
+              }
+            } else if (!pre.textContent.trim()) {
+              isBlankLine = true;
+            }
+
+            if (isBlankLine) {
+              // Rimuove la riga vuota dal contenuto del blocco di codice
+              if (textNode.nodeType === Node.TEXT_NODE) {
+                const text = textNode.textContent;
+                const startOfLine = text.lastIndexOf('\n', offset - 1);
+                const endOfLine = text.indexOf('\n', offset);
+                const before = text.substring(0, startOfLine === -1 ? 0 : startOfLine);
+                const after = text.substring(endOfLine === -1 ? text.length : endOfLine + 1);
+                textNode.textContent = (before + (before && after ? '\n' : '') + after) || '\u00A0';
+              }
+
+              // Crea un paragrafo normale sotto
+              const p = document.createElement('p');
+              p.innerHTML = '<br>';
+              pre.parentNode.insertBefore(p, pre.nextSibling);
+
+              // Sposta il cursore al paragrafo successivo
+              const newRange = document.createRange();
+              newRange.setStart(p, 0);
+              newRange.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+              handleInput();
+              return;
+            }
+
+            // Inserisce il ritorno a capo (con correzione per il rendering del newline finale)
+            if (textNode.nodeType === Node.TEXT_NODE) {
+              const text = textNode.textContent;
+              const atEnd = offset === text.length;
+              textNode.textContent = text.substring(0, offset) + '\n' + (atEnd ? '\n' : '') + text.substring(offset);
 
               const newRange = document.createRange();
               newRange.setStart(textNode, offset + 1);
@@ -1444,10 +1623,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
               selection.removeAllRanges();
               selection.addRange(newRange);
             } else {
-              const newlineNode = document.createTextNode('\n');
+              const newlineNode = document.createTextNode('\n\n');
               range.insertNode(newlineNode);
-              range.setStartAfter(newlineNode);
-              range.setEndAfter(newlineNode);
+              range.setStart(newlineNode, 1);
+              range.setEnd(newlineNode, 1);
               selection.removeAllRanges();
               selection.addRange(range);
             }
@@ -2262,7 +2441,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 11000, padding: '20px'
           }}
-          onClick={(e) => { if (e.target === e.currentTarget) setLinkModalParams(null); }}
+          onClick={(e) => { if (e.target === e.currentTarget) { cleanupCursorMarker(); setLinkModalParams(null); } }}
         >
           <div className="animate-scale-in" style={{
             backgroundColor: 'var(--bg-card)', borderRadius: '24px', padding: '32px',
@@ -2309,7 +2488,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
             </div>
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" style={{ padding: '10px 24px', borderRadius: '10px' }} onClick={() => setLinkModalParams(null)}>Annulla</button>
+              <button className="btn btn-secondary" style={{ padding: '10px 24px', borderRadius: '10px' }} onClick={() => { cleanupCursorMarker(); setLinkModalParams(null); }}>Annulla</button>
               <button className="btn btn-primary" style={{ padding: '10px 24px', borderRadius: '10px', fontWeight: 600 }} onClick={handleApplyLink} disabled={!linkInputVal.trim()}>
                 Inserisci
               </button>
@@ -2423,6 +2602,187 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         document.body
       )}
 
+      {/* ── Note Link Modal Portal ── */}
+      {showInternalLinkMenu === 'note' && createPortal(
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowInternalLinkMenu(null);
+              setNoteSearchQuery('');
+              setNoteSelectedIndex(0);
+            }
+          }}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
+            backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 11000, padding: '20px'
+          }}
+        >
+          <div
+            className="animate-scale-in"
+            style={{
+              backgroundColor: 'var(--bg-card)', borderRadius: '20px',
+              width: '100%', maxWidth: '560px', maxHeight: '75vh',
+              boxShadow: '0 25px 60px -10px rgba(0, 0, 0, 0.4)',
+              border: '1px solid var(--border-light)',
+              display: 'flex', flexDirection: 'column', overflow: 'hidden'
+            }}
+          >
+            {/* Header */}
+            <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border-light)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                <div style={{
+                  width: '38px', height: '38px',
+                  background: 'var(--primary-ghost)', borderRadius: '10px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.15rem',
+                  flexShrink: 0
+                }}>📝</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Collega Nota</h3>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Seleziona una nota da inserire nel testo</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowInternalLinkMenu(null); setNoteSearchQuery(''); setNoteSelectedIndex(0); }}
+                  style={{
+                    marginLeft: '4px', background: 'transparent', border: 'none', cursor: 'pointer',
+                    color: 'var(--text-tertiary)', fontSize: '1.1rem', padding: '6px',
+                    borderRadius: '8px', lineHeight: 1, display: 'flex', alignItems: 'center',
+                    flexShrink: 0
+                  }}
+                >✕</button>
+              </div>
+              {/* Search bar */}
+              <div style={{ position: 'relative' }}>
+                <span style={{
+                  position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                  fontSize: '0.9rem', color: 'var(--text-tertiary)', pointerEvents: 'none', userSelect: 'none'
+                }}>🔍</span>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Cerca tra le note..."
+                  value={noteSearchQuery}
+                  onChange={(e) => { setNoteSearchQuery(e.target.value); setNoteSelectedIndex(0); }}
+                  onKeyDown={(e) => {
+                    const filtered = (allNotes || []).filter(n => {
+                      if (!noteSearchQuery.trim()) return true;
+                      const t = (n.text || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').toLowerCase();
+                      return t.includes(noteSearchQuery.toLowerCase());
+                    });
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setShowInternalLinkMenu(null); setNoteSearchQuery(''); setNoteSelectedIndex(0);
+                    } else if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setNoteSelectedIndex(prev => Math.min(prev + 1, filtered.length - 1));
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setNoteSelectedIndex(prev => Math.max(prev - 1, 0));
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const note = filtered[noteSelectedIndex];
+                      if (note) {
+                        const rawText = (note.text || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+                        const snippet = rawText.substring(0, 30) || '(Nota)';
+                        if (savedSelectionRef.current && editorRef.current) {
+                          editorRef.current.focus();
+                          const sel = window.getSelection();
+                          sel.removeAllRanges();
+                          sel.addRange(savedSelectionRef.current);
+                        }
+                        insertHtml(`<a href="#" data-internal-id="${note.id}" data-internal-type="note" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📝 ${snippet}</a>&nbsp;`);
+                        setShowInternalLinkMenu(null); setNoteSearchQuery(''); setNoteSelectedIndex(0);
+                      }
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '10px 12px 10px 38px',
+                    borderRadius: '10px', border: '1px solid var(--border)',
+                    background: 'var(--bg-input)', color: 'var(--text-primary)',
+                    fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box',
+                    fontFamily: 'var(--font)'
+                  }}
+                />
+              </div>
+            </div>
+            {/* Notes list */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+              {(() => {
+                const filtered = (allNotes || []).filter(n => {
+                  if (!noteSearchQuery.trim()) return true;
+                  const t = (n.text || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').toLowerCase();
+                  return t.includes(noteSearchQuery.toLowerCase());
+                });
+                if (filtered.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-tertiary)' }}>
+                      <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📭</div>
+                      <div style={{ fontSize: '0.875rem' }}>
+                        {noteSearchQuery ? 'Nessuna nota trovata per questa ricerca' : 'Nessuna nota disponibile'}
+                      </div>
+                    </div>
+                  );
+                }
+                return filtered.map((n, idx) => {
+                  const rawText = (n.text || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+                  const title = rawText.substring(0, 60) || '(Nota vuota)';
+                  const preview = rawText.length > 60 ? rawText.substring(60, 130) + '...' : '';
+                  const isSelected = idx === noteSelectedIndex;
+                  const snippet = rawText.substring(0, 30) || '(Nota)';
+                  return (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onMouseEnter={() => setNoteSelectedIndex(idx)}
+                      onClick={() => {
+                        if (savedSelectionRef.current && editorRef.current) {
+                          editorRef.current.focus();
+                          const sel = window.getSelection();
+                          sel.removeAllRanges();
+                          sel.addRange(savedSelectionRef.current);
+                        }
+                        insertHtml(`<a href="#" data-internal-id="${n.id}" data-internal-type="note" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📝 ${snippet}</a>&nbsp;`);
+                        setShowInternalLinkMenu(null); setNoteSearchQuery(''); setNoteSelectedIndex(0);
+                      }}
+                      style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                        width: '100%', padding: '10px 14px', margin: '2px 0',
+                        border: 'none', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+                        background: isSelected ? 'var(--primary-ghost)' : 'transparent',
+                        outline: isSelected ? '1px solid var(--primary-light)' : 'none',
+                        transition: 'background 0.12s ease',
+                        fontFamily: 'var(--font)'
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, fontSize: '0.875rem', color: isSelected ? 'var(--primary)' : 'var(--text-primary)', marginBottom: preview ? '3px' : 0 }}>
+                        {title}
+                      </span>
+                      {preview && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>{preview}</span>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+            {/* Footer keyboard hint */}
+            <div style={{
+              padding: '10px 20px', borderTop: '1px solid var(--border-light)',
+              display: 'flex', gap: '16px', alignItems: 'center',
+              fontSize: '0.72rem', color: 'var(--text-tertiary)', background: 'var(--bg-input)'
+            }}>
+              <span>↑↓ naviga</span>
+              <span>↵ inserisci</span>
+              <span>Esc chiudi</span>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       <div className="rte-main-layout" style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative', width: '100%' }}>
         <div className="rte-editor-wrapper" style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div
@@ -2461,23 +2821,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
             </div>
           )}
 
-          {showInternalLinkMenu === 'note' && internalLinkPosition && (
-            <div className="rte-dropdown" style={{ position: 'absolute', top: internalLinkPosition.top, left: internalLinkPosition.left, zIndex: 1000, maxHeight: '200px', overflowY: 'auto' }}>
-              <div style={{ padding: '8px', fontWeight: 'bold', borderBottom: '1px solid var(--border-light)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Seleziona Nota da collegare</div>
-              {allNotes && allNotes.length > 0 ? allNotes.map(n => {
-                const snippet = (n.text || '').replace(/<[^>]*>/g, '').trim().substring(0, 30) + '...';
-                return (
-                  <button key={n.id} type="button" onClick={() => {
-                    editorRef.current?.focus();
-                    insertHtml(`<a href="#" data-internal-id="${n.id}" data-internal-type="note" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📝 ${snippet}</a>&nbsp;`);
-                    setShowInternalLinkMenu(null);
-                    setInternalLinkPosition(null);
-                  }}>📝 {snippet}</button>
-                );
-              }) : <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Nessuna nota disponibile</div>}
-              <button type="button" style={{ color: 'var(--danger)', marginTop: '4px', borderTop: '1px solid var(--border-light)' }} onClick={() => { setShowInternalLinkMenu(null); setInternalLinkPosition(null); }}>Annulla</button>
-            </div>
-          )}
+          {/* Note link menu is now a centered modal portal - see portal section above */}
 
           {slashMenuParams && (() => {
             const options = getSlashOptions();

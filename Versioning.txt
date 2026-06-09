@@ -1,0 +1,109 @@
+### VERSIONI DELLA APP - UPERSITE CRM ###
+
+----------------------------------------------------------
+
+# Funzionamento del sistema di versioning #
+Formato: Major.Minor.Patch-Stato (es. 1.2.1-stable)
+
+- Major: Cambiamenti drastici non retrocompatibili
+- Minor: Nuove funzionalità retrocompatibili
+- Patch: Correzioni bug e piccoli miglioramenti
+
+- Stato: stable (produzione), beta (test), alpha (sviluppo)
+
+----------------------------------------------------------
+
+# Modificare manualmente la versione della App in package.json #
+
+## 📁 File da aggiornare:
+
+### 1. **package.json** (riga 4)
+json
+"version": "1.3.1-stable"
+
+
+### 2. **src/utils/version.js** (riga 3)  
+javascript
+export const APP_VERSION = '1.3.1-stable';
+
+
+### 3. **Versioning.txt** (aggiungere in fondo)
+
+- 1.3.1-stable: Descrizione della nuova funzionalità
+
+## ⚠️ Importante:
+- Tutti e 3 i file devono avere la stessa versione
+- La versione in App.jsx viene letta da `src/utils/version.js`
+- Il versioning.txt serve solo per documentazione
+
+----------------------------------------------------------
+
+- 0.0.0: Il concept e il progetto della app
+- 0.1.0-alpha: Prima bozza interfaccia e prototipo base
+- 0.2.0-beta: Test interni con funzionalità essenziali
+- 0.3.0-beta: Implementazione database locale JSON
+- 0.4.0-alpha: Sistema di autenticazione e master password
+- 0.5.0-beta: Gestione clienti base e CRUD operations
+- 0.6.0-alpha: Introduzione task e sistema todo
+- 0.7.0-beta: Sistema note e rich text editor
+- 0.8.0-alpha: Gestione file e upload documenti
+- 0.9.0-beta: Integrazione link e risorse esterne
+- 1.0.0: Struttura portante della app realizzata da Opus 4.6
+- 1.0.1-stable: Fix critici e stabilizzazione generale
+- 1.0.2-stable: Miglioramenti performance e ottimizzazioni
+
+- 1.1.0: Aggiunta di molte funzionalità
+- 1.1.1-stable: Fix bug gestione pagamenti e scadenze
+- 1.1.2-stable: Integrazione calendario e visualizzazioni
+- 1.1.3-stable: Sistema di notifiche e reminder automatici
+- 1.1.4-beta: rimosso sistema di backup parziale e tolto la possibilità di caricare file (sostituita con link alla cartella sul Pc)
+- 1.2.0-stable: Sistema di versioning completo e funzionalità di link cartelle locali
+- 1.2.1-stable: Aggiunta modifica todo e ottimizzazione performance e reattività
+- 1.3.0-stable: Implementazione completa chat contestuale con memoria conversazionale e accesso a tutte le note clienti
+- 1.3.1-stable: Patch comportamento todo - clic testo cambia stato completato, clic matita modifica testo
+- 1.3.2-stable: Fix integrazione calendario con IA - ora l'IA riceve anche gli eventi globali del calendario
+- 1.3.3-stable: Fix grafici dashboard - ora "Incassato" e "Da incassare" mostrano grafici differenziati e corretti
+- 1.3.4-stable: Aggiunto Task Filter globale con filtri per priorità e cliente, icona SVG coerente, e navigazione diretta alla tab TODO del cliente
+- 1.3.5-stable: Fix navigazione calendario e rate scadute - ora i task portano alla tab "todo" e i pagamenti alla tab "pagamenti" correttamente
+- 1.3.6-stable: Fix layout calendario - ora il testo lungo dei task va a capo correttamente senza sputtanare il layout delle celle
+
+- 1.4.0-stable: SmartReport AI - Analisi intelligente clienti con salvataggio note e popup conferma
+- 1.4.1-stable: SmartReport patch - Fix salvataggio report, eliminazione con cestino, centramento caricamento e miglioramenti UI
+- 1.4.2-stable: SmartReport final patch - Fix completo funzione updateCustomer e stabilizzazione salvataggio report
+- 1.4.3-alpha: SmartReport eliminazione patch - Fix eliminazione  report senza chiudere scheda cliente
+
+- 1.5.0-alpha: Smart Summarizer AI - Pulsante "Riassumi Note" nella tab note con analisi IA e riassunti dettagliati
+- 1.5.1-alpha: Patch SmartReport/File Explorer/Todo UI - Fix persistenza SmartReport, apertura file in Windows Explorer, allineamento icona matita
+- 1.5.1-stable: Esportazione task in Markdown - Pulsanti "Esporta Markdown" (TaskFilterModal) e "Esporta Todo" (CustomerDetail) per export completo di tutti i task con priorità, scadenze, ricorrenza, descrizioni, file e note collegate
+- 1.5.2-stable: Export dual-format - Tendine viola con scelta tra formato .md e .txt per entrambi i pulsanti di export, generazione contenuto testuale puro per .txt
+- 1.5.3-stable: Sistema Ticketing Completo - Nuova tab "Tickets" in CustomerDetail, dashboard centralizzata ticket aperti, gestione CRUD ticket con priorità (1-3 stelle), stato aperto/chiuso, link cliccabili, badge navbar con conteggio, navigazione diretta dashboard→cliente con auto-selezione tab tickets, inclusione automatica nel sistema backup
+
+- 1.6.0-stable: AI Writing Tools - Menu contestuale con pulsante "✨ AI" per accesso a 7 strumenti di scrittura basati su Gemma 3 27B: Riscrivi, Riassumi, Migliora, Espandi, Traduci, Idee, Correggi Grammatica; modale dedicata con applicazione risultati e configurazione modello personalizzabile
+- 1.6.1-stable: AI Writing Tools patch - Fix pulsante "Applica" con persistenza selezione testo, fix posizionamento menu "Collega Nota" in fullscreen, fix collegamenti interni note da NoteModal, rimozione voce "Collega File" dal menu slash, miglioramenti UI menu AI con colori opaci
+- 1.6.2-stable: Automazioni System Fix - Riparazione completa sistema automazioni: rilevazione robusta per ID di task/note nuovi, logging completo per debugging, nuovo evento TASK_COMPLETED, fix scheduler temporale
+- 1.6.3-stable: RichText Editor Enhancements - Rimozione completa funzionalità todo dall'editor note, ripristino indice laterale con ancore (H1, H2, H3), evidenziazione ancora attiva con background violetto, ordinamento ancore per apparizione nel testo, rendering markdown nel popup riassunto AI (grassetto, elenchi), impostazioni per modello AI riassunto note, sistemato chiusura calendario quando si clicca su task/rata, migliorata gerarchia indice con bullet points e layout overlay per non spostare l'editor
+
+- 1.7.0-stable: AI Token Optimization System - Toggle per ottimizzazione token in impostazioni con statistiche globali cumulative (token usati, risparmiati, percentuale), filtraggio intelligente dati inviati all'AI (solo task attivi, tickets aperti, rate non pagate, eventi futuri), conteggio token basato su lunghezza JSON/4, protezione password eliminazione clienti con password master di sistema
+
+- 1.8.0-stable: Eisenhower Matrix Task Management - Nuova tab "Matrice Eisenhower" in TaskFilterModal con classificazione automatica task in 4 quadranti (Urgente+Importante, Non Urgente+Importante, Urgente+Non Importante, Non Urgente+Non Importante), logica basata su priorità e scadenze, gestione task senza scadenza, design responsive 2x2 grid, task cards interattive, navigazione diretta al cliente da task, filtri mantenuti solo per vista elenco
+
+- 1.9.0-stable: Dashboard Finanziaria Completa - Riorganizzazione StatsHeader in 4 sezioni con "Transazioni Recenti" come terza card, popup modale con elenco completo transazioni in formato "$X,XXX.XX USD Pagata ✓", design card bianche con colori status (verde/rosso/arancione), layout perfetto con importo (sinistra), cliente (centro), status (destra), termini italiani "Pagata/Scaduta/In sospeso", navigazione diretta alla tab "Pagamenti" del cliente da ogni transazione
+- 1.9.1-stable: Note Card UI Improvements - Titolo nota in grassetto nella card anteprima, sostituzione emoji con icone SVG minimali (eye, eyeOff, trash), estrazione intelligente del titolo (H1 o prima riga) per visualizzazione pulita senza testo attaccato
+
+- 1.10.0-stable: Miglioramenti sostanziali all'editor note. Aggiunta dell'indice con animazioni fluide e menù laterale (a sinistra) per navigazione rapida tra le ancore.
+- 1.10.1-stable: Miglioramenti all'editor note. Revisione estetica del menù "/" con icone SVG minimali e layout più pulito. Fix di bug legati all'inserimento degli elementi tramite questo menù ("/").
+- 1.10.2-stable: Miglioramenti all'editor note. Fix di bug legati alla visualizzazione delle icone SVG nel menù "/".
+- 1.10.3-stable: Aggiunta delle checkbox cliccabili per creare le todo list nell'editor note.
+- 1.10.4-stable: Fix di bug legati alla visualizzazione delle checkbox nell'editor note.
+- 1.10.5-stable: Fix di un bug che impediva l'apertura a pieno schermo della nota.
+- 1.10.6-stable: Aggiunta delle cartelle all'interno dell'editor note con "etichette" che appaiono su ogni "card" nota se sono messe dentro delle cartelle.
+- 1.10.7-stable: Fix di bug generici nell'editor note, modificato icone da emoji a SVG per maggiore uniformità e qualità.
+- 1.10.8-stable: Aggiunta della funzionalità "citazione" nell'editor note e nel menù "/" con icona SVG. Fix bug "blocco codice" non funzionante.
+- 1.10.9-stable: Aggiunta opzione con toggle on/off per cursori del mouse custom (stile viola come il colore principale del CRM).
+
+- 1.11.0-stable: Aggiunta vista "Panoramica business" con dashboard completa per analisi aziendale e grafico a stella accessibile dal pulsante in basso a sinistra.
+
+- 1.12.0-alpha: Inizio sviluppo Grafo note come su Obsidian.
+- 1.12.1-stable: Sistemato grafo stile obsidian, sfondo chiaro, apertura in finestra popup dedicata.
+- 1.12.3-stable: Link sulle note buggati, fixato.
+- 1.12.4-stable: Vari bug fixati

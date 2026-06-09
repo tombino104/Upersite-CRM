@@ -2110,6 +2110,17 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
             setDeleteTarget({ type, id });
 
+        } else if (type === 'note-folder') {
+
+            const folderName = id;
+            const folderPath = folderName + '/';
+            const hasNotes = (form.notes || []).some(n => n.folderPath === folderPath || (n.folderPath && n.folderPath.startsWith(folderPath)));
+            if (hasNotes) {
+                setDeleteTarget({ type: 'note-folder-with-notes', id: folderName });
+            } else {
+                setDeleteTarget({ type: 'note-folder-empty', id: folderName });
+            }
+
         } else {
 
             setDeleteTarget({ type, id });
@@ -2224,6 +2235,26 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
     };
 
+    const deleteNoteFolderWithChoice = (folderName, deleteNotes) => {
+        const folderPath = folderName + '/';
+        if (deleteNotes) {
+            update('notes', (form.notes || []).filter(n => {
+                const nPath = n.folderPath || '';
+                return !nPath.startsWith(folderPath);
+            }));
+        } else {
+            update('notes', (form.notes || []).map(n => {
+                const nPath = n.folderPath || '';
+                if (nPath.startsWith(folderPath)) {
+                    return { ...n, folderPath: '/' };
+                }
+                return n;
+            }));
+        }
+        window.dispatchEvent(new CustomEvent('deleteNoteFolder', { detail: folderName }));
+        setDeleteTarget(null);
+    };
+
     const executeDelete = () => {
 
         if (!deleteTarget) return;
@@ -2258,20 +2289,9 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                 const fullPath = (f.path || f.name || '');
                 return !fullPath.startsWith(folderPath);
             }));
-        } else if (type === 'note-folder') {
-            const folderPath = (typeof id === 'string') ? id : (id?.folderPath || '');
-            if (!folderPath) {
-                setDeleteTarget(null);
-                return;
-            }
-            // Sposta le note nella root invece di eliminarle
-            update('notes', (form.notes || []).map(n => {
-                const nPath = n.folderPath || '';
-                if (nPath.startsWith(folderPath)) {
-                    return { ...n, folderPath: '/' };
-                }
-                return n;
-            }));
+        } else if (type === 'note-folder-empty') {
+            const folderName = id;
+            window.dispatchEvent(new CustomEvent('deleteNoteFolder', { detail: folderName }));
         } else if (type === 'note') {
             update('notes', form.notes.filter(n => n.id !== id));
 
@@ -2325,7 +2345,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
         { id: 'links', label: 'Link', icon: '🔗', unread: getUnread(form.links) },
 
-        { id: 'files', label: 'File', icon: '📁' },
+        // { id: 'files', label: 'File', icon: '📁' },
 
         { id: 'notes', label: 'Note', icon: '📝', unread: getUnread(form.notes) },
 
@@ -2655,6 +2675,43 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                 {deleteTarget && deleteTarget.type !== 'customer' && (() => {
 
+                    if (deleteTarget.type === 'note-folder-with-notes') {
+                        return (
+                            <div className="detail-confirm-overlay animate-fade-in" style={{ zIndex: 2200 }}>
+                                <div className="detail-confirm-card animate-scale-in" style={{ maxWidth: '450px' }}>
+                                    <div className="detail-confirm-icon">📂</div>
+                                    <h3 style={{ margin: '0 0 10px 0', fontSize: '1.15rem', color: 'var(--text-primary)' }}>Elimina Cartella</h3>
+                                    <p style={{ margin: '0 0 20px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                        Questa cartella contiene delle note al suo interno. Scegli cosa vuoi fare:
+                                    </p>
+                                    <div className="detail-confirm-buttons" style={{ flexDirection: 'column', gap: '8px', width: '100%' }}>
+                                        <button 
+                                            className="btn btn-primary" 
+                                            style={{ width: '100%', padding: '10px' }} 
+                                            onClick={() => deleteNoteFolderWithChoice(deleteTarget.id, false)}
+                                        >
+                                            Elimina solo la cartella (mantieni le note)
+                                        </button>
+                                        <button 
+                                            className="btn btn-danger" 
+                                            style={{ width: '100%', padding: '10px' }} 
+                                            onClick={() => deleteNoteFolderWithChoice(deleteTarget.id, true)}
+                                        >
+                                            Elimina la cartella e tutte le sue note
+                                        </button>
+                                        <button 
+                                            className="btn btn-secondary" 
+                                            style={{ width: '100%', padding: '10px' }} 
+                                            onClick={() => setDeleteTarget(null)}
+                                        >
+                                            Annulla
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+
                     // Check if this is a recurring todo
 
                     const isRecurTodo = deleteTarget.type === 'todo' && (() => {
@@ -2695,7 +2752,11 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                                         ? "Questo è un todo RICORRENTE. Sei sicuro di volerlo eliminare definitivamente?"
 
-                                        : "Sei sicuro di voler eliminare questo elemento?"}
+                                        : deleteTarget.type === 'note-folder-empty'
+
+                                            ? "Sei sicuro di voler eliminare questa cartella?"
+
+                                            : "Sei sicuro di voler eliminare questo elemento?"}
 
                                 </p>
 
@@ -4615,7 +4676,7 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
     const [pendingAction, setPendingAction] = useState(null);
     const [activeFilter, setActiveFilter] = useState('all'); 
     const [searchQuery, setSearchQuery] = useState('');
-    const [sessionFolders, setSessionFolders] = useState([]);
+    const [sessionFolders, setSessionFolders] = useState(['Archiviate']);
     const [showGraph, setShowGraph] = useState(false);
     
     const folders = useMemo(() => {
@@ -4635,6 +4696,29 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
             clearInitialSelectedNote();
         }
     }, [initialSelectedNote, clearInitialSelectedNote]);
+
+    useEffect(() => {
+        if (!showGraph) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setShowGraph(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [showGraph]);
+
+    useEffect(() => {
+        const handleDeleteFolder = (e) => {
+            const folderName = e.detail;
+            setSessionFolders(prev => prev.filter(f => f !== folderName));
+            if (activeFilter === folderName + '/') {
+                setActiveFilter('root');
+            }
+        };
+        window.addEventListener('deleteNoteFolder', handleDeleteFolder);
+        return () => window.removeEventListener('deleteNoteFolder', handleDeleteFolder);
+    }, [activeFilter]);
 
     const addNote = useCallback(() => {
         const text = newNote.replace(/<[^>]*>/g, '').trim();
@@ -4747,12 +4831,12 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                                 <div className="sidebar-icon-box">📁</div>
                                 <span className="sidebar-text">{f}</span>
                                 <div className="sidebar-item-actions">
-                                    <button className="btn-delete-folder" onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSessionFolders(prev => prev.filter(folder => folder !== f));
-                                        if (activeFilter === f + '/') setActiveFilter('root');
-                                        confirmDelete('note-folder', f + '/');
-                                    }}>✕</button>
+                                    {f !== 'Archiviate' && (
+                                        <button className="btn-delete-folder" onClick={(e) => {
+                                            e.stopPropagation();
+                                            confirmDelete('note-folder', f);
+                                        }}>✕</button>
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -4799,70 +4883,62 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                     <RichTextEditor value={newNote} onChange={setNewNote} onDirtyChange={setIsEditorDirty} onInternalLinkClick={onInternalLink} allFiles={form.files} allNotes={form.notes} />
                 </div>
 
-                {showGraph ? (
-                    <div style={{ width: '100%', height: 560 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                            <span style={{ fontSize: '1.1rem' }}>🕸️</span>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Grafo delle Note</h3>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginLeft: 4 }}>Collega note con /Collega Nota nell'editor</span>
-                        </div>
-                        <NotesGraphView
-                            notes={notes}
-                            onNoteClick={handleNoteClick}
-                            selectedNoteId={null}
-                        />
-                    </div>
-                ) : (
-                    <>
-                        <div className="notes-grid-title">
-                            <h3>{activeFilter === 'all' ? 'Tutte le Note' : (activeFilter === 'unread' ? 'Note da leggere' : activeFilter.replace('/', ''))}</h3>
-                            {searchQuery && <span className="search-tag">Risultati per: {searchQuery}</span>}
-                        </div>
+                <div className="notes-grid-title">
+                    <h3>{activeFilter === 'all' ? 'Tutte le Note' : (activeFilter === 'unread' ? 'Note da leggere' : activeFilter.replace('/', ''))}</h3>
+                    {searchQuery && <span className="search-tag">Risultati per: {searchQuery}</span>}
+                </div>
 
-                        <div className="notes-grid">
-                            {filteredNotes.length === 0 ? (
-                                <div className="notes-empty-state">
-                                    <div style={{ fontSize: '3rem', marginBottom: '16px', opacity: 0.5 }}>📭</div>
-                                    <p>Nessuna nota trovata in questa sezione.</p>
-                                </div>
-                            ) : (
-                                filteredNotes.map((note, idx) => (
-                                    <div key={note.id} className={`note-card-modern ${!note.readAt ? 'unread' : ''}`}
-                                         style={{ animationDelay: `${idx * 40}ms` }}
-                                         onClick={() => handleNoteClick(note)}>
-                                        <div className="note-card-header">
-                                            <span className="note-date">🕒 {formatDate(note.createdAt)}</span>
-                                            {note.folderPath && note.folderPath !== '/' && (
-                                                <span className="note-folder-badge">📁 {note.folderPath.replace('/', '')}</span>
-                                            )}
-                                        </div>
-                                        <div className="note-card-body">
-                                            <strong>{getNoteSnippet(note.text)}</strong>
-                                        </div>
-                                        <div className="note-card-footer">
-                                            <button className="btn-icon-action"
-                                                    title={note.readAt ? 'Segna da leggere' : 'Segna letto'}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        update('notes', notes.map(n => n.id === note.id ? { ...n, readAt: note.readAt ? null : new Date().toISOString() } : n));
-                                                    }}>
-                                                <IconComponent name={note.readAt ? 'eye' : 'eyeOff'} size={16} />
-                                            </button>
-                                            <button className="btn-icon-action btn-delete"
-                                                    title="Elimina"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        confirmDelete('note', note.id);
-                                                    }}>
-                                                <IconComponent name="trash" size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
+                <div className="notes-grid">
+                    {filteredNotes.length === 0 ? (
+                        <div className="notes-empty-state">
+                            <div style={{ fontSize: '3rem', marginBottom: '16px', opacity: 0.5 }}>📭</div>
+                            <p>Nessuna nota trovata in questa sezione.</p>
                         </div>
-                    </>
-                )}
+                    ) : (
+                        filteredNotes.map((note, idx) => (
+                            <div key={note.id} className={`note-card-modern ${!note.readAt ? 'unread' : ''}`}
+                                 style={{ animationDelay: `${idx * 40}ms` }}
+                                 onClick={() => handleNoteClick(note)}>
+                                <div className="note-card-header">
+                                    <span className="note-date">🕒 {formatDate(note.createdAt)}</span>
+                                    {note.folderPath && note.folderPath !== '/' && (
+                                        <span className="note-folder-badge">📁 {note.folderPath.replace('/', '')}</span>
+                                    )}
+                                </div>
+                                <div className="note-card-body">
+                                    <strong>{getNoteSnippet(note.text)}</strong>
+                                </div>
+                                <div className="note-card-footer">
+                                    <button className="btn-icon-action"
+                                            title={note.readAt ? 'Segna da leggere' : 'Segna letto'}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                update('notes', notes.map(n => n.id === note.id ? { ...n, readAt: note.readAt ? null : new Date().toISOString() } : n));
+                                            }}>
+                                        <IconComponent name={note.readAt ? 'eye' : 'eyeOff'} size={16} />
+                                    </button>
+                                    <button className="btn-icon-action"
+                                            title={note.folderPath === 'Archiviate/' ? 'Ripristina' : 'Archivia'}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const targetFolder = note.folderPath === 'Archiviate/' ? '/' : 'Archiviate/';
+                                                update('notes', notes.map(n => n.id === note.id ? { ...n, folderPath: targetFolder } : n));
+                                            }}>
+                                        <IconComponent name="archive" size={16} style={{ color: note.folderPath === 'Archiviate/' ? 'var(--primary)' : 'inherit' }} />
+                                    </button>
+                                    <button className="btn-icon-action btn-delete"
+                                            title="Elimina"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                confirmDelete('note', note.id);
+                                            }}>
+                                        <IconComponent name="trash" size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
 
             {selectedNote && (
@@ -4882,6 +4958,134 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                     allFiles={form.files}
                     allNotes={form.notes}
                 />
+            )}
+
+            {showGraph && (
+                <div className="notes-graph-modal-overlay" style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
+                    zIndex: 1100,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }} onClick={() => setShowGraph(false)}>
+                    <div className="notes-graph-modal-content" style={{
+                        backgroundColor: '#ffffff',
+                        width: '90%',
+                        maxWidth: '1200px',
+                        height: '85vh',
+                        borderRadius: '24px',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        border: '1px solid rgba(226, 232, 240, 0.8)',
+                        position: 'relative'
+                    }} onClick={(e) => e.stopPropagation()}>
+                        
+                        {/* Modal Header */}
+                        <div style={{
+                            padding: '20px 28px',
+                            borderBottom: '1px solid #f1f5f9',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: 'linear-gradient(to right, #f8fafc, #ffffff)',
+                            flexShrink: 0
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '12px',
+                                    backgroundColor: 'rgba(124, 101, 255, 0.1)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '1.3rem',
+                                    color: '#7c65ff'
+                                }}>
+                                    🕸️
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>Grafo delle Note</h3>
+                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                                        Visualizza le relazioni tra i tuoi appunti. Trascina i nodi ed esplora i collegamenti.
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onClick={() => setShowGraph(false)}
+                                style={{
+                                    background: '#f1f5f9',
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    width: '36px',
+                                    height: '36px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: '#64748b',
+                                    fontWeight: 'bold',
+                                    fontSize: '1rem',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = '#e2e8f0';
+                                    e.target.style.color = '#0f172a';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = '#f1f5f9';
+                                    e.target.style.color = '#64748b';
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        
+                        {/* Modal Body / Graph Container */}
+                        <div style={{
+                            flex: 1,
+                            position: 'relative',
+                            backgroundColor: '#ffffff',
+                            overflow: 'hidden'
+                        }}>
+                            <NotesGraphView
+                                notes={notes}
+                                onNoteClick={handleNoteClick}
+                                selectedNoteId={selectedNote?.id || null}
+                            />
+                        </div>
+                        
+                        {/* Modal Footer */}
+                        <div style={{
+                            padding: '12px 28px',
+                            borderTop: '1px solid #f1f5f9',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: '#f8fafc',
+                            fontSize: '0.75rem',
+                            color: '#64748b',
+                            flexShrink: 0
+                        }}>
+                            <div>
+                                <span>Suggerimento: Usa <strong>/Collega Nota</strong> nell'editor per creare collegamenti.</span>
+                            </div>
+                            <div>
+                                <span>Premi <strong>ESC</strong> o clicca fuori per chiudere.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {showDirtyWarning && (
@@ -5624,7 +5828,31 @@ function NoteModal({ note, folders, onSave, onClose, onOpenFile, onOpenNote, all
                             </div>
                         </div>
                     </div>
-                    <button className="btn btn-ghost btn-icon" onClick={handleClose} style={{ background: 'var(--bg-input)', borderRadius: '12px' }}>✕</button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button
+                            className="btn btn-secondary btn-sm"
+                            title={folderPath === 'Archiviate/' ? 'Ripristina nota' : 'Archivia nota'}
+                            onClick={() => {
+                                setFolderPath(folderPath === 'Archiviate/' ? '/' : 'Archiviate/');
+                                setIsDirty(true);
+                            }}
+                            style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '6px', 
+                                padding: '6px 12px',
+                                fontSize: '0.85rem',
+                                borderRadius: '12px',
+                                background: folderPath === 'Archiviate/' ? 'var(--primary-ghost)' : 'var(--bg-input)',
+                                color: folderPath === 'Archiviate/' ? 'var(--primary)' : 'var(--text-primary)',
+                                border: folderPath === 'Archiviate/' ? '1px solid var(--primary-light)' : '1px solid var(--border-light)'
+                            }}
+                        >
+                            <IconComponent name="archive" size={16} />
+                            <span>{folderPath === 'Archiviate/' ? 'Ripristina' : 'Archivia'}</span>
+                        </button>
+                        <button className="btn btn-ghost btn-icon" onClick={handleClose} style={{ background: 'var(--bg-input)', borderRadius: '12px' }}>✕</button>
+                    </div>
                 </div>
 
                 <div style={{ marginBottom: '28px', minHeight: '450px', background: 'var(--bg-input)', borderRadius: '16px', padding: '4px' }}>

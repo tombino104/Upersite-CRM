@@ -56,11 +56,14 @@ const DAMPING = 0.82;
 const CENTER_GRAVITY = 0.015;
 const MIN_DIST = 30;
 
-function simulate(nodes, edges, width, height, steps = 1) {
+function simulate(nodes, edges, width, height, steps = 1, hideIsolated = false) {
   const cx = width / 2, cy = height / 2;
 
   for (let s = 0; s < steps; s++) {
-    const ids = Object.keys(nodes);
+    let ids = Object.keys(nodes);
+    if (hideIsolated) {
+      ids = ids.filter(id => nodes[id].degree > 0);
+    }
 
     // Reset forces
     ids.forEach(id => { nodes[id].fx = 0; nodes[id].fy = 0; });
@@ -83,6 +86,7 @@ function simulate(nodes, edges, width, height, steps = 1) {
     edges.forEach(([sid, tid]) => {
       const a = nodes[sid], b = nodes[tid];
       if (!a || !b) return;
+      if (hideIsolated && (a.degree === 0 || b.degree === 0)) return;
       const dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
       const force = ATTRACTION * dist;
@@ -114,9 +118,24 @@ function simulate(nodes, edges, width, height, steps = 1) {
 export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
   const canvasRef = useRef(null);
   const animRef = useRef(null);
-  const stateRef = useRef({ nodes: {}, edges: [], transform: { x: 0, y: 0, scale: 1 }, drag: null, hoveredId: null, panStart: null, tick: 0 });
-  const [hoveredTitle, setHoveredTitle] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [hideIsolated, setHideIsolated] = useState(false);
+  const stateRef = useRef({ 
+    nodes: {}, 
+    edges: [], 
+    transform: { x: 0, y: 0, scale: 1 }, 
+    drag: null, 
+    hoveredId: null, 
+    panStart: null, 
+    tick: 0,
+    searchQuery: '',
+    hideIsolated: false
+  });
   const [tooltip, setTooltip] = useState(null); // {x, y, title}
+
+  // Sync state variables to ref for physics and drawing loop access
+  stateRef.current.searchQuery = searchQuery;
+  stateRef.current.hideIsolated = hideIsolated;
 
   /* ── Build / rebuild graph when notes change ── */
   useEffect(() => {
@@ -131,18 +150,33 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
       });
     });
 
-    // Scatter nodes in a circle to start
+    // Scatter nodes in a circle, preserving existing positions if present
     const ids = Object.keys(nodeMap);
     const R = Math.min(200, 40 + ids.length * 20);
+    const prevNodes = stateRef.current.nodes || {};
+
+    // Get logical dimensions for positioning
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const lw = rect?.width || 800;
+    const lh = rect?.height || 600;
+
     ids.forEach((id, i) => {
-      const angle = (i / ids.length) * Math.PI * 2;
-      nodeMap[id].x = Math.cos(angle) * R + (canvasRef.current?.width / 2 || 400);
-      nodeMap[id].y = Math.sin(angle) * R + (canvasRef.current?.height / 2 || 300);
+      const existing = prevNodes[id];
+      if (existing && existing.x !== 0 && existing.y !== 0) {
+        nodeMap[id].x = existing.x;
+        nodeMap[id].y = existing.y;
+        nodeMap[id].vx = existing.vx;
+        nodeMap[id].vy = existing.vy;
+      } else {
+        const angle = (i / ids.length) * Math.PI * 2;
+        nodeMap[id].x = Math.cos(angle) * R + (lw / 2);
+        nodeMap[id].y = Math.sin(angle) * R + (lh / 2);
+      }
     });
 
     stateRef.current.nodes = nodeMap;
     stateRef.current.edges = edges;
-    stateRef.current.tick = 0;
+    stateRef.current.tick = 0; // Reset simulation cooling
   }, [notes]);
 
   /* ── Canvas resize observer ── */
@@ -151,66 +185,131 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
     if (!canvas) return;
     const ro = new ResizeObserver(() => {
       const rect = canvas.parentElement.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+
+      const ctx = canvas.getContext('2d');
+      ctx.resetTransform();
+      ctx.scale(dpr, dpr);
     });
     ro.observe(canvas.parentElement);
     const rect = canvas.parentElement.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+
+    const ctx = canvas.getContext('2d');
+    ctx.resetTransform();
+    ctx.scale(dpr, dpr);
+
     return () => ro.disconnect();
   }, []);
 
   /* ── Node radius based on degree ── */
-  const nodeRadius = (node) => 5 + Math.min(node.degree * 2, 12);
+  const nodeRadius = (node) => 5 + Math.min(node.degree * 1.8, 12);
 
   /* ── Draw ── */
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const { nodes, edges, transform, hoveredId, tick } = stateRef.current;
-    const W = canvas.width, H = canvas.height;
+    const { nodes, edges, transform, hoveredId, searchQuery, hideIsolated } = stateRef.current;
 
-    ctx.clearRect(0, 0, W, H);
+    // Use logical width and height for drawing bounds
+    const rect = canvas.getBoundingClientRect();
+    const W = rect.width, H = rect.height;
 
-    // Dark background
-    ctx.fillStyle = '#0d1117';
+    // We clear the entire physical canvas
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    // White background
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
 
-    // Grid dots (subtle)
-    ctx.fillStyle = 'rgba(255,255,255,0.04)';
-    const gs = 40 * transform.scale;
+    // Subtle grid dots
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.05)';
+    const gs = 45 * transform.scale;
     const ox = transform.x % gs, oy = transform.y % gs;
-    for (let gx = ox; gx < W; gx += gs)
+    for (let gx = ox; gx < W; gx += gs) {
       for (let gy = oy; gy < H; gy += gs) {
-        ctx.beginPath(); ctx.arc(gx, gy, 1, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath();
+        ctx.arc(gx, gy, 1, 0, Math.PI * 2);
+        ctx.fill();
       }
+    }
 
     ctx.save();
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.scale, transform.scale);
 
-    const ids = Object.keys(nodes);
+    let ids = Object.keys(nodes);
+    if (hideIsolated) {
+      ids = ids.filter(id => nodes[id].degree > 0);
+    }
+
     if (ids.length === 0) {
       ctx.restore();
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      ctx.font = '14px Inter, sans-serif';
+      ctx.fillStyle = '#64748b'; // Slate 500
+      ctx.font = '14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Nessuna nota da visualizzare', W / 2, H / 2);
+      ctx.fillText(
+        hideIsolated && Object.keys(nodes).length > 0 
+          ? 'Tutte le note sono isolate' 
+          : 'Nessuna nota da visualizzare', 
+        W / 2, 
+        H / 2
+      );
       return;
     }
+
+    const query = (searchQuery || '').trim().toLowerCase();
+    const hasQuery = query.length > 0;
+    const matchesQuery = (node) => {
+      if (!hasQuery) return true;
+      return node.title.toLowerCase().includes(query);
+    };
 
     // Draw edges
     edges.forEach(([sid, tid]) => {
       const a = nodes[sid], b = nodes[tid];
       if (!a || !b) return;
-      const isHighlighted = hoveredId === sid || hoveredId === tid || selectedNoteId === sid || selectedNoteId === tid;
+      if (hideIsolated && (a.degree === 0 || b.degree === 0)) return;
+
+      const aMatches = matchesQuery(a);
+      const bMatches = matchesQuery(b);
+
+      let edgeOpacity = 1.0;
+      if (hasQuery) {
+        if (!aMatches || !bMatches) {
+          edgeOpacity = 0.1;
+        }
+      }
+
+      const isHoveredEdge = hoveredId === sid || hoveredId === tid;
+      const isSelectedEdge = selectedNoteId === sid || selectedNoteId === tid;
+      const isHighlighted = isHoveredEdge || isSelectedEdge;
+
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
-      ctx.strokeStyle = isHighlighted ? 'rgba(124,101,255,0.85)' : 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = isHighlighted ? 1.5 : 0.8;
+
+      if (isHighlighted) {
+        ctx.strokeStyle = isSelectedEdge 
+          ? `rgba(244, 63, 94, ${edgeOpacity * 0.8})` // Coral Rose
+          : `rgba(6, 182, 212, ${edgeOpacity * 0.8})`; // Cyan
+        ctx.lineWidth = 1.8;
+      } else {
+        ctx.strokeStyle = `rgba(148, 163, 184, ${edgeOpacity * 0.25})`; // Light slate
+        ctx.lineWidth = 0.8;
+      }
       ctx.stroke();
     });
 
@@ -222,14 +321,19 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
       const isSelected = selectedNoteId === id;
       const isConnected = hoveredId && (nodes[hoveredId]?.links?.includes(id) || node.links?.includes(hoveredId));
 
-      // Glow
-      if (isHovered || isSelected) {
-        const grd = ctx.createRadialGradient(node.x, node.y, r * 0.5, node.x, node.y, r * 2.5);
-        grd.addColorStop(0, isSelected ? 'rgba(124,101,255,0.5)' : 'rgba(100,220,255,0.35)');
-        grd.addColorStop(1, 'rgba(0,0,0,0)');
+      const matches = matchesQuery(node);
+      let opacity = 1.0;
+      if (hasQuery && !matches) {
+        opacity = 0.15;
+      }
+
+      // Draw soft hover/selection background glow (crisp light theme shadow)
+      if ((isHovered || isSelected) && opacity > 0.5) {
         ctx.beginPath();
-        ctx.arc(node.x, node.y, r * 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = grd;
+        ctx.arc(node.x, node.y, r + 5, 0, Math.PI * 2);
+        ctx.fillStyle = isSelected 
+          ? 'rgba(244, 63, 94, 0.15)' // Pink-red shadow
+          : 'rgba(6, 182, 212, 0.15)'; // Cyan shadow
         ctx.fill();
       }
 
@@ -238,36 +342,54 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
       ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
 
       if (isSelected) {
-        ctx.fillStyle = '#a78bfa';
+        ctx.fillStyle = `rgba(244, 63, 94, ${opacity})`; // Rose 500
       } else if (isHovered) {
-        ctx.fillStyle = '#60d4fa';
+        ctx.fillStyle = `rgba(6, 182, 212, ${opacity})`; // Cyan 500
       } else if (isConnected) {
-        ctx.fillStyle = '#818cf8';
+        ctx.fillStyle = `rgba(99, 102, 241, ${opacity})`; // Indigo 500
       } else if (node.degree === 0) {
-        ctx.fillStyle = '#374151';
+        ctx.fillStyle = `rgba(148, 163, 184, ${opacity})`; // Slate 400
       } else {
-        // Color by degree
+        // Dynamic indigo gradient based on degree
         const t = Math.min(node.degree / 6, 1);
-        const r1 = Math.round(99 + t * (167 - 99));
-        const g1 = Math.round(102 + t * (139 - 102));
-        const b1 = Math.round(241 + t * (250 - 241));
-        ctx.fillStyle = `rgb(${r1},${g1},${b1})`;
+        const r1 = Math.round(129 + t * (79 - 129));   // Indigo 400 (#818cf8) to Indigo 600 (#4f46e5)
+        const g1 = Math.round(140 + t * (70 - 140));
+        const b1 = Math.round(248 + t * (229 - 248));
+        ctx.fillStyle = `rgba(${r1},${g1},${b1},${opacity})`;
       }
-
       ctx.fill();
 
-      // Node border
-      ctx.strokeStyle = isSelected ? '#c4b5fd' : isHovered ? '#93e6ff' : 'rgba(255,255,255,0.15)';
-      ctx.lineWidth = isHovered || isSelected ? 1.5 : 0.5;
+      // Node border: standard white border to overlap gracefully
+      ctx.strokeStyle = isSelected 
+        ? `rgba(244, 63, 94, ${opacity})`
+        : isHovered 
+          ? `rgba(6, 182, 212, ${opacity})`
+          : `rgba(255, 255, 255, ${opacity})`;
+      ctx.lineWidth = isSelected || isHovered ? 2 : 1.5;
       ctx.stroke();
 
-      // Label
-      const showLabel = transform.scale > 0.5 || isHovered || isSelected;
+      // Node label
+      const showLabel = transform.scale > 0.45 || isHovered || isSelected || (hasQuery && matches);
       if (showLabel) {
-        const label = node.title.length > 22 ? node.title.substring(0, 22) + '…' : node.title;
-        ctx.font = `${isSelected || isHovered ? 600 : 400} ${Math.max(9, 11 * transform.scale) / transform.scale}px Inter, sans-serif`;
-        ctx.fillStyle = isSelected ? '#e9d5ff' : isHovered ? '#bae6fd' : 'rgba(255,255,255,0.55)';
+        const label = node.title.length > 20 ? node.title.substring(0, 20) + '…' : node.title;
+        ctx.font = `${isSelected || isHovered || (hasQuery && matches) ? '600' : '400'} ${Math.max(9.5, 11 * transform.scale) / transform.scale}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         ctx.textAlign = 'center';
+
+        // White border around text for contrast
+        ctx.strokeStyle = `rgba(255, 255, 255, ${opacity * 0.95})`;
+        ctx.lineWidth = 3;
+
+        if (isSelected) {
+          ctx.fillStyle = `rgba(225, 29, 72, ${opacity})`; // Rose 700
+        } else if (isHovered) {
+          ctx.fillStyle = `rgba(8, 145, 178, ${opacity})`; // Cyan 700
+        } else if (hasQuery && matches) {
+          ctx.fillStyle = `rgba(15, 23, 42, ${opacity})`; // Slate 900
+        } else {
+          ctx.fillStyle = `rgba(71, 85, 105, ${opacity})`; // Slate 600
+        }
+
+        ctx.strokeText(label, node.x, node.y + r + 13);
         ctx.fillText(label, node.x, node.y + r + 13);
       }
     });
@@ -275,15 +397,19 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
     ctx.restore();
   }, [selectedNoteId]);
 
-  /* ── Animation loop ── */
+  /* ── Animation loop with Cooldown optimization ── */
   useEffect(() => {
     const loop = () => {
-      const { nodes, edges, tick } = stateRef.current;
+      const { nodes, edges, tick, drag, panStart, hideIsolated } = stateRef.current;
       const canvas = canvasRef.current;
       if (canvas && Object.keys(nodes).length > 0) {
-        const stepsPerFrame = tick < 200 ? 4 : 1;
-        simulate(nodes, edges, canvas.width, canvas.height, stepsPerFrame);
-        stateRef.current.tick++;
+        // Only run physics if tick < 300 OR user is actively dragging/panning
+        if (tick < 300 || drag || panStart) {
+          const rect = canvas.getBoundingClientRect();
+          const stepsPerFrame = tick < 100 ? 4 : 1;
+          simulate(nodes, edges, rect.width, rect.height, stepsPerFrame, hideIsolated);
+          stateRef.current.tick++;
+        }
       }
       draw();
       animRef.current = requestAnimationFrame(loop);
@@ -303,10 +429,12 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
 
   /* ── Hit test ── */
   const hitNode = (wx, wy) => {
-    const { nodes } = stateRef.current;
-    for (const id of Object.keys(nodes)) {
+    const { nodes, hideIsolated } = stateRef.current;
+    const ids = Object.keys(nodes);
+    for (const id of ids) {
       const n = nodes[id];
-      const r = nodeRadius(n) + 4;
+      if (hideIsolated && n.degree === 0) continue;
+      const r = nodeRadius(n) + 5;
       if ((wx - n.x) ** 2 + (wy - n.y) ** 2 < r * r) return n;
     }
     return null;
@@ -373,6 +501,7 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
     }
     state.panStart = null;
     canvasRef.current.style.cursor = 'grab';
+    state.tick = 0; // Wake up physics to let graph settle after drag
   }, []);
 
   const handleClick = useCallback((e) => {
@@ -406,7 +535,18 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
   const isolatedCount = nodeCount - linkedCount;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 520, background: '#0d1117', borderRadius: 20, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
+    <div style={{ 
+      position: 'relative', 
+      width: '100%', 
+      height: '100%', 
+      minHeight: 520, 
+      background: '#ffffff', 
+      borderRadius: 20, 
+      overflow: 'hidden', 
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05), 0 2px 8px -1px rgba(0,0,0,0.03)',
+      fontFamily: '"Outfit", "Inter", system-ui, -apple-system, sans-serif'
+    }}>
       {/* Canvas */}
       <canvas
         ref={canvasRef}
@@ -419,61 +559,175 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
         onWheel={handleWheel}
       />
 
+      {/* Floating Search Bar */}
+      <div style={{
+        position: 'absolute', top: 14, left: 14,
+        display: 'flex', alignItems: 'center', gap: 6,
+        background: 'rgba(255, 255, 255, 0.85)',
+        backdropFilter: 'blur(12px)',
+        border: '1px solid #e2e8f0',
+        borderRadius: 12, padding: '6px 12px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+        zIndex: 10,
+        width: 220,
+        transition: 'all 0.2s',
+      }}>
+        <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>🔍</span>
+        <input
+          type="text"
+          placeholder="Cerca nota..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{
+            border: 'none', background: 'transparent',
+            outline: 'none', fontSize: '0.8rem', color: '#1e293b',
+            width: '100%',
+            fontFamily: 'inherit',
+          }}
+        />
+        {searchQuery && (
+          <button 
+            onClick={() => setSearchQuery('')}
+            style={{
+              border: 'none', background: 'transparent',
+              color: '#94a3b8', fontSize: '0.9rem', cursor: 'pointer',
+              padding: '0 2px',
+              display: 'flex', alignItems: 'center',
+            }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
       {/* Tooltip */}
       {tooltip && (
         <div style={{
           position: 'fixed', left: tooltip.x, top: tooltip.y,
-          background: 'rgba(20,20,35,0.95)', color: '#e2e8f0',
-          padding: '5px 12px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 600,
-          pointerEvents: 'none', zIndex: 9999, border: '1px solid rgba(124,101,255,0.4)',
-          backdropFilter: 'blur(8px)', whiteSpace: 'nowrap',
+          background: 'rgba(255, 255, 255, 0.95)', color: '#1e293b',
+          padding: '6px 14px', borderRadius: 10, fontSize: '0.8rem', fontWeight: 600,
+          pointerEvents: 'none', zIndex: 9999, border: '1px solid rgba(99, 102, 241, 0.15)',
+          backdropFilter: 'blur(12px)', whiteSpace: 'nowrap',
           transform: 'translateX(-50%)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05)',
         }}>
           {tooltip.title}
         </div>
       )}
 
-      {/* Top-right stats pill */}
+      {/* Top-right stats pills group */}
       <div style={{
         position: 'absolute', top: 14, right: 14,
-        display: 'flex', gap: 8, alignItems: 'center',
+        display: 'flex', gap: 6, alignItems: 'center',
+        zIndex: 10,
       }}>
-        <div style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '4px 14px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', display: 'flex', gap: 16 }}>
-          <span>🔵 {nodeCount} note</span>
-          <span>🔗 {edgeCount} collegamenti</span>
-          <span>⚪ {isolatedCount} isolate</span>
+        <div style={{
+          background: '#eff6ff', border: '1px solid #bfdbfe',
+          borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem',
+          color: '#1e40af', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+        }}>
+          <span style={{ fontSize: '0.55rem' }}>🔵</span> {nodeCount} note
+        </div>
+        <div style={{
+          background: '#f0fdf4', border: '1px solid #bbf7d0',
+          borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem',
+          color: '#166534', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+        }}>
+          <span style={{ fontSize: '0.55rem' }}>🟢</span> {edgeCount} collegamenti
+        </div>
+        {!hideIsolated && (
+          <div style={{
+            background: '#f8fafc', border: '1px solid #e2e8f0',
+            borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem',
+            color: '#475569', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+          }}>
+            <span style={{ fontSize: '0.55rem' }}>⚪</span> {isolatedCount} isolate
+          </div>
+        )}
+      </div>
+
+      {/* Bottom-left controls & legend panel */}
+      <div style={{
+        position: 'absolute', bottom: 14, left: 14,
+        display: 'flex', flexDirection: 'column', gap: 6,
+        zIndex: 10,
+      }}>
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'rgba(255, 255, 255, 0.85)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid #e2e8f0',
+          borderRadius: 10, padding: '6px 12px', fontSize: '0.75rem', color: '#475569',
+          cursor: 'pointer', userSelect: 'none',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+          transition: 'all 0.15s',
+          fontWeight: 500,
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = '#ffffff'}
+        onMouseLeave={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.85)'}
+        >
+          <input
+            type="checkbox"
+            checked={hideIsolated}
+            onChange={e => {
+              setHideIsolated(e.target.checked);
+              stateRef.current.tick = 0; // Wake up physics to recalculate
+            }}
+            style={{
+              cursor: 'pointer',
+              accentColor: '#6366f1',
+            }}
+          />
+          <span>Nascondi note isolate</span>
+        </label>
+
+        <div style={{
+          display: 'flex', gap: 12, alignItems: 'center',
+          background: 'rgba(255, 255, 255, 0.85)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid #e2e8f0',
+          borderRadius: 10, padding: '6px 12px', fontSize: '0.7rem', color: '#64748b',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+        }}>
+          <span>🖱️ Trascina nodi</span>
+          <span>⚙️ Zoom</span>
+          <span>👆 Click per aprire</span>
         </div>
       </div>
 
-      {/* Bottom legend */}
-      <div style={{
-        position: 'absolute', bottom: 14, left: 14,
-        display: 'flex', gap: 16, alignItems: 'center',
-        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
-        borderRadius: 12, padding: '6px 14px', fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)',
-      }}>
-        <span>🖱 Trascina nodi</span>
-        <span>⚙ Scorri per zoom</span>
-        <span>👆 Click per aprire</span>
-      </div>
-
-      {/* Controls */}
-      <div style={{ position: 'absolute', bottom: 14, right: 14, display: 'flex', gap: 6 }}>
+      {/* Floating zoom/pan controls */}
+      <div style={{ position: 'absolute', bottom: 14, right: 14, display: 'flex', gap: 6, zIndex: 10 }}>
         {[
-          { label: '+', action: () => { stateRef.current.transform.scale = Math.min(4, stateRef.current.transform.scale * 1.2); } },
-          { label: '−', action: () => { stateRef.current.transform.scale = Math.max(0.15, stateRef.current.transform.scale * 0.83); } },
+          { label: '＋', action: () => { stateRef.current.transform.scale = Math.min(4, stateRef.current.transform.scale * 1.2); } },
+          { label: '－', action: () => { stateRef.current.transform.scale = Math.max(0.15, stateRef.current.transform.scale * 0.83); } },
           { label: '⟳', action: () => { stateRef.current.transform = { x: 0, y: 0, scale: 1 }; stateRef.current.tick = 0; } },
         ].map(btn => (
-          <button key={btn.label} onClick={btn.action} style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
-            color: 'rgba(255,255,255,0.6)', fontSize: '1rem', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.15s',
-          }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(124,101,255,0.25)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+          <button 
+            key={btn.label} 
+            onClick={btn.action} 
+            style={{
+              width: 34, height: 34, borderRadius: 10,
+              background: 'rgba(255, 255, 255, 0.85)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid #e2e8f0',
+              color: '#475569', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#6366f1';
+              e.currentTarget.style.color = '#ffffff';
+              e.currentTarget.style.borderColor = '#6366f1';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.85)';
+              e.currentTarget.style.color = '#475569';
+              e.currentTarget.style.borderColor = '#e2e8f0';
+            }}
           >
             {btn.label}
           </button>
