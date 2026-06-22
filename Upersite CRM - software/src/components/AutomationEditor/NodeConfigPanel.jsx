@@ -1,7 +1,7 @@
 // Upersite CRM — Pannello Configurazione Nodo v2
 // Design System: Inter, #6C5CE7 primary, radii 8/12px, light theme
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Trash2, Check } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { X, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { EventLabels, EventCategories } from '../../utils/workflowEvents';
 
 // ─── Stili condivisi ───
@@ -145,15 +145,33 @@ function TagSelect({ value, onChange, tags, label = 'Tag' }) {
 export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, workflows, crmData }) {
   const [formData, setFormData] = useState({});
   const [saved, setSaved] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const initialDataRef = useRef({});
 
   const customers = crmData?.customers || [];
   const tags = crmData?.tags || [];
 
   useEffect(() => {
-    if (node) { setFormData({ ...(node.data || {}) }); setSaved(false); }
+    if (node) {
+      const initial = { ...(node.data || {}) };
+      setFormData(initial);
+      initialDataRef.current = JSON.stringify(initial);
+      setSaved(false);
+      setShowCloseConfirm(false);
+    }
   }, [node?.id]);
 
   if (!node) return null;
+
+  const hasUnsavedChanges = () => JSON.stringify(formData) !== initialDataRef.current;
+
+  const handleClose = () => {
+    if (hasUnsavedChanges()) {
+      setShowCloseConfirm(true);
+    } else {
+      onClose();
+    }
+  };
 
   const set = (key, value) => setFormData(prev => ({ ...prev, [key]: value }));
   const setConf = (key, value) => setFormData(prev => ({ ...prev, config: { ...(prev.config || {}), [key]: value } }));
@@ -226,6 +244,19 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
         <label style={lbl}>Data</label>
         <input type="date" style={ip} value={formData.eventConfig?.date || ''} onChange={e => setEvConf('date', e.target.value)} />
         <label style={lbl}>Ora</label><input type="time" style={ip} value={formData.eventConfig?.time || ''} onChange={e => setEvConf('time', e.target.value)} />
+      </>)}
+      {formData.eventType === 'schedule.interval' && (<>
+        <label style={lbl}>Ripeti ogni</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input type="number" min="1" style={{ ...ip, flex: 1 }} value={formData.eventConfig?.intervalValue || ''} onChange={e => setEvConf('intervalValue', e.target.value)} placeholder="Es: 30" />
+          <select style={{ ...ip, flex: 1 }} value={formData.eventConfig?.intervalUnit || 'minuti'} onChange={e => setEvConf('intervalUnit', e.target.value)}>
+            <option value="minuti">Minuti</option>
+            <option value="ore">Ore</option>
+          </select>
+        </div>
+        <div style={{ marginTop: 8, padding: '7px 10px', background: 'rgba(108,92,231,0.05)', borderRadius: 8, border: '1.5px solid rgba(108,92,231,0.15)', fontSize: '0.68rem', color: '#6C5CE7' }}>
+          ⏱️ Esempio: ogni 30 minuti, ogni 2 ore. Il workflow si attiverà automaticamente all'intervallo impostato.
+        </div>
       </>)}
     </>
   );
@@ -352,32 +383,38 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
           {PRIORITIES.map(p => <option key={p}>{p}</option>)}
         </select>
         <label style={lbl}>Ricorrenza</label>
-        <select style={ip} value={conf.recurrence || 'giornaliera'} onChange={e => setConf('recurrence', e.target.value)}>
-          <option value="giornaliera">Giornaliera</option>
-          <option value="settimanale">Settimanale</option>
-          <option value="mensile">Mensile</option>
-          <option value="personalizzata">Personalizzata</option>
+        <select style={ip} value={conf.recurrence || 'Settimanale'} onChange={e => setConf('recurrence', e.target.value)}>
+          <option value="Giornaliera">Giornaliera</option>
+          <option value="Settimanale">Settimanale (ogni 7 gg)</option>
+          <option value="Mensile">Mensile</option>
+          <option value="Trimestrale">Trimestrale (ogni 3 mesi)</option>
+          <option value="Semestrale">Semestrale (ogni 6 mesi)</option>
+          <option value="Annuale">Annuale</option>
+          <option value="Personalizzata">Personalizzata (N giorni)</option>
         </select>
-        {conf.recurrence === 'personalizzata' && (
+        {conf.recurrence === 'Personalizzata' && (
           <>
             <label style={lbl}>Intervallo (giorni)</label>
-            <input type="number" min="1" style={ip} value={conf.customInterval || ''} onChange={e => setConf('customInterval', e.target.value)} placeholder="30" />
+            <input type="number" min="1" style={ip} value={conf.customInterval || ''} onChange={e => setConf('customInterval', e.target.value)} placeholder="Es: 14" />
           </>
         )}
-        <label style={lbl}>Scadenza</label>
+        <label style={lbl}>Scadenza iniziale (dal momento di creazione)</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <select style={{ ...ip, flex: 1 }} value={conf.dueDateType || 'nessuna'} onChange={e => setConf('dueDateType', e.target.value)}>
-            {['nessuna', 'giorni dopo', 'settimane dopo', 'mesi dopo'].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+            {['nessuna', 'giorni dopo', 'settimane dopo', 'mesi dopo', 'data fissa'].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
           </select>
-          {conf.dueDateType && conf.dueDateType !== 'nessuna' && conf.dueDateType !== 'custom' && (
+          {conf.dueDateType && conf.dueDateType !== 'nessuna' && conf.dueDateType !== 'data fissa' && (
             <input type="number" min="1" style={{ ...ip, flex: 1 }} value={conf.dueDateValue || ''} onChange={e => setConf('dueDateValue', e.target.value)} placeholder="N." />
           )}
-          {conf.dueDateType === 'custom' && (
+          {conf.dueDateType === 'data fissa' && (
             <input type="date" style={{ ...ip, flex: 1 }} value={conf.dueDateValue || ''} onChange={e => setConf('dueDateValue', e.target.value)} />
           )}
         </div>
         <label style={lbl}>Descrizione (supporta variabili)</label>
         <textarea style={{ ...ip, minHeight: 60, resize: 'vertical' }} value={conf.description || ''} onChange={e => setConf('description', e.target.value)} placeholder="Usa {{cliente.nome}} per variabili dinamiche" />
+        <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(108,92,231,0.05)', borderRadius: 8, border: '1.5px solid rgba(108,92,231,0.15)', fontSize: '0.68rem', color: '#6C5CE7' }}>
+          🔁 Il task verrà creato sul cliente selezionato con la ricorrenza impostata. Quando viene completato, la scadenza si rinnova automaticamente.
+        </div>
       </>)}
 
       {/* ── Azione ricorrente ── */}
@@ -390,21 +427,20 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
           <option value="create_task">Crea task</option>
           <option value="create_note">Crea nota</option>
         </select>
-        <label style={lbl}>Ricorrenza</label>
-        <select style={ip} value={conf.recurrence || 'giornaliera'} onChange={e => setConf('recurrence', e.target.value)}>
-          <option value="giornaliera">Giornaliera</option>
-          <option value="settimanale">Settimanale</option>
-          <option value="mensile">Mensile</option>
-          <option value="personalizzata">Personalizzata</option>
-        </select>
-        {conf.recurrence === 'personalizzata' && (
-          <>
-            <label style={lbl}>Intervallo (minuti)</label>
-            <input type="number" min="1" style={ip} value={conf.customInterval || ''} onChange={e => setConf('customInterval', e.target.value)} placeholder="30" />
-          </>
-        )}
+        <label style={lbl}>Intervallo di ripetizione</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input type="number" min="1" style={{ ...ip, flex: 1 }} value={conf.intervalValue || ''} onChange={e => setConf('intervalValue', e.target.value)} placeholder="Es: 30" />
+          <select style={{ ...ip, flex: 1 }} value={conf.intervalUnit || 'minuti'} onChange={e => setConf('intervalUnit', e.target.value)}>
+            <option value="minuti">Minuti</option>
+            <option value="ore">Ore</option>
+            <option value="giorni">Giorni</option>
+          </select>
+        </div>
         <label style={lbl}>Parametri aggiuntivi (opzionale)</label>
         <textarea style={{ ...ip, minHeight: 60, resize: 'vertical' }} value={conf.extraParams || ''} onChange={e => setConf('extraParams', e.target.value)} placeholder="Parametri in formato JSON o testo libero" />
+        <div style={{ marginTop: 8, padding: '7px 10px', background: 'rgba(253,203,110,0.08)', borderRadius: 8, border: '1.5px solid rgba(253,203,110,0.4)', fontSize: '0.68rem', color: '#b7860a' }}>
+          ⚠️ L'azione ricorrente si combina col trigger del workflow. Usa il trigger "A intervallo fisso" per avviarla automaticamente ogni N minuti/ore.
+        </div>
       </>)}
 
       {/* ── Crea task ── */}
@@ -552,14 +588,62 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
       display: 'flex', flexDirection: 'column',
       boxShadow: '-4px 0 20px rgba(0,0,0,0.06)',
     }}>
+      {/* Dialog conferma chiusura senza salvare */}
+      {showCloseConfirm && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 30,
+          background: 'rgba(255,255,255,0.96)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          padding: 24, textAlign: 'center',
+        }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(253,203,110,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <AlertTriangle size={22} color="#FDCB6E" />
+          </div>
+          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#2D3436', marginBottom: 6 }}>Modifiche non salvate</div>
+          <div style={{ fontSize: '0.72rem', color: '#636E72', marginBottom: 20, lineHeight: 1.6 }}>
+            Hai modificato questo blocco senza salvare.<br />Vuoi chiudere e perdere le modifiche?
+          </div>
+          <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+            <button
+              onClick={() => { onClose(); setShowCloseConfirm(false); }}
+              style={{
+                flex: 1, padding: '9px', borderRadius: 10,
+                border: '1.5px solid rgba(225,112,85,0.3)',
+                background: 'rgba(225,112,85,0.07)', color: '#E17055',
+                fontWeight: 600, fontSize: '0.74rem', cursor: 'pointer',
+                fontFamily: "'Inter', sans-serif",
+              }}
+            >
+              Chiudi senza salvare
+            </button>
+            <button
+              onClick={() => setShowCloseConfirm(false)}
+              style={{
+                flex: 1, padding: '9px', borderRadius: 10, border: 'none',
+                background: '#6C5CE7', color: '#fff',
+                fontWeight: 600, fontSize: '0.74rem', cursor: 'pointer',
+                fontFamily: "'Inter', sans-serif",
+              }}
+            >
+              Torna indietro
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ padding: '14px 16px', borderBottom: '1.5px solid #E8ECF1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#2D3436' }}>Configura Blocco</div>
           <div style={{ fontSize: '0.65rem', color: '#B2BEC3', marginTop: 1 }}>{node.type?.replace('Node', '')}</div>
         </div>
-        <button onClick={onClose} style={{ border: 'none', background: '#F4F5F9', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex', color: '#636E72' }}>
+        <button onClick={handleClose} style={{ border: 'none', background: '#F4F5F9', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex', color: '#636E72', position: 'relative' }}>
           <X size={15} />
+          {hasUnsavedChanges() && (
+            <span style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: '#FDCB6E', border: '1.5px solid #fff' }} />
+          )}
         </button>
       </div>
 
@@ -577,8 +661,15 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
             <select style={{ ...ip, flex: 1 }} value={formData.delayUnit || 'secondi'} onChange={e => set('delayUnit', e.target.value)}>
               <option value="secondi">Secondi</option>
               <option value="minuti">Minuti</option>
+              <option value="ore">Ore</option>
+              <option value="giorni">Giorni</option>
             </select>
           </div>
+          {formData.delayValue && (
+            <div style={{ marginTop: 8, padding: '7px 10px', background: 'rgba(108,92,231,0.05)', borderRadius: 8, border: '1.5px solid rgba(108,92,231,0.15)', fontSize: '0.68rem', color: '#636E72' }}>
+              ⏳ Il workflow si fermerà per <b>{formData.delayValue} {formData.delayUnit || 'secondi'}</b> prima di procedere.
+            </div>
+          )}
         </>)}
         {node.type === 'chainNode' && (<>
           <label style={lbl}>Workflow da eseguire</label>

@@ -27,6 +27,7 @@ export const WorkflowEventTypes = {
   SCHEDULE_WEEKLY: 'schedule.weekly',
   SCHEDULE_MONTHLY: 'schedule.monthly',
   SCHEDULE_DATE: 'schedule.date',
+  SCHEDULE_INTERVAL: 'schedule.interval',
 
   // Sistema
   APP_STARTED: 'system.app_started',
@@ -62,6 +63,7 @@ export const EventLabels = {
   [WorkflowEventTypes.SCHEDULE_WEEKLY]: 'Ogni settimana',
   [WorkflowEventTypes.SCHEDULE_MONTHLY]: 'Ogni mese',
   [WorkflowEventTypes.SCHEDULE_DATE]: 'Data specifica',
+  [WorkflowEventTypes.SCHEDULE_INTERVAL]: 'A intervallo fisso (ogni N minuti/ore)',
   [WorkflowEventTypes.APP_STARTED]: 'Avvio applicazione',
   [WorkflowEventTypes.USER_LOGIN]: 'Login utente',
   [WorkflowEventTypes.BACKUP_COMPLETED]: 'Backup completato',
@@ -98,6 +100,7 @@ export const EventCategories = {
     WorkflowEventTypes.SCHEDULE_WEEKLY,
     WorkflowEventTypes.SCHEDULE_MONTHLY,
     WorkflowEventTypes.SCHEDULE_DATE,
+    WorkflowEventTypes.SCHEDULE_INTERVAL,
   ],
   'Sistema': [
     WorkflowEventTypes.APP_STARTED,

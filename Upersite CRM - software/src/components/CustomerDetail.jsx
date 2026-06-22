@@ -126,6 +126,66 @@ const calculateNextDueDate = (currentDateStr, frequency) => {
 
 };
 
+/* ── MODAL MODIFICA TASK ── */
+
+const TodoEditModal = ({ isOpen, onClose, data, onChange, onSave }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+            <div style={{
+                background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '400px',
+                padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', gap: '16px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)', fontWeight: 600 }}>Modifica Task</h3>
+                    <button onClick={onClose} className="btn btn-ghost btn-icon-sm" style={{ padding: '4px' }}>✕</button>
+                </div>
+
+                <div>
+                    <label className="input-label" style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Titolo</label>
+                    <input className="input" style={{ width: '100%' }} value={data.text || ''} onChange={e => onChange('text', e.target.value)} />
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ flex: 1 }}>
+                        <label className="input-label" style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Data di scadenza</label>
+                        <input type="date" className="input" style={{ width: '100%' }} value={data.dueDate || ''} onChange={e => onChange('dueDate', e.target.value)} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <label className="input-label" style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Priorità</label>
+                        <select className="input" style={{ width: '100%' }} value={data.priority || 'Media'} onChange={e => onChange('priority', e.target.value)}>
+                            <option value="Bassa">Bassa</option>
+                            <option value="Media">Media</option>
+                            <option value="Alta">Alta</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="input-label" style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Ricorrenza</label>
+                    <select className="input" style={{ width: '100%' }} value={data.recurrence || 'none'} onChange={e => onChange('recurrence', e.target.value)}>
+                        <option value="none">Nessuna</option>
+                        <option value="Settimanale">Settimanale (7 gg)</option>
+                        <option value="Mensile">Mensile</option>
+                        <option value="Trimestrale">Trimestrale (3 mesi)</option>
+                        <option value="Semestrale">Semestrale (6 mesi)</option>
+                        <option value="Annuale">Annuale</option>
+                    </select>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+                    <button className="btn btn-ghost" onClick={onClose}>Annulla</button>
+                    <button className="btn btn-primary" onClick={onSave}>Salva Modifiche</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 /* ── TO-DO SECTION ── */
 
 const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, onOpenFile, onOpenNote }) => {
@@ -154,13 +214,11 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
     const [showExportDropdown, setShowExportDropdown] = useState(false);
 
-    // Stati per modifica rapida todo
+    // Stato per il modal di modifica todo
 
-    const [editingTodo, setEditingTodo] = useState({});
+    const [editModalTodo, setEditModalTodo] = useState(null);
 
-    const [editingText, setEditingText] = useState({});
-
-    const [editingPriority, setEditingPriority] = useState({});
+    const [editModalData, setEditModalData] = useState({});
 
     const addTodo = (e) => {
 
@@ -350,41 +408,61 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
     };
 
-    const startEditingTodo = (id, text, priority) => {
+    const openEditModal = (todo) => {
 
-        setEditingTodo(prev => ({ ...prev, [id]: true }));
+        setEditModalTodo(todo);
 
-        setEditingText(prev => ({ ...prev, [id]: text }));
+        setEditModalData({
 
-        setEditingPriority(prev => ({ ...prev, [id]: priority }));
+            text: todo.text || '',
 
-    };
+            dueDate: todo.dueDate || '',
 
-    const saveTodoEdit = (id) => {
+            priority: todo.priority || 'Media',
 
-        const newText = editingText[id]?.trim();
+            recurrence: todo.recurrence || 'none',
 
-        if (newText && newText !== '') {
-
-            updateTodoField(id, 'text', newText);
-
-        }
-
-        // Esci dalla modalità editing
-
-        setEditingTodo(prev => ({ ...prev, [id]: false }));
-
-        setEditingText(prev => ({ ...prev, [id]: '' }));
+        });
 
     };
 
-    const cancelTodoEdit = (id) => {
+    const saveModalEdit = () => {
 
-        setEditingTodo(prev => ({ ...prev, [id]: false }));
+        if (!editModalTodo) return;
 
-        setEditingText(prev => ({ ...prev, [id]: '' }));
+        const id = editModalTodo.id;
+
+        const text = editModalData.text?.trim();
+
+        const updateRecursive = (items) => items.map(t => {
+
+            if (t.id === id) return {
+
+                ...t,
+
+                text: text || t.text,
+
+                dueDate: editModalData.dueDate,
+
+                priority: editModalData.priority,
+
+                recurrence: editModalData.recurrence,
+
+            };
+
+            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
+
+            return t;
+
+        });
+
+        update('todo', updateRecursive(todos));
+
+        setEditModalTodo(null);
 
     };
+
+    const closeModal = () => setEditModalTodo(null);
 
     const linkFileToTodo = (todoId, fileId) => {
 
@@ -494,87 +572,9 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                         <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
 
-                            {editingTodo[t.id] ? (
+                            {/* Modalità visualizzazione */}
 
-                                // Modalità editing
-
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
-
-                                    <input
-
-                                        type="text"
-
-                                        className="input"
-
-                                        value={editingText[t.id] || ''}
-
-                                        onChange={e => setEditingText(prev => ({ ...prev, [t.id]: e.target.value }))}
-
-                                        onKeyDown={e => {
-
-                                            if (e.key === 'Enter') {
-
-                                                e.preventDefault();
-
-                                                saveTodoEdit(t.id);
-
-                                            } else if (e.key === 'Escape') {
-
-                                                e.preventDefault();
-
-                                                cancelTodoEdit(t.id);
-
-                                            }
-
-                                        }}
-
-                                        style={{ flex: 1, fontSize: '0.9rem', padding: '4px 8px' }}
-
-                                        placeholder="Testo attività..."
-
-                                        autoFocus
-
-                                    />
-
-                                    <button
-
-                                        className="btn btn-ghost btn-icon-sm"
-
-                                        onClick={() => saveTodoEdit(t.id)}
-
-                                        title="Salva"
-
-                                        style={{ color: 'var(--success)' }}
-
-                                    >
-
-                                        ✓
-
-                                    </button>
-
-                                    <button
-
-                                        className="btn btn-ghost btn-icon-sm"
-
-                                        onClick={() => cancelTodoEdit(t.id)}
-
-                                        title="Annulla"
-
-                                        style={{ color: 'var(--danger)' }}
-
-                                    >
-
-                                        ✕
-
-                                    </button>
-
-                                </div>
-
-                            ) : (
-
-                                // Modalità visualizzazione
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
 
                                     <span
 
@@ -614,7 +614,7 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                                         className="btn btn-ghost btn-icon-sm"
 
-                                        onClick={() => startEditingTodo(t.id, t.text, t.priority)}
+                                        onClick={() => openEditModal(t)}
 
                                         title="Modifica attività"
 
@@ -648,11 +648,9 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                                     </button>
 
-                                </div>
+                            </div>
 
-                            )}
-
-                            {level === 0 && !editingTodo[t.id] && (
+                            {level === 0 && (
 
                                 <div style={{ display: 'flex', gap: '12px', fontSize: '0.75rem', marginTop: '4px' }}>
 
@@ -1767,6 +1765,16 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
                 }
 
             `}</style>
+            
+            {editModalTodo && (
+                <TodoEditModal
+                    isOpen={!!editModalTodo}
+                    onClose={closeModal}
+                    data={editModalData}
+                    onChange={(field, val) => setEditModalData(prev => ({ ...prev, [field]: val }))}
+                    onSave={saveModalEdit}
+                />
+            )}
 
         </div>
 
