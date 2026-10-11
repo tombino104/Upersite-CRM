@@ -37,7 +37,7 @@ Se preferisci aprirlo dal tuo browser (Chrome, Edge o Firefox):
 Al tuo primissimo login, l'app ti darà il benvenuto chiedendoti di **creare una Password Master**.
 Questa NON è scritta in nessun database su internet. È personale, è salvata sul tuo PC ed è l'unica chiave per sbloccare l'interfaccia.
 
-- Se te la scordi? Nessun problema: in basso troverai il testo **"Password dimenticata?"**. Una volta ciccato l'app ti chiederà se vuoi resettarla (niente andrà perduto, né clienti né loghi).
+- Se te la scordi? Nessun problema, i dati non vanno persi: chiudi il CRM, apri il file `crm_data.json`, elimina la riga `"masterPassword"` e riavvia. Potrai crearne una nuova (clienti e loghi restano). Dalla schermata di login, "Password dimenticata?" ti ricorda questi passaggi.
 - Dopo **5 minuti** di totale inattività sul CRM, si *bloccherà* e dovrai ripetere la password per una sicurezza completa del tuo spazio lavorativo!
 
 ---
