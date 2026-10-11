@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
+import { Buffer } from 'buffer'
 
 const STORAGE_FILE = path.resolve(__dirname, 'crm_data.json')
 
@@ -29,6 +30,55 @@ function rejectForeignRequest(req, res) {
   res.statusCode = 403
   res.end(JSON.stringify({ error: 'Richiesta non autorizzata' }))
   return true
+}
+
+// ── Preventivi: file veri nella sottocartella "Preventivi" della cartella dei salvataggi ──
+
+const QUOTES_DIR = 'Preventivi'
+const QUOTE_TYPES = { '.pdf': 'application/pdf', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
+const MAX_QUOTE_BYTES = 100 * 1024 * 1024
+
+// Cartella dei salvataggi scelta nelle Impostazioni, letta dal file dati (non dal browser)
+function getBackupRoot() {
+  const data = fs.existsSync(STORAGE_FILE) ? JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8')) : {}
+  const backupPath = data.settings?.backupPath
+  if (typeof backupPath !== 'string' || !path.isAbsolute(backupPath) || !fs.existsSync(backupPath)) {
+    throw Object.assign(new Error('Imposta una cartella dei salvataggi valida nelle Impostazioni (e controlla che il disco sia collegato)'), { status: 400 })
+  }
+  return backupPath
+}
+
+// Nome sicuro per file e cartelle di Windows
+function safeName(name, fallback) {
+  const clean = String(name || '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/, '').trim().slice(0, 100)
+  return clean || fallback
+}
+
+// Risolve un percorso relativo impedendo di uscire dalla cartella `root` (es. con ..\..\)
+function resolveInside(root, rel) {
+  const base = path.resolve(root)
+  const full = path.resolve(base, rel)
+  if (full !== base && !full.startsWith(base + path.sep)) {
+    throw Object.assign(new Error('Percorso non valido'), { status: 400 })
+  }
+  return full
+}
+
+// Nome libero nella cartella: se esiste già aggiunge la data (ed eventualmente un numero), senza sovrascrivere
+function freeFileName(dir, fileName) {
+  if (!fs.existsSync(path.join(dir, fileName))) return fileName
+  const ext = path.extname(fileName)
+  const stem = path.basename(fileName, ext)
+  const date = new Date().toISOString().slice(0, 10)
+  for (let i = 1; ; i++) {
+    const candidate = `${stem}_${date}${i > 1 ? `_${i}` : ''}${ext}`
+    if (!fs.existsSync(path.join(dir, candidate))) return candidate
+  }
+}
+
+function sendError(res, e) {
+  res.statusCode = e.status || 500
+  res.end(JSON.stringify({ error: e.message }))
 }
 
 function storagePlugin() {
@@ -147,12 +197,71 @@ function storagePlugin() {
               const targetFile = path.join(targetDir, fileName);
               fs.writeFileSync(targetFile, JSON.stringify(backupData, null, 2));
 
-              res.end(JSON.stringify({ success: true, folder: dateFolder }));
+              // Copia nel backup anche i preventivi salvati come file (Preventivi/<cliente>/<file>)
+              let quotesCopied = 0, quotesMissing = 0;
+              if (includeFiles) {
+                const quotesRoot = path.join(originalData.settings?.backupPath || backupPath, QUOTES_DIR);
+                for (const customer of originalData.customers || []) {
+                  for (const file of customer.files || []) {
+                    if (!file.storedPath) continue;
+                    try {
+                      const relative = file.storedPath.replace(/^Preventivi\//, '');
+                      const source = resolveInside(quotesRoot, relative);
+                      const target = resolveInside(path.join(targetDir, QUOTES_DIR), relative);
+                      if (!fs.existsSync(source)) { quotesMissing++; continue; }
+                      fs.mkdirSync(path.dirname(target), { recursive: true });
+                      fs.copyFileSync(source, target);
+                      quotesCopied++;
+                    } catch {
+                      quotesMissing++;
+                    }
+                  }
+                }
+              }
+
+              res.end(JSON.stringify({ success: true, folder: dateFolder, quotesCopied, quotesMissing }));
             } catch (e) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: e.message }));
             }
           });
+        } else if (req.url === '/api/quotes' && req.method === 'POST') {
+          // Carica un preventivo: corpo = file binario, nomi negli header
+          if (rejectForeignRequest(req, res)) return;
+          const chunks = [];
+          let size = 0;
+          req.on('data', chunk => { size += chunk.length; if (size <= MAX_QUOTE_BYTES) chunks.push(chunk); });
+          req.on('end', () => {
+            try {
+              if (size > MAX_QUOTE_BYTES) throw Object.assign(new Error('File troppo grande (max 100MB)'), { status: 413 });
+              const fileName = safeName(decodeURIComponent(req.headers['x-file-name'] || ''), 'Preventivo.pdf');
+              const ext = path.extname(fileName).toLowerCase();
+              if (!QUOTE_TYPES[ext]) throw Object.assign(new Error('Sono ammessi solo file PDF o DOCX'), { status: 400 });
+              const customerFolder = safeName(decodeURIComponent(req.headers['x-customer-name'] || ''), 'Senza nome');
+              const dir = resolveInside(path.join(getBackupRoot(), QUOTES_DIR), customerFolder);
+              fs.mkdirSync(dir, { recursive: true });
+              const finalName = freeFileName(dir, fileName);
+              fs.writeFileSync(path.join(dir, finalName), Buffer.concat(chunks));
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ storedPath: `${QUOTES_DIR}/${customerFolder}/${finalName}` }));
+            } catch (e) {
+              sendError(res, e);
+            }
+          });
+        } else if (req.url.startsWith('/api/quotes?') && req.method === 'GET') {
+          // Legge un preventivo, solo dall'interno della cartella Preventivi
+          try {
+            const rel = new URL(req.url, 'http://localhost').searchParams.get('path') || '';
+            const relative = rel.replace(/^Preventivi\//, '');
+            const file = resolveInside(path.join(getBackupRoot(), QUOTES_DIR), relative);
+            if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+              throw Object.assign(new Error('Preventivo non trovato nella cartella dei salvataggi'), { status: 404 });
+            }
+            res.setHeader('Content-Type', QUOTE_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream');
+            fs.createReadStream(file).pipe(res);
+          } catch (e) {
+            sendError(res, e);
+          }
         } else if (req.url === '/api/storage' && req.method === 'POST') {
           if (rejectForeignRequest(req, res)) return;
           let body = '';

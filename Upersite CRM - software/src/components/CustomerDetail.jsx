@@ -14,7 +14,7 @@ import IconComponent from './IconComponent';
 
 import NotesGraphView from './NotesGraphView';
 
-import { generateId, sanitizePositiveNumber, formatBytes, saveFile, verifyMasterPassword, PACKAGES, ADDONS } from '../utils/storage';
+import { generateId, sanitizePositiveNumber, formatBytes, saveFile, verifyMasterPassword, PACKAGES, ADDONS, uploadQuote, fetchQuoteDataUrl } from '../utils/storage';
 import { encryptSecret, decryptSecret } from '../utils/credentialVault';
 
 const STATUSES = [
@@ -6198,9 +6198,15 @@ function QuoteFileUpload({ form, update }) {
 
     const [previewFile, setPreviewFile] = useState(null);
 
-    const handleUpload = (e) => {
+    const [busy, setBusy] = useState(false);
+
+    // Il preventivo viene salvato come file nella cartella dei salvataggi (sottocartella Preventivi)
+
+    const handleUpload = async (e) => {
 
         const file = e.target.files[0];
+
+        e.target.value = '';
 
         if (!file) return;
 
@@ -6212,9 +6218,11 @@ function QuoteFileUpload({ form, update }) {
 
         }
 
-        const reader = new FileReader();
+        setBusy(true);
 
-        reader.onload = () => {
+        try {
+
+            const storedPath = await uploadQuote(file, file.name, form.name);
 
             const newFile = {
 
@@ -6226,7 +6234,7 @@ function QuoteFileUpload({ form, update }) {
 
                 type: file.type,
 
-                data: reader.result,
+                storedPath,
 
                 uploadedAt: new Date().toISOString(),
 
@@ -6234,27 +6242,61 @@ function QuoteFileUpload({ form, update }) {
 
             };
 
-            // Replace existing quote OR add new
+            // Sostituisce il preventivo nel cliente; il file precedente resta nella cartella
 
             const otherFiles = (form.files || []).filter(f => !f.isQuote);
 
             update('files', [...otherFiles, newFile]);
 
-        };
+        } catch (err) {
 
-        reader.readAsDataURL(file);
+            alert(err.message);
+
+        } finally {
+
+            setBusy(false);
+
+        }
 
     };
 
-    const downloadFile = (file) => {
+    // I preventivi salvati su cartella vengono letti al momento; quelli vecchi hanno ancora `data`
 
-        const a = document.createElement('a');
+    const withData = async (file) => file.data ? file : { ...file, data: await fetchQuoteDataUrl(file.storedPath) };
 
-        a.href = file.data;
+    const openPreview = async (file) => {
 
-        a.download = file.name;
+        try {
 
-        a.click();
+            setPreviewFile(await withData(file));
+
+        } catch (err) {
+
+            alert(err.message);
+
+        }
+
+    };
+
+    const downloadFile = async (file) => {
+
+        try {
+
+            const { data } = await withData(file);
+
+            const a = document.createElement('a');
+
+            a.href = data;
+
+            a.download = file.name;
+
+            a.click();
+
+        } catch (err) {
+
+            alert(err.message);
+
+        }
 
     };
 
@@ -6266,9 +6308,9 @@ function QuoteFileUpload({ form, update }) {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-input)', padding: '10px', borderRadius: 'var(--radius-md)' }}>
 
-                    <span style={{ fontSize: '1.25rem', cursor: 'pointer' }} onClick={() => setPreviewFile(quoteFile)}>📄</span>
+                    <span style={{ fontSize: '1.25rem', cursor: 'pointer' }} onClick={() => openPreview(quoteFile)}>📄</span>
 
-                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setPreviewFile(quoteFile)}>
+                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => openPreview(quoteFile)}>
 
                         <div style={{ fontSize: '0.8125rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'underline' }}>
 
@@ -6282,7 +6324,7 @@ function QuoteFileUpload({ form, update }) {
 
                     <button className="btn btn-ghost btn-icon-sm" onClick={() => downloadFile(quoteFile)} title="Scarica">⬇</button>
 
-                    <button className="btn btn-ghost btn-icon-sm"
+                    <button className="btn btn-ghost btn-icon-sm" title="Scollega dal cliente (il file resta nella cartella Preventivi)"
 
                         onClick={() => update('files', (form.files || []).filter(f => f.id !== quoteFile.id))}>✕</button>
 
@@ -6290,19 +6332,19 @@ function QuoteFileUpload({ form, update }) {
 
             ) : (
 
-                <div className="quote-upload-placeholder" onClick={() => fileRef.current?.click()}>
+                <div className="quote-upload-placeholder" onClick={() => !busy && fileRef.current?.click()}>
 
                     <span style={{ fontSize: '1.5rem', marginBottom: '4px' }}>📤</span>
 
-                    <span>Carica Preventivo PDF</span>
+                    <span>{busy ? 'Caricamento...' : 'Carica preventivo (PDF o DOCX)'}</span>
 
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Max 5MB • Sola visualizzazione</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Max 100MB • Salvato nella cartella Preventivi</span>
 
                 </div>
 
             )}
 
-            <input ref={fileRef} type="file" accept=".pdf" hidden onChange={handleUpload} />
+            <input ref={fileRef} type="file" accept=".pdf,.docx" hidden onChange={handleUpload} />
 
             {previewFile && (
 

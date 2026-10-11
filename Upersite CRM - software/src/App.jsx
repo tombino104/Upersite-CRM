@@ -18,7 +18,7 @@ import AutomationEditor from './components/AutomationEditor/AutomationEditor';
 import RecentTransactionsModal from './components/RecentTransactionsModal';
 import CRMAnalyticsModal from './components/CRMAnalyticsModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
-import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT } from './utils/storage';
+import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
 
@@ -467,6 +467,25 @@ export default function App() {
       console.log(`[Sicurezza] Credenziali cifrate per ${ids.length} clienti`);
     }).catch(err => console.error('Cifratura credenziali non riuscita:', err));
   }, [isLoggedIn, hasSynced, customers, setCustomers]);
+
+  // Sposta una volta per sessione i preventivi ancora dentro crm_data.json nella cartella Preventivi
+  const quotesMigrationStarted = useRef(false);
+
+  useEffect(() => {
+    if (!isLoggedIn || !hasSynced || !settings.backupPath || quotesMigrationStarted.current) return;
+    if (!customers.some(c => (c.files || []).some(f => f.isQuote && f.data && !f.storedPath))) return;
+    quotesMigrationStarted.current = true;
+    const original = Object.fromEntries(customers.map(c => [c.id, c.files]));
+    migrateQuotesToFolder(customers).then(changes => {
+      const ids = Object.keys(changes);
+      if (ids.length === 0) return;
+      // Sostituisce solo i file non modificati nel frattempo
+      setCustomers(prev => prev.map(c =>
+        changes[c.id] && c.files === original[c.id] ? { ...c, files: changes[c.id] } : c
+      ));
+      console.log(`[Preventivi] Spostati nella cartella i preventivi di ${ids.length} clienti`);
+    }).catch(err => console.error('Spostamento preventivi non riuscito (riprovo al prossimo accesso):', err));
+  }, [isLoggedIn, hasSynced, settings.backupPath, customers, setCustomers]);
 
   // Avviso visibile se un salvataggio non va a buon fine
   const [saveIssue, setSaveIssue] = useState(null);

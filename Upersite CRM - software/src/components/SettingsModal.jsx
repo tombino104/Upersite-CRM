@@ -261,7 +261,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                     value={settings.backupPath || ''}
                                     onChange={e => updateSettings({ backupPath: e.target.value })}
                                     placeholder="C:\Users\...\Backup" />
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Cartella dove verranno creati i backup datati.</span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Cartella dove verranno creati i backup datati. Qui vengono salvati anche i preventivi (sottocartella <strong>Preventivi</strong>): se cambi cartella, sposta anche la cartella Preventivi.</span>
                             </div>
 
                             <button className="btn btn-primary"
@@ -276,7 +276,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                         const { triggerAutoBackup } = await import('../utils/storage');
                                         const result = await triggerAutoBackup();
                                         if (result.success) {
-                                            setBackupSuccess(`Backup creato: ${result.folder}`);
+                                            setBackupSuccess(`Backup creato: ${result.folder}${result.quotesCopied ? ` (con ${result.quotesCopied} preventivi)` : ''}${result.quotesMissing ? ` · ${result.quotesMissing} preventivi non trovati` : ''}`);
                                         } else {
                                             setError(`Errore backup: ${result.error}`);
                                         }

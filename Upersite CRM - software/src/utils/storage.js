@@ -707,3 +707,115 @@ export const ADDONS = [
 
 ];
 
+
+
+
+// ── Preventivi come file nella cartella dei salvataggi (sottocartella "Preventivi") ──
+
+// Carica un preventivo (File o Blob) e restituisce il percorso relativo salvato nel cliente
+
+export async function uploadQuote(file, fileName, customerName) {
+
+    const response = await fetch('/api/quotes', {
+
+        method: 'POST',
+
+        headers: {
+
+            'X-Upersite-CRM': '1',
+
+            'Content-Type': 'application/octet-stream',
+
+            'X-File-Name': encodeURIComponent(fileName),
+
+            'X-Customer-Name': encodeURIComponent(customerName || '')
+
+        },
+
+        body: file
+
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) throw new Error(result.error || `Caricamento non riuscito (errore ${response.status})`);
+
+    return result.storedPath;
+
+}
+
+// Scarica un preventivo salvato e lo restituisce come data URL (per anteprima e download)
+
+export async function fetchQuoteDataUrl(storedPath) {
+
+    const response = await fetch(`/api/quotes?path=${encodeURIComponent(storedPath)}`);
+
+    if (!response.ok) {
+
+        const result = await response.json().catch(() => ({}));
+
+        throw new Error(result.error || 'Preventivo non trovato');
+
+    }
+
+    const blob = await response.blob();
+
+    return new Promise((resolve, reject) => {
+
+        const reader = new FileReader();
+
+        reader.onload = () => resolve(reader.result);
+
+        reader.onerror = () => reject(new Error('Lettura del preventivo non riuscita'));
+
+        reader.readAsDataURL(blob);
+
+    });
+
+}
+
+// Sposta nella cartella i preventivi ancora salvati dentro crm_data.json (base64).
+
+// Restituisce { [customerId]: nuoviFiles } solo per i clienti migrati: il base64 viene tolto
+
+// soltanto dopo un caricamento riuscito.
+
+export async function migrateQuotesToFolder(customers) {
+
+    const changes = {};
+
+    for (const customer of customers) {
+
+        const files = customer.files || [];
+
+        if (!files.some(f => f.isQuote && f.data && !f.storedPath)) continue;
+
+        const updated = [];
+
+        for (const f of files) {
+
+            if (f.isQuote && f.data && !f.storedPath) {
+
+                const blob = await (await fetch(f.data)).blob();
+
+                const storedPath = await uploadQuote(blob, f.name || 'Preventivo.pdf', customer.name);
+
+                const { data: _data, ...rest } = f;
+
+                updated.push({ ...rest, storedPath });
+
+            } else {
+
+                updated.push(f);
+
+            }
+
+        }
+
+        changes[customer.id] = updated;
+
+    }
+
+    return changes;
+
+}
