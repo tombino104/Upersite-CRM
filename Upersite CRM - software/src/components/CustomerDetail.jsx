@@ -731,52 +731,6 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                                     </span>
 
-                                    <button
-
-                                        className="btn btn-ghost btn-icon-sm"
-
-                                        onClick={() => openEditModal(t)}
-
-                                        title="Modifica attività"
-
-                                        style={{
-
-                                            fontSize: '0.7rem',
-
-                                            color: 'var(--text-tertiary)',
-
-                                            padding: '1px',
-
-                                            display: 'flex',
-
-                                            alignItems: 'center',
-
-                                            justifyContent: 'center',
-
-                                            height: '20px',
-
-                                            width: '20px',
-
-                                            lineHeight: '1',
-
-                                            flexShrink: 0,
-
-                                            alignSelf: 'center'
-
-                                        }}
-
-                                    >
-
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
-
-                                            <path d="M12 20h9"></path>
-
-                                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-
-                                        </svg>
-
-                                    </button>
-
                             </div>
 
                             {level === 0 && (
@@ -812,6 +766,28 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+
+                        {/* Matita nel gruppo delle altre icone: così resta centrata come loro */}
+
+                        <button
+
+                            className="btn btn-ghost btn-icon-sm"
+
+                            onClick={() => openEditModal(t)}
+
+                            title="Modifica attività"
+
+                        >
+
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+
+                                <path d="M12 20h9"></path>
+
+                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+
+                            </svg>
+
+                        </button>
 
                         <button
 
