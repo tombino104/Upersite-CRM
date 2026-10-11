@@ -189,6 +189,8 @@ const TodoEditModal = ({ isOpen, onClose, data, onChange, onSave }) => {
 
 /* ── TO-DO SECTION ── */
 
+const COMPLETED_COLLAPSED_KEY = 'upersite_todo_completed_collapsed';
+
 const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, onOpenFile, onOpenNote }) => {
 
     const todos = form.todo || [];
@@ -221,6 +223,30 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
     const [editModalData, setEditModalData] = useState({});
 
+    // Ricerca e sezione "Completate" comprimibile (scelta ricordata nel browser)
+
+    const [todoSearch, setTodoSearch] = useState('');
+
+    const [completedCollapsed, setCompletedCollapsed] = useState(() => {
+
+        try { return localStorage.getItem(COMPLETED_COLLAPSED_KEY) === '1'; } catch { return false; }
+
+    });
+
+    const toggleCompletedCollapsed = () => {
+
+        setCompletedCollapsed(prev => {
+
+            const next = !prev;
+
+            try { localStorage.setItem(COMPLETED_COLLAPSED_KEY, next ? '1' : '0'); } catch { /* preferenza non salvata */ }
+
+            return next;
+
+        });
+
+    };
+
     const addTodo = (e) => {
 
         e.preventDefault();
@@ -252,6 +278,8 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
             linkedFiles: [],
 
             linkedNotes: [],
+
+            linkedTodos: [],
 
             recurrence: recurrence
 
@@ -362,6 +390,8 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
             linkedFiles: [],
 
             linkedNotes: [],
+
+            linkedTodos: [],
 
             recurrence: 'none'
 
@@ -545,6 +575,92 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
     };
 
+    const linkTodoToTodo = (todoId, targetId) => {
+
+        const updateRecursive = (items) => items.map(t => {
+
+            if (t.id === todoId) {
+
+                const current = t.linkedTodos || [];
+
+                if (current.includes(targetId)) return t;
+
+                return { ...t, linkedTodos: [...current, targetId] };
+
+            }
+
+            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
+
+            return t;
+
+        });
+
+        update('todo', updateRecursive(todos));
+
+    };
+
+    const unlinkTodoFromTodo = (todoId, targetId) => {
+
+        const updateRecursive = (items) => items.map(t => {
+
+            if (t.id === todoId) return { ...t, linkedTodos: (t.linkedTodos || []).filter(id => id !== targetId) };
+
+            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
+
+            return t;
+
+        });
+
+        update('todo', updateRecursive(todos));
+
+    };
+
+    // Tutti i todo del cliente, sottotask compresi, con il padre diretto e il todo principale
+
+    const flattenTodos = (items, parent = null, root = null) => (items || []).flatMap(t => [
+
+        { todo: t, parent, root: root || t },
+
+        ...flattenTodos(t.subtasks, t, root || t)
+
+    ]);
+
+    const allTodoEntries = flattenTodos(todos);
+
+    const todoLabel = (entry) => `${entry.todo.completed ? '✓ ' : ''}${entry.parent ? entry.parent.text + ' › ' : ''}${entry.todo.text}`;
+
+    // Porta al todo collegato: svuota la ricerca, apre i completati se serve ed evidenzia la riga
+
+    const goToTodo = (id) => {
+
+        const entry = allTodoEntries.find(e => e.todo.id === id);
+
+        if (!entry) return;
+
+        setTodoSearch('');
+
+        if (entry.root.completed) setCompletedCollapsed(false);
+
+        setTimeout(() => {
+
+            const el = document.getElementById(`todo-${id}`);
+
+            if (!el) return;
+
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            const originalShadow = el.style.boxShadow;
+
+            el.style.transition = 'box-shadow 0.3s ease';
+
+            el.style.boxShadow = '0 0 0 2px var(--primary)';
+
+            setTimeout(() => { el.style.boxShadow = originalShadow; }, 2000);
+
+        }, 60);
+
+    };
+
     const getNoteSnippet = (html) => {
         const text = (html || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
         return text.length > 40 ? text.substring(0, 40) + '...' : text;
@@ -559,13 +675,17 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
         const linkedNoteObjects = (t.linkedNotes || []).map(nid => allNotes.find(n => n.id === nid)).filter(Boolean);
 
-        const hasDetails = (t.description || '').trim() || linkedFileObjects.length > 0 || linkedNoteObjects.length > 0;
+        const linkedTodoEntries = (t.linkedTodos || []).map(id => allTodoEntries.find(e => e.todo.id === id)).filter(Boolean);
+
+        const linkableTodoEntries = allTodoEntries.filter(e => e.todo.id !== t.id && !(t.linkedTodos || []).includes(e.todo.id));
+
+        const hasDetails = (t.description || '').trim() || linkedFileObjects.length > 0 || linkedNoteObjects.length > 0 || linkedTodoEntries.length > 0;
 
         return (
 
             <div key={t.id} style={{ paddingLeft: padLeft }}>
 
-                <div className="todo-item-card" style={{ borderColor: !t.readAt ? 'var(--primary-light)' : 'var(--border-light)' }}>
+                <div id={`todo-${t.id}`} className="todo-item-card" style={{ borderColor: !t.readAt ? 'var(--primary-light)' : 'var(--border-light)' }}>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
 
@@ -639,13 +759,21 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                                             lineHeight: '1',
 
-                                            flexShrink: 0
+                                            flexShrink: 0,
+
+                                            alignSelf: 'center'
 
                                         }}
 
                                     >
 
-                                        ✏️
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+
+                                            <path d="M12 20h9"></path>
+
+                                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+
+                                        </svg>
 
                                     </button>
 
@@ -965,6 +1093,60 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                         </div>
 
+                        {/* Linked Todos */}
+
+                        <div className="todo-details-section">
+
+                            <label className="todo-details-label">🔗 Todo collegati</label>
+
+                            {linkedTodoEntries.length > 0 && (
+
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+
+                                    {linkedTodoEntries.map(e => (
+
+                                        <span key={e.todo.id} className="todo-linked-badge clickable" onClick={() => goToTodo(e.todo.id)}>
+
+                                            🔗 {todoLabel(e)}
+
+                                            <span className="todo-linked-remove" onClick={(ev) => { ev.stopPropagation(); unlinkTodoFromTodo(t.id, e.todo.id); }}>✕</span>
+
+                                        </span>
+
+                                    ))}
+
+                                </div>
+
+                            )}
+
+                            {linkableTodoEntries.length > 0 && (
+
+                                <select
+
+                                    className="input"
+
+                                    style={{ fontSize: '0.8rem' }}
+
+                                    value=""
+
+                                    onChange={e => { if (e.target.value) linkTodoToTodo(t.id, e.target.value); }}
+
+                                >
+
+                                    <option value="">+ Collega un todo...</option>
+
+                                    {linkableTodoEntries.map(e => (
+
+                                        <option key={e.todo.id} value={e.todo.id}>{todoLabel(e)}</option>
+
+                                    ))}
+
+                                </select>
+
+                            )}
+
+                        </div>
+
                     </div>
 
                 )}
@@ -1064,6 +1246,26 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
     });
 
     const completed = todos.filter(t => t.completed).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Ricerca: testo, descrizione (senza HTML) e sottotask
+
+    const searchTerm = todoSearch.trim().toLowerCase();
+
+    const stripHtml = (html) => (html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
+
+    const matchesSearch = (t) => !searchTerm
+
+        || (t.text || '').toLowerCase().includes(searchTerm)
+
+        || stripHtml(t.description).toLowerCase().includes(searchTerm)
+
+        || (t.subtasks || []).some(matchesSearch);
+
+    const visiblePending = pending.filter(matchesSearch);
+
+    const visibleCompleted = completed.filter(matchesSearch);
+
+    const showCompletedList = !completedCollapsed || (searchTerm && visibleCompleted.length > 0);
 
 
 
@@ -1593,27 +1795,77 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
 
 
-            <label className="input-label">Da fare ({pending.length})</label>
+            {todos.length > 0 && (
+
+                <div style={{ position: 'relative', marginBottom: '16px' }}>
+
+                    <input
+
+                        className="input"
+
+                        placeholder="🔍 Cerca attività..."
+
+                        value={todoSearch}
+
+                        onChange={e => setTodoSearch(e.target.value)}
+
+                        style={{ width: '100%', paddingRight: '36px' }}
+
+                    />
+
+                    {todoSearch && (
+
+                        <button className="btn btn-ghost btn-icon-sm" title="Svuota ricerca" onClick={() => setTodoSearch('')}
+
+                            style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)' }}>✕</button>
+
+                    )}
+
+                </div>
+
+            )}
+
+            {searchTerm && visiblePending.length === 0 && visibleCompleted.length === 0 && (
+
+                <div style={{ color: 'var(--text-tertiary)', fontSize: '0.9rem', marginBottom: '16px' }}>Nessuna attività trovata.</div>
+
+            )}
+
+            <label className="input-label">Da fare ({visiblePending.length})</label>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
 
                 {pending.length === 0 && <span style={{ color: 'var(--text-tertiary)', fontSize: '0.9rem' }}>Nessuna attività pendente.</span>}
 
-                {pending.map(t => renderTodoItem(t, 0))}
+                {visiblePending.map(t => renderTodoItem(t, 0))}
 
             </div>
 
-            {completed.length > 0 && (
+            {visibleCompleted.length > 0 && (
 
                 <>
 
-                    <label className="input-label">Completate ({completed.length})</label>
+                    <button type="button" className="input-label" onClick={toggleCompletedCollapsed}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: 0.6 }}>
+                        title={showCompletedList ? 'Riduci' : 'Mostra'}
 
-                        {completed.map(t => renderTodoItem(t, 0))}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
 
-                    </div>
+                        <span style={{ fontSize: '0.7rem' }}>{showCompletedList ? '▼' : '▶'}</span>
+
+                        Completate ({visibleCompleted.length})
+
+                    </button>
+
+                    {showCompletedList && (
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: 0.6 }}>
+
+                            {visibleCompleted.map(t => renderTodoItem(t, 0))}
+
+                        </div>
+
+                    )}
 
                 </>
 
@@ -2257,6 +2509,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                 return n;
             }));
         }
+        update('noteFolders', (form.noteFolders || []).filter(f => f !== folderName));
         window.dispatchEvent(new CustomEvent('deleteNoteFolder', { detail: folderName }));
         setDeleteTarget(null);
     };
@@ -2297,8 +2550,15 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
             }));
         } else if (type === 'note-folder-empty') {
             const folderName = id;
+            update('noteFolders', (form.noteFolders || []).filter(f => f !== folderName));
             window.dispatchEvent(new CustomEvent('deleteNoteFolder', { detail: folderName }));
         } else if (type === 'note') {
+            // La cartella della nota resta anche se era l'ultima nota dentro
+            const deleted = (form.notes || []).find(n => n.id === id);
+            const folderName = (deleted?.folderPath || '').split('/').filter(Boolean)[0];
+            if (folderName && !(form.noteFolders || []).includes(folderName)) {
+                update('noteFolders', [...(form.noteFolders || []), folderName]);
+            }
             update('notes', form.notes.filter(n => n.id !== id));
 
         } else if (type === 'tickets') {
@@ -4737,12 +4997,12 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
     const [pendingAction, setPendingAction] = useState(null);
     const [activeFilter, setActiveFilter] = useState('all'); 
     const [searchQuery, setSearchQuery] = useState('');
-    const [sessionFolders, setSessionFolders] = useState(['Archiviate']);
     const [showGraph, setShowGraph] = useState(false);
     const [sortOrder, setSortOrder] = useState('createdAt-desc');
     
     const folders = useMemo(() => {
-        const set = new Set(sessionFolders);
+        // Cartelle salvate nel cliente + quelle ricavate dalle note (le cartelle vuote restano)
+        const set = new Set(['Archiviate', ...(form.noteFolders || [])]);
         notes.forEach(n => {
             if (n.folderPath && n.folderPath !== '/') {
                 const parts = n.folderPath.split('/').filter(Boolean);
@@ -4750,7 +5010,7 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
             }
         });
         return Array.from(set).sort();
-    }, [notes, sessionFolders]);
+    }, [notes, form.noteFolders]);
 
     useEffect(() => {
         if (initialSelectedNote) {
@@ -4773,7 +5033,6 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
     useEffect(() => {
         const handleDeleteFolder = (e) => {
             const folderName = e.detail;
-            setSessionFolders(prev => prev.filter(f => f !== folderName));
             if (activeFilter === folderName + '/') {
                 setActiveFilter('root');
             }
@@ -4795,6 +5054,14 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
         setNewNote('');
         setIsEditorDirty(false);
     }, [newNote, activeFilter, notes, update, setNewNote]);
+
+    // Prima di spostare una nota, salva la sua cartella attuale: resta anche se ora è vuota
+    const keepFolderOf = (note) => {
+        const folderName = (note?.folderPath || '').split('/').filter(Boolean)[0];
+        if (folderName && !(form.noteFolders || []).includes(folderName)) {
+            update('noteFolders', [...(form.noteFolders || []), folderName]);
+        }
+    };
 
     const handleNoteClick = useCallback((note) => {
         if (isEditorDirty) {
@@ -4899,7 +5166,7 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                             if (name) {
                                 const folderName = name.trim();
                                 if (folderName) {
-                                    setSessionFolders(prev => [...new Set([...prev, folderName])]);
+                                    update('noteFolders', [...new Set([...(form.noteFolders || []), folderName])]);
                                     setActiveFilter(folderName + '/');
                                 }
                             }
@@ -5022,6 +5289,7 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 const targetFolder = note.folderPath === 'Archiviate/' ? '/' : 'Archiviate/';
+                                                keepFolderOf(note);
                                                 update('notes', notes.map(n => n.id === note.id ? { ...n, folderPath: targetFolder } : n));
                                             }}>
                                         <IconComponent name="archive" size={16} style={{ color: note.folderPath === 'Archiviate/' ? 'var(--primary)' : 'inherit' }} />
@@ -5046,11 +5314,12 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                     note={selectedNote}
                     folders={folders}
                     onSave={(updatedText, updatedFolder) => {
+                        keepFolderOf(selectedNote);
                         update('notes', notes.map(n => n.id === selectedNote.id ? { ...n, text: updatedText, folderPath: updatedFolder } : n));
                         setSelectedNote(null);
                     }}
                     onNewFolder={(folderName) => {
-                        setSessionFolders(prev => [...new Set([...prev, folderName])]);
+                        update('noteFolders', [...new Set([...(form.noteFolders || []), folderName])]);
                     }}
                     onClose={() => setSelectedNote(null)}
                     onOpenFile={onOpenFile}
