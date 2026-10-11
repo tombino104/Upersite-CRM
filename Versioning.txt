@@ -108,3 +108,5 @@ export const APP_VERSION = '1.3.1-stable';
 - 1.12.3-stable: Link sulle note buggati, fixato.
 - 1.12.4-stable: Vari bug fixati
 - 1.12.6-stable: Sicurezza - chiave API Gemini spostata in .env.local, password master salvata con hash PBKDF2 (niente più reset senza verifica), dati clienti esclusi da git, salvataggio atomico di crm_data.json con validazione e blocco richieste esterne, Electron con contextIsolation e IPC, sanificazione HTML delle note (DOMPurify), fix cambio password che poteva sovrascrivere i dati con un database vuoto.
+
+- 1.13.0-stable: Credenziali clienti cifrate (AES-GCM) con la password master: le password della sezione Accessi non sono più leggibili in crm_data.json né nei backup; ricifratura automatica al cambio password. Fix: stato "Completato" con rate non pagate non selezionabile, formattazione del telefono in errore, link alle cartelle dalle note non funzionanti. Pulizia: rimossi script di riparazione, file .broken e dipendenze inutilizzate; vecchi backup spostati su D:.

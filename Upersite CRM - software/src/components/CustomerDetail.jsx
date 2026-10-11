@@ -15,6 +15,7 @@ import IconComponent from './IconComponent';
 import NotesGraphView from './NotesGraphView';
 
 import { generateId, sanitizePositiveNumber, formatBytes, saveFile, verifyMasterPassword, PACKAGES, ADDONS } from '../utils/storage';
+import { encryptSecret, decryptSecret } from '../utils/credentialVault';
 
 const STATUSES = [
 
@@ -1866,6 +1867,9 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
     const [initialPreviewFile, setInitialPreviewFile] = useState(null);
 
+    // Cartella da aprire nella tab File (link interni alle cartelle dalle note)
+    const [initialFilesPath, setInitialFilesPath] = useState(null);
+
     const [initialSelectedNote, setInitialSelectedNote] = useState(null);
 
     const [showSmartReport, setShowSmartReport] = useState(false);
@@ -1946,7 +1950,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
         else if (type === 'folder-nav') {
 
-            setCurrentPath(id);
+            setInitialFilesPath(id);
 
             setActiveTab('files');
 
@@ -1955,6 +1959,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
     };
 
     const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+    // Come update, ma calcola il nuovo valore dal valore più recente (utile dopo operazioni asincrone)
+    const updateWith = (key, fn) => setForm(prev => ({ ...prev, [key]: fn(prev[key]) }));
 
     const hasChanges = JSON.stringify({ ...form, newNote, newTag }) !== snapshot.current;
 
@@ -2503,7 +2509,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                     <>
 
-                        {activeTab === 'general' && <GeneralSection form={form} update={update} allTags={allTags} newTag={newTag} setNewTag={setNewTag} />}
+                        {activeTab === 'general' && <GeneralSection form={form} update={update} updateWith={updateWith} formatPhone={formatPhone} onCompleteWithUnpaid={() => { setPendingStatus('completed'); setShowPaymentWarning(true); }} allTags={allTags} newTag={newTag} setNewTag={setNewTag} />}
 
                         {activeTab === 'config' && <ConfigSection form={form} update={update} />}
 
@@ -2535,6 +2541,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                                 update={update}
 
+                                updateWith={updateWith}
+
                                 confirmDelete={confirmDelete}
 
                             />
@@ -2558,6 +2566,10 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                                 initialPreviewFile={initialPreviewFile}
 
                                 clearInitialPreviewFile={() => setInitialPreviewFile(null)}
+
+                                initialPath={initialFilesPath}
+
+                                clearInitialPath={() => setInitialFilesPath(null)}
 
                             />
 
@@ -2996,7 +3008,7 @@ function LogoAvatar({ logo, name, onLogoChange }) {
 
 /* ── GENERAL ── */
 
-const GeneralSection = React.memo(({ form, update, allTags, newTag, setNewTag }) => {
+const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCompleteWithUnpaid, allTags, newTag, setNewTag }) => {
 
     const addTag = (tag) => {
 
@@ -3060,7 +3072,7 @@ const GeneralSection = React.memo(({ form, update, allTags, newTag, setNewTag })
 
                         onChange={val => update('phone', val)}
 
-                        onBlur={() => update('phone', formatPhone(form.phone || ''))}
+                        onBlur={() => updateWith('phone', phone => formatPhone(phone || ''))}
 
                         placeholder="+39 333 1234567"
 
@@ -3110,9 +3122,7 @@ const GeneralSection = React.memo(({ form, update, allTags, newTag, setNewTag })
 
                             if (unpaid.length > 0) {
 
-                                setPendingStatus(val);
-
-                                setShowPaymentWarning(true);
+                                onCompleteWithUnpaid();
 
                                 return;
 
@@ -3510,7 +3520,7 @@ const FinanceSection = React.memo(({ form, update, settings, confirmDelete, show
 
 /* ── CREDENTIALS ── */
 
-const CredentialsSection = React.memo(({ form, update, confirmDelete }) => {
+const CredentialsSection = React.memo(({ form, update, updateWith, confirmDelete }) => {
 
     const credentials = form.credentials || [];
 
@@ -3522,11 +3532,38 @@ const CredentialsSection = React.memo(({ form, update, confirmDelete }) => {
 
     const [error, setError] = useState(false);
 
+    // Password in chiaro decifrate allo sblocco: { [id]: testo } (null = non decifrabile)
+    const [plain, setPlain] = useState({});
+
+    const [vaultPassword, setVaultPassword] = useState(null);
+
     const handleUnlock = async (e) => {
 
         e.preventDefault();
 
         if (await verifyMasterPassword(pass)) {
+
+            const decrypted = {};
+
+            for (const cred of credentials) {
+
+                try {
+
+                    decrypted[cred.id] = await decryptSecret(cred.password, pass);
+
+                } catch {
+
+                    decrypted[cred.id] = null;
+
+                }
+
+            }
+
+            setPlain(decrypted);
+
+            setVaultPassword(pass);
+
+            setPass('');
 
             setUnlocked(true);
 
@@ -3602,6 +3639,16 @@ const CredentialsSection = React.memo(({ form, update, confirmDelete }) => {
 
     };
 
+    const updatePassword = async (id, val) => {
+
+        setPlain(prev => ({ ...prev, [id]: val }));
+
+        const encrypted = await encryptSecret(val, vaultPassword);
+
+        updateWith('credentials', list => (list || []).map(c => c.id === id ? { ...c, password: encrypted } : c));
+
+    };
+
     const toggleVisible = (id) => {
 
         setVisibleIds(prev => ({ ...prev, [id]: !prev[id] }));
@@ -3650,9 +3697,13 @@ const CredentialsSection = React.memo(({ form, update, confirmDelete }) => {
 
                             type={visibleIds[cred.id] ? 'text' : 'password'}
 
-                            placeholder="Password" value={cred.password}
+                            placeholder={plain[cred.id] === null ? 'Non decifrabile con la password attuale' : 'Password'}
 
-                            onChange={val => updateCredential(cred.id, 'password', val)} />
+                            value={plain[cred.id] ?? ''}
+
+                            disabled={plain[cred.id] === null}
+
+                            onChange={val => updatePassword(cred.id, val)} />
 
                     </div>
 
@@ -3794,7 +3845,7 @@ const LinksSection = React.memo(({ form, update, confirmDelete }) => {
 
 /* ── FILES ── */
 
-const FilesSection = React.memo(({ form, update, confirmDelete, filterOutQuotes, initialPreviewFile, clearInitialPreviewFile }) => {
+const FilesSection = React.memo(({ form, update, confirmDelete, filterOutQuotes, initialPreviewFile, clearInitialPreviewFile, initialPath, clearInitialPath }) => {
 
     const allFiles = form.files || [];
 
@@ -3821,6 +3872,18 @@ const FilesSection = React.memo(({ form, update, confirmDelete, filterOutQuotes,
         }
 
     }, [initialPreviewFile, clearInitialPreviewFile]);
+
+    useEffect(() => {
+
+        if (initialPath != null) {
+
+            setCurrentPath(initialPath);
+
+            clearInitialPath();
+
+        }
+
+    }, [initialPath, clearInitialPath]);
 
 
 

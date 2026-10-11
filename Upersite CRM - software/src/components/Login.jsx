@@ -36,7 +36,7 @@ const LoginCard = memo(({
             setBusy(true);
             try {
                 await setMasterPassword(password);
-                onLogin();
+                onLogin(password);
             } finally {
                 setBusy(false);
             }
@@ -45,7 +45,7 @@ const LoginCard = memo(({
             const ok = await verifyMasterPassword(password);
             setBusy(false);
             if (ok) {
-                onLogin();
+                onLogin(password);
             } else {
                 setError('Password errata');
                 triggerShake();
@@ -108,7 +108,7 @@ const LoginCard = memo(({
                 <div className="login-reset-section">
                     {showReset ? (
                         <div className="login-reset-confirm animate-fade-in-up">
-                            <p className="login-reset-warning">Per motivi di sicurezza la password non si può resettare dall'app. Chiudi il CRM, rimuovi il campo "masterPassword" dal file crm_data.json e riavvia: potrai crearne una nuova. I dati dei clienti saranno mantenuti.</p>
+                            <p className="login-reset-warning">Per motivi di sicurezza la password non si può resettare dall'app. Chiudi il CRM, rimuovi il campo "masterPassword" dal file crm_data.json e riavvia: potrai crearne una nuova. I dati dei clienti saranno mantenuti, ma le password nella sezione Accessi, cifrate con la vecchia password, resteranno illeggibili finché non reimposterai la stessa password di prima.</p>
                             <div className="login-reset-buttons">
                                 <button className="btn btn-ghost btn-sm" onClick={() => setShowReset(false)}>Chiudi</button>
                             </div>

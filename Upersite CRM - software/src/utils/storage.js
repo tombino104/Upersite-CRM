@@ -292,11 +292,15 @@ export async function verifyMasterPassword(password) {
 
 
 
-export async function setMasterPassword(password) {
+// persist=false: aggiorna solo la password in memoria; verrà scritta nel file al prossimo salvataggio
+// dei dati (usato dal cambio password per salvarla insieme alle credenziali ricifrate).
+export async function setMasterPassword(password, { persist = true } = {}) {
 
     const hashed = await hashPassword(password);
 
     trySetLocalStorage(MASTER_KEY, hashed);
+
+    if (!persist) return;
 
     // Aggiorna solo il campo masterPassword nel file, senza toccare gli altri dati
 

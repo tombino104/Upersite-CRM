@@ -2,7 +2,7 @@
 
 CRM personale per gestire clienti, preventivi, pagamenti, task e note di progetto. Funziona in locale sul proprio PC: i dati restano in un file e non vengono inviati a nessun server (tranne il testo che invii alle funzioni AI).
 
-**Versione attuale:** 1.12.6-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
+**Versione attuale:** 1.13.0-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
 ## Funzionalità
 
@@ -11,7 +11,7 @@ CRM personale per gestire clienti, preventivi, pagamenti, task e note di progett
 - **Task** con priorità, scadenze e ricorrenza, filtri e Matrice di Eisenhower, calendario
 - **Note** con editor ricco (indice, cartelle, checkbox, citazioni, menu `/`) e grafo delle note in stile Obsidian
 - **Ticket** per cliente con dashboard centralizzata
-- **Credenziali** dei clienti protette dalla password master
+- **Credenziali** dei clienti cifrate con la password master
 - **Automazioni**: editor a nodi per workflow (eventi, condizioni, azioni su task, note, tag, backup)
 - **AI (Gemini)**: chat, SmartReport sui clienti, riassunti delle note, strumenti di scrittura
 - **Backup** manuale e automatico, import/export dei dati
@@ -54,7 +54,7 @@ Su Windows puoi usare i collegamenti nella cartella: `Upersite CRM Browser.vbs` 
 
 Al primo avvio crei una password master. Viene salvata come hash (PBKDF2), mai in chiaro. Il CRM si blocca dopo 5 minuti di inattività.
 
-**Password dimenticata:** chiudi il CRM, apri `crm_data.json`, elimina la riga `"masterPassword"` e riavvia. Potrai crearne una nuova; i dati dei clienti restano.
+**Password dimenticata:** chiudi il CRM, apri `crm_data.json`, elimina la riga `"masterPassword"` e riavvia. Potrai crearne una nuova; i dati dei clienti restano. **Attenzione:** le password della sezione Accessi sono cifrate con la password master e resteranno illeggibili finché non reimposterai la stessa password di prima.
 
 ## I tuoi dati
 
@@ -84,6 +84,7 @@ Formato `Major.Minor.Patch-stato` (`alpha`, `beta`, `stable`). Quando cambi vers
 ## Sicurezza
 
 - Le richieste che modificano i dati richiedono un header interno: un sito esterno aperto nel browser non può sovrascrivere il file dati.
+- Le password delle credenziali clienti sono cifrate (AES-GCM, chiave ricavata dalla password master con PBKDF2): nel file dati e nei backup non sono leggibili.
 - L'HTML delle note viene ripulito con DOMPurify.
 - In Electron sono attivi `contextIsolation` e `sandbox`, senza `nodeIntegration`.
 - Il server di salvataggio è pensato per uso **locale**: non esporlo su rete o internet.

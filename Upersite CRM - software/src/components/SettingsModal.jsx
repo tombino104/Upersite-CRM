@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { getMasterPassword, verifyMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem, formatBytes, getStorageInfo } from '../utils/storage';
+import { reencryptCredentials } from '../utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
 import { getAvailableModels, getCurrentModel, setAIModel } from '../utils/aiTextService';
 
@@ -44,8 +45,13 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
             return;
         }
 
-        await setMasterPassword(newPassword);
-        setSuccess('Password aggiornata con successo!');
+        // Ricifra le credenziali dei clienti con la nuova password e salva tutto insieme
+        const { customers: reencrypted, failed } = await reencryptCredentials(customers, currentPassword, newPassword);
+        await setMasterPassword(newPassword, { persist: false });
+        setCustomers(reencrypted);
+        setSuccess(failed > 0
+            ? `Password aggiornata. Attenzione: ${failed} credenziali non erano decifrabili e sono rimaste invariate.`
+            : 'Password aggiornata con successo!');
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');

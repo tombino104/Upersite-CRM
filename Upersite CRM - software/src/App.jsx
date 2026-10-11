@@ -19,6 +19,7 @@ import RecentTransactionsModal from './components/RecentTransactionsModal';
 import CRMAnalyticsModal from './components/CRMAnalyticsModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
+import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
 
 /* ── Notification Component (Hoisted/Top-level) ── */
@@ -448,7 +449,28 @@ export default function App() {
     }
   }, [hasSynced, tags.length, customers, updateTags]);
 
+  // Password master tenuta in memoria solo finché le credenziali in chiaro non sono state cifrate
+  const pendingVaultPassword = useRef(null);
+
+  useEffect(() => {
+    const password = pendingVaultPassword.current;
+    if (!isLoggedIn || !hasSynced || !password) return;
+    pendingVaultPassword.current = null;
+    encryptPlainCredentials(customers, password).then(changes => {
+      const ids = Object.keys(changes);
+      if (ids.length === 0) return;
+      // Sostituisce solo le credenziali non modificate nel frattempo
+      const original = Object.fromEntries(customers.map(c => [c.id, c.credentials]));
+      setCustomers(prev => prev.map(c =>
+        changes[c.id] && c.credentials === original[c.id] ? { ...c, credentials: changes[c.id] } : c
+      ));
+      console.log(`[Sicurezza] Credenziali cifrate per ${ids.length} clienti`);
+    }).catch(err => console.error('Cifratura credenziali non riuscita:', err));
+  }, [isLoggedIn, hasSynced, customers, setCustomers]);
+
   const handleLogout = useCallback(() => {
+    pendingVaultPassword.current = null;
+    clearCredentialKeys();
     notifyLogout();
     setIsLoggedIn(false);
   }, [notifyLogout]);
@@ -457,6 +479,8 @@ export default function App() {
     if (settings.backupPath) {
       triggerAutoBackup().catch(err => console.error('Background backup failed:', err));
     }
+    pendingVaultPassword.current = null;
+    clearCredentialKeys();
     notifyLogout();
     setIsLoggedIn(false);
     setShowExportMenu(false);
@@ -526,7 +550,7 @@ export default function App() {
   }
 
   if (!isLoggedIn) {
-    return <Login onLogin={() => { setIsLoggedIn(true); notifyLogin(); }} />;
+    return <Login onLogin={(password) => { pendingVaultPassword.current = password; setIsLoggedIn(true); notifyLogin(); }} />;
   }
 
   return (
@@ -755,7 +779,7 @@ export default function App() {
                   Termina sessione di lavoro
                 </button>
                 <div className="app-dropdown-divider" />
-                <button className="app-dropdown-item app-dropdown-danger" onClick={() => { setIsLoggedIn(false); setShowExportMenu(false); }}>
+                <button className="app-dropdown-item app-dropdown-danger" onClick={() => { clearCredentialKeys(); setIsLoggedIn(false); setShowExportMenu(false); }}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ marginRight: '8px' }}>
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
