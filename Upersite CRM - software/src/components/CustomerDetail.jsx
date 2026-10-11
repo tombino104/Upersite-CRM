@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 // import SmartSummarizerButton from './SmartSummarizerButton';
 
@@ -9,6 +10,7 @@ import SmartReportModal from './SmartReportModal';
 import SmartReportSection from './SmartReportSection';
 
 import TicketSection from './TicketSection';
+import TimesheetSection from './TimesheetSection';
 
 import IconComponent from './IconComponent';
 
@@ -1973,6 +1975,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
     const [activeTab, setActiveTab] = useState('general');
 
+    const [showTimesheet, setShowTimesheet] = useState(false);
+
     // Listen for setActiveTab events from TaskFilterModal
 
     useEffect(() => {
@@ -2525,6 +2529,38 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
             <div className={`modal-content detail-modal ${isClosing ? 'modal-closing' : ''}`}>
 
+                {showTimesheet && createPortal((() => {
+
+                    const installments = form.installments || [];
+
+                    const sumInstallments = installments.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+
+                    const paid = installments.filter(i => i.paid).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+
+                    // Le ore si salvano subito nel cliente, come i preventivi
+                    const saveTimesheets = (timesheets) => {
+
+                        update('timesheets', timesheets);
+
+                        if (updateCustomer && form.id) updateCustomer(form.id, { timesheets });
+
+                    };
+
+                    return (
+
+                        <TimesheetSection
+                            customerName={form.name}
+                            entries={form.timesheets}
+                            onChange={saveTimesheets}
+                            projectValue={parseFloat(form.quoteAmount) || sumInstallments}
+                            paidAmount={paid}
+                            onClose={() => setShowTimesheet(false)}
+                        />
+
+                    );
+
+                })(), document.body)}
+
                 {/* Header */}
 
                 <div className="modal-header">
@@ -2568,6 +2604,22 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+
+                        <button
+
+                            className="btn btn-ghost btn-icon"
+
+                            onClick={() => setShowTimesheet(true)}
+
+                            title="Fogli ore"
+
+                            style={{ fontSize: '0.9rem', color: 'var(--primary)' }}
+
+                        >
+
+                            ⏱️
+
+                        </button>
 
                         {form.website && (
 
@@ -3215,6 +3267,23 @@ const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCo
                     <label className="input-label">Email</label>
 
                     <DebouncedInput className="input" type="email" value={form.email || ''} onChange={val => update('email', val)} placeholder="mario@rossi.it" />
+
+                    {(form.extraEmails || []).map((mail, i) => (
+
+                        <div key={i} style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+
+                            <DebouncedInput className="input" type="email" value={mail || ''} placeholder="altra@email.it"
+                                onChange={val => update('extraEmails', (form.extraEmails || []).map((m, j) => j === i ? val : m))} />
+
+                            <button type="button" className="btn btn-ghost btn-icon-sm" title="Rimuovi email"
+                                onClick={() => update('extraEmails', (form.extraEmails || []).filter((_, j) => j !== i))}>✕</button>
+
+                        </div>
+
+                    ))}
+
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: '6px', alignSelf: 'flex-start' }}
+                        onClick={() => update('extraEmails', [...(form.extraEmails || []), ''])}>+ Aggiungi email</button>
 
                 </div>
 
@@ -6192,6 +6261,13 @@ function NoteModal({ note, folders, onSave, onClose, onOpenFile, onOpenNote, all
 
 /* ── QUOTE FILE UPLOAD HELPERS ── */
 
+// Etichette dello stato dei preventivi (senza stato = "in attesa")
+const QUOTE_STATUSES = {
+    pending: { label: 'In attesa', color: 'var(--warning)', bg: 'var(--warning-bg)' },
+    accepted: { label: 'Accettato', color: 'var(--success)', bg: 'var(--success-bg)' },
+    rejected: { label: 'Rifiutato', color: 'var(--danger)', bg: 'var(--danger-bg)' }
+};
+
 function QuoteFileUpload({ form, update, updateCustomer }) {
 
     const fileRef = useRef(null);
@@ -6276,6 +6352,12 @@ function QuoteFileUpload({ form, update, updateCustomer }) {
             setBusy(false);
 
         }
+
+    };
+
+    const setStatus = (file, quoteStatus) => {
+
+        applyFiles((form.files || []).map(f => f.id === file.id ? { ...f, quoteStatus } : f));
 
     };
 
@@ -6365,6 +6447,20 @@ function QuoteFileUpload({ form, update, updateCustomer }) {
 
                         </div>
 
+                        {(() => {
+                            const st = QUOTE_STATUSES[quoteFile.quoteStatus] || QUOTE_STATUSES.pending;
+                            return (
+                                <select value={quoteFile.quoteStatus || 'pending'} title="Stato del preventivo"
+                                    onChange={e => setStatus(quoteFile, e.target.value)}
+                                    className="quote-status-select"
+                                    style={{ '--st': st.color, '--st-bg': st.bg }}>
+                                    {Object.entries(QUOTE_STATUSES).map(([key, s]) => (
+                                        <option key={key} value={key}>{s.label}</option>
+                                    ))}
+                                </select>
+                            );
+                        })()}
+
                         <button className="btn btn-ghost btn-icon-sm" onClick={() => downloadFile(quoteFile)} title="Scarica">⬇</button>
 
                         <button className="btn btn-ghost btn-icon-sm" title="Elimina preventivo"
@@ -6426,6 +6522,69 @@ function QuoteFileUpload({ form, update, updateCustomer }) {
             )}
 
             <style>{`
+
+                .quote-status-select {
+
+                    appearance: none;
+
+                    -webkit-appearance: none;
+
+                    background-color: var(--st-bg);
+
+                    background-image: radial-gradient(circle, var(--st) 3.5px, transparent 4px),
+                        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+                    background-repeat: no-repeat;
+
+                    background-position: 11px center, right 11px center;
+
+                    background-size: 10px 10px, 10px 6px;
+
+                    color: var(--st);
+
+                    border: 1.5px solid var(--st);
+
+                    border-radius: 999px;
+
+                    padding: 6px 30px 6px 28px;
+
+                    font-size: 0.8125rem;
+
+                    font-weight: 600;
+
+                    font-family: inherit;
+
+                    cursor: pointer;
+
+                    transition: all 0.15s;
+
+                }
+
+                .quote-status-select:hover {
+
+                    filter: brightness(0.96);
+
+                    box-shadow: 0 0 0 3px var(--st-bg);
+
+                }
+
+                .quote-status-select:focus-visible {
+
+                    outline: none;
+
+                    box-shadow: 0 0 0 3px var(--st-bg);
+
+                }
+
+                .quote-status-select option {
+
+                    background: var(--bg-card);
+
+                    color: var(--text-primary);
+
+                    font-weight: 500;
+
+                }
 
                 .quote-upload-placeholder {
 

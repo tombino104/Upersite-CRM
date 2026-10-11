@@ -968,6 +968,8 @@ export function useSearch(customers, query) {
 
             c.email,
 
+            ...(c.extraEmails || []),
+
             c.phone,
 
             c.status,

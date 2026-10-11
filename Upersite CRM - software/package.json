@@ -1,7 +1,7 @@
 {
   "name": "upersite-crm",
   "private": true,
-  "version": "1.16.0-stable",
+  "version": "1.19.0-stable",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {

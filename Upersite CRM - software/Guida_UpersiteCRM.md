@@ -65,6 +65,11 @@ Clicca su un Cliente per veder comparire l'elegantissima modale a sbalzo in cui 
 3. **Configurazione (Nuovo):** Puoi farti i vari appunti spuntando tutti i _pacchetti_ e gli eventuali Add-on presi fedelmente dai Listini di base della Upersite! Utile da controllare nei futuri colloqui post-vendita. Nessun prezzo forzato che spunta in giro se non nel riquadro lì!
 4. **File e Archivio (Nuovo):** Ti capiterà di aver sottomano la carta d'identità in jpeg che ti gira un cliente per i vari documenti. Qui sopra potrai archiviarli associandoli per sempre a Mr X! Troverai una dicitura (in Megabyte o Kilobyte) specificante **il totale di memoria che i File di quell'utente ti sta consumando**
 5. **Le Tue Note formattate (Nuovo):** Il nuovo spazio per prendere appunti include gli utilissimi grassetti (**B**), elenchi numerati (1.) o puntati (*). Così si possono descrivere flussi interi! Sono appunti storici: la riga grigia in alto alla nota indica la data e l'ora del salvataggio.
+6. **Più email (Nuovo):** sotto il campo Email c'è "+ Aggiungi email" per inserire più indirizzi dello stesso cliente. Sono tutti cercabili.
+7. **Stato dei preventivi (Nuovo):** accanto a ogni preventivo caricato un menu a tendina lo segna come *In attesa*, *Accettato* o *Rifiutato*. Si salva subito.
+8. **Fogli ore (Nuovo):** il pulsante ⏱️ in alto, accanto al sito web, apre il foglio ore del cliente: una tabella stile foglio di calcolo (clicca una cella per modificarla, compila la riga evidenziata e premi Invio per aggiungere), con grafici delle ore, filtro per periodo ed esportazione CSV/PDF. Calcola anche il **guadagno €/ora** dividendo il valore del progetto (preventivo o somma delle rate) per le ore lavorate, e lo stesso sull'incassato.
+
+> **Todo dei progetti completati:** se un cliente passa a "Completato", i suoi todo spariscono dall'elenco e dalla matrice di Eisenhower.
 
 ---
 

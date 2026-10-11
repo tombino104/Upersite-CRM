@@ -10,6 +10,7 @@ export default function ClientListModal({ customers, onSelectCustomer, onClose, 
             (c.name || '').toLowerCase().includes(term) ||
             (c.company || '').toLowerCase().includes(term) ||
             (c.email || '').toLowerCase().includes(term) ||
+            (c.extraEmails || []).some(m => (m || '').toLowerCase().includes(term)) ||
             (c.tags || []).some(t => t.toLowerCase().includes(term))
         );
     });

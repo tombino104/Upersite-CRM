@@ -16,6 +16,7 @@ export default function DataGridView({ customers, onClose }) {
                 (c.name || '').toLowerCase().includes(q) ||
                 (c.company || '').toLowerCase().includes(q) ||
                 (c.email || '').toLowerCase().includes(q) ||
+                (c.extraEmails || []).some(m => (m || '').toLowerCase().includes(q)) ||
                 (c.tags || []).some(t => t.toLowerCase().includes(q))
             );
         });
@@ -91,7 +92,10 @@ export default function DataGridView({ customers, onClose }) {
                                             {formatCurrency(pending)}
                                         </td>
                                         <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                            {c.email || '-'}
+                                            {[c.email, ...(c.extraEmails || [])].filter(Boolean).map(m => (
+                                                <div key={m}>{m}</div>
+                                            ))}
+                                            {!c.email && !(c.extraEmails || []).some(Boolean) && '-'}
                                         </td>
                                         <td>
                                             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>

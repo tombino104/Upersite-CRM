@@ -12,6 +12,9 @@ export default function TaskFilterModal({ customers, onClose, onSelectCustomer }
     const tasks = [];
     
     customers.forEach(customer => {
+      // I progetti completati non mostrano i loro todo (elenco e matrice)
+      if (customer.status === 'completed') return;
+
       const extractTasks = (taskList, parentTask = null) => {
         taskList.forEach(task => {
           if (!task.completed) {
@@ -420,7 +423,7 @@ export default function TaskFilterModal({ customers, onClose, onSelectCustomer }
                   onChange={e => setCustomerFilter(e.target.value)}
                 >
                   <option value="all">Tutti i clienti</option>
-                  {customers.map(customer => (
+                  {customers.filter(customer => customer.status !== 'completed').map(customer => (
                     <option key={customer.id} value={customer.id}>
                       {customer.name}
                     </option>
