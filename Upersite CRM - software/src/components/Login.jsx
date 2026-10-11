@@ -131,7 +131,7 @@ export default function Login({ onLogin }) {
     const [isSetup, setIsSetup] = useState(null);
 
     useEffect(() => {
-        syncWithFileSystem().finally(() => setIsSetup(!hasMasterPassword()));
+        syncWithFileSystem({ adoptRevision: false }).finally(() => setIsSetup(!hasMasterPassword()));
     }, []);
 
     const triggerShake = () => {

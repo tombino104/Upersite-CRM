@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { getMasterPassword, verifyMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem, formatBytes, getStorageInfo } from '../utils/storage';
+import { getMasterPassword, verifyMasterPassword, setMasterPassword, exportData, importData, formatBytes, getStorageInfo } from '../utils/storage';
 import { reencryptCredentials } from '../utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
 import { getAvailableModels, getCurrentModel, setAIModel } from '../utils/aiTextService';
@@ -103,13 +103,9 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
             reader.onload = async (ev) => {
                 const ok = await importData(ev.target.result);
                 if (ok) {
-                    syncWithFileSystem().then((data) => {
-                        setCustomers(data.customers || []);
-                        if (data.settings) updateSettings(data.settings);
-                        setImportSuccess('Dati importati con successo!');
-                    }).catch(() => {
-                        setError('Import riuscito ma sincronizzazione fallita. Riprova.');
-                    });
+                    // Ricarica l'app: tutti i dati (e la password del backup) vengono letti dal file importato
+                    alert('Dati importati. Il CRM verrà ricaricato: accedi con la password del backup importato.');
+                    window.location.reload();
                 } else {
                     setError('File non valido');
                 }
@@ -150,11 +146,9 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                 setClearError('Impossibile cancellare i dati');
                 return;
             }
-            const data = await syncWithFileSystem();
-            setCustomers(data.customers || []);
-            if (data.settings) updateSettings(data.settings);
-            setImportSuccess('Tutti i dati sono stati cancellati.');
-            setShowClearConfirm(false);
+            // Ricarica l'app, così nessun dato rimasto in memoria viene salvato di nuovo
+            alert('Tutti i dati sono stati cancellati. Il CRM verrà ricaricato.');
+            window.location.reload();
         } catch {
             setError('Errore durante la cancellazione dati.');
         } finally {

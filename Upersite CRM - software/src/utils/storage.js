@@ -9,6 +9,27 @@ const MASTER_KEY = 'upersite_crm_master';
 // Header richiesto dal server locale per le richieste che modificano i dati (vedi vite.config.js)
 export const CRM_REQUEST_HEADERS = { 'Content-Type': 'application/json', 'X-Upersite-CRM': '1' };
 
+// Revisione del file dati caricata da questa finestra. Il server rifiuta (409) un salvataggio
+// basato su una revisione vecchia: succede se un'altra finestra/scheda ha salvato nel frattempo.
+let loadedRevision = null;
+
+// Notifica all'interfaccia l'esito dei salvataggi: 'ok' | 'error' | 'conflict'
+export const SAVE_STATUS_EVENT = 'upersite-save-status';
+
+function emitSaveStatus(status, message = '') {
+    window.dispatchEvent(new CustomEvent(SAVE_STATUS_EVENT, { detail: { status, message } }));
+}
+
+async function postStorage(payload, baseRevision) {
+    const response = await fetch('/api/storage', {
+        method: 'POST',
+        headers: { ...CRM_REQUEST_HEADERS, ...(baseRevision ? { 'X-CRM-Base-Revision': baseRevision } : {}) },
+        body: JSON.stringify(payload)
+    });
+    const result = await response.json().catch(() => ({}));
+    return { ok: response.ok, status: response.status, revision: result.revision, error: result.error };
+}
+
 
 
 function trySetLocalStorage(key, value) {
@@ -127,13 +148,18 @@ export function loadData() {
 
 // Initial sync with file system
 
-export async function syncWithFileSystem() {
+// adoptRevision=false per le letture che non caricano i dati nell'app (login, backup)
+export async function syncWithFileSystem({ adoptRevision = true } = {}) {
 
     try {
 
         const response = await fetch('/api/storage');
 
+        const revision = response.headers.get('X-CRM-Revision');
+
         let data = await response.json();
+
+        if (adoptRevision) loadedRevision = revision;
 
 
 
@@ -179,25 +205,64 @@ export async function syncWithFileSystem() {
 
 
 
+// I salvataggi sono messi in coda: uno alla volta, inviando sempre i dati più recenti
+let saveInFlight = null;
+
+let queuedData = null;
+
 export function saveData(data) {
 
-    // Saltiamo il salvataggio in localStorage per i dati pesanti
+    queuedData = data;
 
-    // trySetLocalStorage(STORAGE_KEY, JSON.stringify(data)); // RIMOSSO
+    if (!saveInFlight) {
 
+        saveInFlight = flushSaves().finally(() => { saveInFlight = null; });
 
+    }
 
-    const masterPassword = localStorage.getItem(MASTER_KEY);
+    return saveInFlight;
 
-    return fetch('/api/storage', {
+}
 
-        method: 'POST',
+async function flushSaves() {
 
-        headers: CRM_REQUEST_HEADERS,
+    while (queuedData) {
 
-        body: JSON.stringify({ ...data, masterPassword })
+        const data = queuedData;
 
-    }).catch(err => console.error('Persistence failed:', err));
+        queuedData = null;
+
+        const masterPassword = localStorage.getItem(MASTER_KEY);
+
+        try {
+
+            const result = await postStorage({ ...data, masterPassword }, loadedRevision);
+
+            if (result.ok) {
+
+                loadedRevision = result.revision || loadedRevision;
+
+                emitSaveStatus('ok');
+
+            } else if (result.status === 409) {
+
+                emitSaveStatus('conflict', "I dati sono stati modificati da un'altra finestra o scheda del CRM. Le ultime modifiche di questa finestra NON sono state salvate.");
+
+                return;
+
+            } else {
+
+                emitSaveStatus('error', `Salvataggio non riuscito: ${result.error || 'errore ' + result.status}`);
+
+            }
+
+        } catch {
+
+            emitSaveStatus('error', 'Salvataggio non riuscito: il server del CRM non risponde. Non chiudere la finestra e riavvia il CRM.');
+
+        }
+
+    }
 
 }
 
@@ -304,19 +369,29 @@ export async function setMasterPassword(password, { persist = true } = {}) {
 
     // Aggiorna solo il campo masterPassword nel file, senza toccare gli altri dati
 
-    const response = await fetch('/api/storage');
+    try {
 
-    const current = await response.json();
+        const response = await fetch('/api/storage');
 
-    return fetch('/api/storage', {
+        const readRevision = response.headers.get('X-CRM-Revision');
 
-        method: 'POST',
+        const current = await response.json();
 
-        headers: CRM_REQUEST_HEADERS,
+        const result = await postStorage({ ...defaultData, ...current, masterPassword: hashed }, readRevision);
 
-        body: JSON.stringify({ ...defaultData, ...current, masterPassword: hashed })
+        // Se questa finestra era aggiornata, lo resta anche dopo la scrittura
 
-    }).catch(err => console.error('Persistence failed:', err));
+        if (result.ok && loadedRevision === readRevision) loadedRevision = result.revision;
+
+        if (!result.ok) emitSaveStatus('error', `Salvataggio della password non riuscito: ${result.error || 'errore ' + result.status}`);
+
+    } catch (err) {
+
+        console.error('Persistence failed:', err);
+
+        emitSaveStatus('error', 'Salvataggio della password non riuscito: il server del CRM non risponde.');
+
+    }
 
 }
 
@@ -334,7 +409,7 @@ export async function triggerAutoBackup(options = {}) {
 
     try {
 
-        const data = await syncWithFileSystem();
+        const data = await syncWithFileSystem({ adoptRevision: false });
 
         const backupPath = data.settings?.backupPath;
 

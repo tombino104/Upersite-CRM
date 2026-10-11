@@ -2,7 +2,7 @@
 
 CRM personale per gestire clienti, preventivi, pagamenti, task e note di progetto. Funziona in locale sul proprio PC: i dati restano in un file e non vengono inviati a nessun server (tranne il testo che invii alle funzioni AI).
 
-**Versione attuale:** 1.13.0-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
+**Versione attuale:** 1.13.1-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
 ## Funzionalità
 
@@ -46,7 +46,9 @@ Senza chiave il CRM funziona normalmente, solo le funzioni AI non rispondono. `.
 | Browser | `npm run dev` | poi apri <http://localhost:5173> |
 | Desktop (Electron) | `npm run electron:dev` | finestra dedicata |
 
-Su Windows puoi usare i collegamenti nella cartella: `Upersite CRM Browser.vbs` (browser) e `Avvia CRM.vbs` (desktop), che partono senza mostrare il terminale. Dettagli in `LEGGERE_PER_AVVIO.txt`.
+Su Windows puoi usare i collegamenti nella cartella: `Upersite CRM Browser.vbs` (browser) e `Avvia CRM.vbs` (desktop), che partono senza mostrare il terminale. Se il CRM è già acceso, il collegamento lo riapre senza avviare un secondo server. Il CRM usa sempre la porta **5173**. Dettagli in `LEGGERE_PER_AVVIO.txt`.
+
+**Una finestra alla volta:** se tieni il CRM aperto in due schede o finestre e una salva, l'altra non può più sovrascrivere i dati: compare un avviso rosso con il pulsante *Ricarica dati*. Compare un avviso rosso anche se un salvataggio non riesce (es. server spento).
 
 > Per ora il salvataggio dei dati passa dal server di sviluppo di Vite (`/api/storage`): l'app va avviata con i comandi qui sopra. La build `electron:build` non è ancora in grado di salvare.
 

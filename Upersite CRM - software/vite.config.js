@@ -17,6 +17,13 @@ function writeFileAtomic(filePath, content) {
   fs.renameSync(tmp, filePath)
 }
 
+// Revisione del file dati: cambia a ogni scrittura (anche se il file viene modificato a mano)
+function getRevision() {
+  if (!fs.existsSync(STORAGE_FILE)) return '0'
+  const stats = fs.statSync(STORAGE_FILE)
+  return `${stats.mtimeMs}-${stats.size}`
+}
+
 function rejectForeignRequest(req, res) {
   if (req.headers[CRM_HEADER] === '1') return false
   res.statusCode = 403
@@ -34,8 +41,10 @@ function storagePlugin() {
             res.end(JSON.stringify({}));
             return;
           }
+          const revision = getRevision();
           const data = fs.readFileSync(STORAGE_FILE, 'utf-8');
           res.setHeader('Content-Type', 'application/json');
+          res.setHeader('X-CRM-Revision', revision);
           res.end(data);
         } else if (req.url === '/api/storage-info' && req.method === 'GET') {
           if (!fs.existsSync(STORAGE_FILE)) {
@@ -154,8 +163,15 @@ function storagePlugin() {
               if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.customers)) {
                 throw new Error('Formato dati non valido');
               }
+              // Rifiuta i salvataggi basati su dati vecchi (un'altra finestra ha salvato nel frattempo)
+              const baseRevision = req.headers['x-crm-base-revision'];
+              if (baseRevision && baseRevision !== getRevision()) {
+                res.statusCode = 409;
+                res.end(JSON.stringify({ error: "Il file dati è stato modificato da un'altra finestra" }));
+                return;
+              }
               writeFileAtomic(STORAGE_FILE, body);
-              res.end(JSON.stringify({ success: true }));
+              res.end(JSON.stringify({ success: true, revision: getRevision() }));
             } catch (e) {
               res.statusCode = 400;
               res.end(JSON.stringify({ error: e.message }));
@@ -172,5 +188,7 @@ function storagePlugin() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), storagePlugin()],
-  base: './'
+  base: './',
+  // Porta fissa: i collegamenti di avvio ed Electron aprono sempre http://localhost:5173
+  server: { port: 5173, strictPort: true }
 })

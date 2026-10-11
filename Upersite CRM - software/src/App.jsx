@@ -18,7 +18,7 @@ import AutomationEditor from './components/AutomationEditor/AutomationEditor';
 import RecentTransactionsModal from './components/RecentTransactionsModal';
 import CRMAnalyticsModal from './components/CRMAnalyticsModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
-import { exportData, importData, loadData, saveData, hasMasterPassword, syncWithFileSystem, triggerAutoBackup } from './utils/storage';
+import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
 
@@ -468,6 +468,15 @@ export default function App() {
     }).catch(err => console.error('Cifratura credenziali non riuscita:', err));
   }, [isLoggedIn, hasSynced, customers, setCustomers]);
 
+  // Avviso visibile se un salvataggio non va a buon fine
+  const [saveIssue, setSaveIssue] = useState(null);
+
+  useEffect(() => {
+    const onSaveStatus = (e) => setSaveIssue(e.detail.status === 'ok' ? null : e.detail);
+    window.addEventListener(SAVE_STATUS_EVENT, onSaveStatus);
+    return () => window.removeEventListener(SAVE_STATUS_EVENT, onSaveStatus);
+  }, []);
+
   const handleLogout = useCallback(() => {
     pendingVaultPassword.current = null;
     clearCredentialKeys();
@@ -521,14 +530,9 @@ export default function App() {
       reader.onload = async (ev) => {
         const ok = await importData(ev.target.result);
         if (ok) {
-          syncWithFileSystem().then((data) => {
-            setCustomers(data.customers || []);
-            setShowExportMenu(false);
-          }).catch(() => {
-            const data = loadData();
-            setCustomers(data.customers || []);
-            setShowExportMenu(false);
-          });
+          // Ricarica l'app: tutti i dati (e la password del backup) vengono letti dal file importato
+          alert('Dati importati. Il CRM verrà ricaricato: accedi con la password del backup importato.');
+          window.location.reload();
         } else {
           alert('File non valido');
         }
@@ -555,6 +559,22 @@ export default function App() {
 
   return (
     <div className="app-layout">
+      {saveIssue && (
+        <div role="alert" style={{
+          position: 'fixed', top: '12px', left: '50%', transform: 'translateX(-50%)', zIndex: 10000,
+          width: 'max-content', maxWidth: 'calc(100vw - 32px)', display: 'flex', alignItems: 'center', gap: '12px',
+          background: 'var(--danger)', color: '#fff', padding: '12px 16px', borderRadius: 'var(--radius-md)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '0.875rem', fontWeight: 600
+        }}>
+          <span style={{ flex: 1 }}>⚠️ {saveIssue.message}</span>
+          {saveIssue.status === 'conflict' && (
+            <button className="btn btn-sm" style={{ background: '#fff', color: 'var(--danger)', flexShrink: 0 }}
+              onClick={() => window.location.reload()}>
+              Ricarica dati
+            </button>
+          )}
+        </div>
+      )}
       <header className="app-header">
         <div className="app-header-left">
           <div className="app-logo">
