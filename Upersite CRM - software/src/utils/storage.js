@@ -6,6 +6,9 @@ const STORAGE_KEY = 'upersite_crm_data';
 
 const MASTER_KEY = 'upersite_crm_master';
 
+// Header richiesto dal server locale per le richieste che modificano i dati (vedi vite.config.js)
+export const CRM_REQUEST_HEADERS = { 'Content-Type': 'application/json', 'X-Upersite-CRM': '1' };
+
 
 
 function trySetLocalStorage(key, value) {
@@ -148,9 +151,15 @@ export async function syncWithFileSystem() {
 
             // Non salviamo più l'intero dataset in localStorage per evitare limiti di 5MB
 
+            // Il file è la fonte di verità per la password master
+
             if (data.masterPassword) {
 
                 trySetLocalStorage(MASTER_KEY, data.masterPassword);
+
+            } else {
+
+                localStorage.removeItem(MASTER_KEY);
 
             }
 
@@ -184,13 +193,58 @@ export function saveData(data) {
 
         method: 'POST',
 
-        headers: { 'Content-Type': 'application/json' },
+        headers: CRM_REQUEST_HEADERS,
 
         body: JSON.stringify({ ...data, masterPassword })
 
     }).catch(err => console.error('Persistence failed:', err));
 
 }
+
+
+
+// Hash della password master (PBKDF2-SHA256). Formato salvato:
+// pbkdf2$<iterazioni>$<salt base64>$<hash base64>
+const PBKDF2_ITERATIONS = 210000;
+
+function bytesToBase64(bytes) {
+
+    return btoa(String.fromCharCode(...bytes));
+
+}
+
+function base64ToBytes(b64) {
+
+    return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+
+}
+
+async function derivePasswordHash(password, salt, iterations) {
+
+    const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, keyMaterial, 256);
+
+    return new Uint8Array(bits);
+
+}
+
+async function hashPassword(password) {
+
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+
+    const hash = await derivePasswordHash(password, salt, PBKDF2_ITERATIONS);
+
+    return `pbkdf2$${PBKDF2_ITERATIONS}$${bytesToBase64(salt)}$${bytesToBase64(hash)}`;
+
+}
+
+function isHashedPassword(stored) {
+
+    return typeof stored === 'string' && stored.startsWith('pbkdf2$');
+
+}
+
 
 
 
@@ -202,13 +256,63 @@ export function getMasterPassword() {
 
 
 
-export function setMasterPassword(password) {
+export async function verifyMasterPassword(password) {
 
-    trySetLocalStorage(MASTER_KEY, password);
+    const stored = getMasterPassword();
 
-    const data = loadData();
+    if (!stored || typeof password !== 'string') return false;
 
-    saveData(data); // This will trigger file write
+    if (!isHashedPassword(stored)) {
+
+        // Password legacy salvata in chiaro: se corretta, la convertiamo subito in hash
+
+        if (password !== stored) return false;
+
+        await setMasterPassword(password);
+
+        return true;
+
+    }
+
+    const [, iterations, saltB64, hashB64] = stored.split('$');
+
+    const expected = base64ToBytes(hashB64);
+
+    const actual = await derivePasswordHash(password, base64ToBytes(saltB64), Number(iterations));
+
+    if (actual.length !== expected.length) return false;
+
+    let diff = 0;
+
+    for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i];
+
+    return diff === 0;
+
+}
+
+
+
+export async function setMasterPassword(password) {
+
+    const hashed = await hashPassword(password);
+
+    trySetLocalStorage(MASTER_KEY, hashed);
+
+    // Aggiorna solo il campo masterPassword nel file, senza toccare gli altri dati
+
+    const response = await fetch('/api/storage');
+
+    const current = await response.json();
+
+    return fetch('/api/storage', {
+
+        method: 'POST',
+
+        headers: CRM_REQUEST_HEADERS,
+
+        body: JSON.stringify({ ...defaultData, ...current, masterPassword: hashed })
+
+    }).catch(err => console.error('Persistence failed:', err));
 
 }
 
@@ -217,18 +321,6 @@ export function setMasterPassword(password) {
 export function hasMasterPassword() {
 
     return !!localStorage.getItem(MASTER_KEY);
-
-}
-
-
-
-export function resetMasterPassword() {
-
-    localStorage.removeItem(MASTER_KEY);
-
-    const data = loadData();
-
-    saveData(data);
 
 }
 
@@ -254,7 +346,7 @@ export async function triggerAutoBackup(options = {}) {
 
             method: 'POST',
 
-            headers: { 'Content-Type': 'application/json' },
+            headers: CRM_REQUEST_HEADERS,
 
             body: JSON.stringify({ backupPath, includeFiles })
 
@@ -308,7 +400,7 @@ export async function importData(jsonString) {
 
             method: 'POST',
 
-            headers: { 'Content-Type': 'application/json' },
+            headers: CRM_REQUEST_HEADERS,
 
             body: jsonString
 

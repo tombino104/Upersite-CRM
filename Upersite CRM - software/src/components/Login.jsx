@@ -1,5 +1,5 @@
-import { useState, memo } from 'react';
-import { hasMasterPassword, getMasterPassword, setMasterPassword, resetMasterPassword } from '../utils/storage';
+import { useState, useEffect, memo } from 'react';
+import { hasMasterPassword, verifyMasterPassword, setMasterPassword, syncWithFileSystem } from '../utils/storage';
 
 const LoginBackground = memo(() => (
     <>
@@ -10,15 +10,17 @@ const LoginBackground = memo(() => (
 ));
 
 const LoginCard = memo(({ 
-    onLogin, isSetup, setIsSetup, shake, triggerShake, 
-    handleReset, showReset, setShowReset 
+    onLogin, isSetup, shake, triggerShake,
+    showReset, setShowReset
 }) => {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
+    const [busy, setBusy] = useState(false);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        if (busy) return;
         setError('');
         if (isSetup) {
             if (password.length < 4) {
@@ -31,10 +33,18 @@ const LoginCard = memo(({
                 triggerShake();
                 return;
             }
-            setMasterPassword(password);
-            onLogin();
+            setBusy(true);
+            try {
+                await setMasterPassword(password);
+                onLogin();
+            } finally {
+                setBusy(false);
+            }
         } else {
-            if (password === getMasterPassword()) {
+            setBusy(true);
+            const ok = await verifyMasterPassword(password);
+            setBusy(false);
+            if (ok) {
                 onLogin();
             } else {
                 setError('Password errata');
@@ -88,7 +98,7 @@ const LoginCard = memo(({
                     </div>
                 )}
 
-                <button type="submit" className="btn btn-primary login-btn">
+                <button type="submit" className="btn btn-primary login-btn" disabled={busy}>
                     {isSetup ? 'Crea Password' : 'Accedi'}
                     <span className="login-btn-arrow">→</span>
                 </button>
@@ -98,10 +108,9 @@ const LoginCard = memo(({
                 <div className="login-reset-section">
                     {showReset ? (
                         <div className="login-reset-confirm animate-fade-in-up">
-                            <p className="login-reset-warning">⚠️ Questo resetterà la password. I dati dei clienti saranno mantenuti.</p>
+                            <p className="login-reset-warning">Per motivi di sicurezza la password non si può resettare dall'app. Chiudi il CRM, rimuovi il campo "masterPassword" dal file crm_data.json e riavvia: potrai crearne una nuova. I dati dei clienti saranno mantenuti.</p>
                             <div className="login-reset-buttons">
-                                <button className="btn btn-danger btn-sm" onClick={handleReset}>Conferma Reset</button>
-                                <button className="btn btn-ghost btn-sm" onClick={() => setShowReset(false)}>Annulla</button>
+                                <button className="btn btn-ghost btn-sm" onClick={() => setShowReset(false)}>Chiudi</button>
                             </div>
                         </div>
                     ) : (
@@ -118,32 +127,31 @@ const LoginCard = memo(({
 export default function Login({ onLogin }) {
     const [shake, setShake] = useState(false);
     const [showReset, setShowReset] = useState(false);
-    const [isSetup, setIsSetup] = useState(!hasMasterPassword());
+    // null = in attesa di leggere la password master dal file dati
+    const [isSetup, setIsSetup] = useState(null);
+
+    useEffect(() => {
+        syncWithFileSystem().finally(() => setIsSetup(!hasMasterPassword()));
+    }, []);
 
     const triggerShake = () => {
         setShake(true);
         setTimeout(() => setShake(false), 600);
     };
 
-    const handleReset = () => {
-        resetMasterPassword();
-        setIsSetup(true);
-        setShowReset(false);
-    };
-
     return (
         <div className="login-screen">
             <LoginBackground />
-            <LoginCard 
-                onLogin={onLogin} 
-                isSetup={isSetup} 
-                setIsSetup={setIsSetup}
-                shake={shake}
-                triggerShake={triggerShake}
-                handleReset={handleReset}
-                showReset={showReset}
-                setShowReset={setShowReset}
-            />
+            {isSetup !== null && (
+                <LoginCard
+                    onLogin={onLogin}
+                    isSetup={isSetup}
+                    shake={shake}
+                    triggerShake={triggerShake}
+                    showReset={showReset}
+                    setShowReset={setShowReset}
+                />
+            )}
 
             <style>{`
         .login-screen {

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { GEMINI_API_KEY } from '../utils/geminiConfig';
 
 // === MODELLI DISPONIBILI ===
 // apiVersion: 'v1' è l'endpoint stabile originale, 'v1beta' per i modelli più nuovi
@@ -30,7 +31,6 @@ const AI_MODELS = [
     },
 ];
 
-const GEMINI_API_KEY = "CHIAVE_RIMOSSA_VEDI_.env.local";
 const MODEL_STORAGE_KEY = 'upersite_ai_model';
 
 const WELCOME_MESSAGE = {

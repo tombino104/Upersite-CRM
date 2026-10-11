@@ -14,7 +14,7 @@ import IconComponent from './IconComponent';
 
 import NotesGraphView from './NotesGraphView';
 
-import { generateId, sanitizePositiveNumber, formatBytes, saveFile, getMasterPassword, PACKAGES, ADDONS } from '../utils/storage';
+import { generateId, sanitizePositiveNumber, formatBytes, saveFile, verifyMasterPassword, PACKAGES, ADDONS } from '../utils/storage';
 
 const STATUSES = [
 
@@ -2139,23 +2139,15 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
 
 
-    const verifyDeletePassword = () => {
+    const verifyDeletePassword = async () => {
 
         // Usa la password master di sistema del CRM
-
-        const masterPassword = getMasterPassword() || "admin";
 
         const cleanPassword = deletePassword.trim();
 
 
 
-        console.log('Password inserita:', cleanPassword);
-
-        console.log('Password attesa:', masterPassword);
-
-
-
-        if (cleanPassword === masterPassword) {
+        if (await verifyMasterPassword(cleanPassword)) {
 
             setShowPasswordConfirm(false);
 
@@ -3530,13 +3522,11 @@ const CredentialsSection = React.memo(({ form, update, confirmDelete }) => {
 
     const [error, setError] = useState(false);
 
-    const handleUnlock = (e) => {
+    const handleUnlock = async (e) => {
 
         e.preventDefault();
 
-        const master = getMasterPassword() || "admin";
-
-        if (pass === master) {
+        if (await verifyMasterPassword(pass)) {
 
             setUnlocked(true);
 
@@ -4686,6 +4676,7 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
     const [searchQuery, setSearchQuery] = useState('');
     const [sessionFolders, setSessionFolders] = useState(['Archiviate']);
     const [showGraph, setShowGraph] = useState(false);
+    const [sortOrder, setSortOrder] = useState('createdAt-desc');
     
     const folders = useMemo(() => {
         const set = new Set(sessionFolders);
@@ -4780,8 +4771,32 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
             const q = searchQuery.toLowerCase();
             base = base.filter(n => n.text.toLowerCase().includes(q));
         }
-        return base;
-    }, [notes, activeFilter, searchQuery]);
+
+        // Apply sorting
+        const sorted = [...base].sort((a, b) => {
+            switch (sortOrder) {
+                case 'createdAt-desc':
+                    return new Date(b.createdAt) - new Date(a.createdAt);
+                case 'createdAt-asc':
+                    return new Date(a.createdAt) - new Date(b.createdAt);
+                case 'title-asc':
+                    return getNoteSnippet(a.text).localeCompare(getNoteSnippet(b.text), 'it');
+                case 'title-desc':
+                    return getNoteSnippet(b.text).localeCompare(getNoteSnippet(a.text), 'it');
+                case 'readAt-asc':
+                    // Unread first (readAt = null comes first)
+                    if (!a.readAt && !b.readAt) return 0;
+                    if (!a.readAt) return -1;
+                    if (!b.readAt) return 1;
+                    return new Date(a.readAt) - new Date(b.readAt);
+                case 'folder-asc':
+                    return (a.folderPath || '/').localeCompare(b.folderPath || '/', 'it');
+                default:
+                    return 0;
+            }
+        });
+        return sorted;
+    }, [notes, activeFilter, searchQuery, sortOrder]);
 
     return (
         <div className="notes-workspace animate-fade-in">
@@ -4894,6 +4909,20 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                 <div className="notes-grid-title">
                     <h3>{activeFilter === 'all' ? 'Tutte le Note' : (activeFilter === 'unread' ? 'Note da leggere' : activeFilter.replace('/', ''))}</h3>
                     {searchQuery && <span className="search-tag">Risultati per: {searchQuery}</span>}
+                    <div className="notes-sort-dropdown">
+                        <select 
+                            value={sortOrder} 
+                            onChange={e => setSortOrder(e.target.value)}
+                            title="Ordina note"
+                        >
+                            <option value="createdAt-desc">📅 Più recenti</option>
+                            <option value="createdAt-asc">📅 Più vecchie</option>
+                            <option value="title-asc">🔤 Titolo A-Z</option>
+                            <option value="title-desc">🔤 Titolo Z-A</option>
+                            <option value="readAt-asc">📌 Non lette prima</option>
+                            <option value="folder-asc">📁 Per cartella</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div className="notes-grid">
@@ -5295,6 +5324,7 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                     align-items: baseline;
                     gap: 12px;
                     margin-top: 10px;
+                    justify-content: space-between;
                 }
                 .notes-grid-title h3 {
                     margin: 0;
@@ -5305,6 +5335,21 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                     font-size: 0.75rem;
                     color: var(--primary);
                     font-weight: 600;
+                }
+                .notes-sort-dropdown select {
+                    padding: 6px 10px;
+                    font-size: 0.75rem;
+                    border-radius: 8px;
+                    border: 1px solid var(--border-light);
+                    background: var(--bg-input);
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    min-width: 160px;
+                }
+                .notes-sort-dropdown select:focus {
+                    outline: none;
+                    border-color: var(--primary);
+                    box-shadow: 0 0 0 3px var(--primary-ghost);
                 }
 
                 .notes-grid {

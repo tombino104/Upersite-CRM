@@ -1,7 +1,7 @@
 // Servizio AI per Writing Tools - Gemma 4 31B
 // Utilizza l'API Gemini con modello Gemma 4 31B per elaborazione testo
+import { GEMINI_API_KEY } from './geminiConfig';
 
-const GEMINI_API_KEY = "CHIAVE_RIMOSSA_VEDI_.env.local";
 
 // Configurazione modelli disponibili
 const AI_MODELS = [

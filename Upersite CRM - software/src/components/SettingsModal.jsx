@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { getMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem, formatBytes, getStorageInfo } from '../utils/storage';
+import { getMasterPassword, verifyMasterPassword, setMasterPassword, exportData, importData, syncWithFileSystem, formatBytes, getStorageInfo } from '../utils/storage';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
 import { getAvailableModels, getCurrentModel, setAIModel } from '../utils/aiTextService';
 
@@ -24,14 +24,14 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
         });
     }, []);
 
-    const handleChangePassword = (e) => {
+    const handleChangePassword = async (e) => {
         e.preventDefault();
         setError('');
         setSuccess('');
         setBackupSuccess('');
         setImportSuccess('');
 
-        if (currentPassword !== getMasterPassword()) {
+        if (!(await verifyMasterPassword(currentPassword))) {
             setError('Password attuale errata');
             return;
         }
@@ -44,7 +44,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
             return;
         }
 
-        setMasterPassword(newPassword);
+        await setMasterPassword(newPassword);
         setSuccess('Password aggiornata con successo!');
         setCurrentPassword('');
         setNewPassword('');
@@ -130,14 +130,15 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
         setBackupSuccess('');
         setImportSuccess('');
 
-        if (clearPassword !== getMasterPassword()) {
+        if (!(await verifyMasterPassword(clearPassword))) {
             setClearError('Password errata');
             return;
         }
 
         setIsClearing(true);
         try {
-            const empty = { customers: [], tags: [], settings: settings || {} };
+            // Manteniamo la password master: il file dati è la fonte di verità
+            const empty = { customers: [], tags: [], settings: settings || {}, masterPassword: getMasterPassword() };
             const ok = await importData(JSON.stringify(empty));
             if (!ok) {
                 setClearError('Impossibile cancellare i dati');

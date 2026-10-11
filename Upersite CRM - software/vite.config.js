@@ -5,6 +5,25 @@ import path from 'path'
 
 const STORAGE_FILE = path.resolve(__dirname, 'crm_data.json')
 
+// Le richieste che modificano i dati devono avere questo header: un sito esterno
+// aperto nel browser non può aggiungerlo senza superare il controllo CORS.
+const CRM_HEADER = 'x-upersite-crm'
+
+// Scrittura atomica: scrive su un file temporaneo e poi lo rinomina,
+// così un crash a metà scrittura non corrompe crm_data.json.
+function writeFileAtomic(filePath, content) {
+  const tmp = `${filePath}.tmp`
+  fs.writeFileSync(tmp, content, 'utf-8')
+  fs.renameSync(tmp, filePath)
+}
+
+function rejectForeignRequest(req, res) {
+  if (req.headers[CRM_HEADER] === '1') return false
+  res.statusCode = 403
+  res.end(JSON.stringify({ error: 'Richiesta non autorizzata' }))
+  return true
+}
+
 function storagePlugin() {
   return {
     name: 'crm-storage-plugin',
@@ -41,13 +60,15 @@ function storagePlugin() {
           const fileStream = fs.createReadStream(STORAGE_FILE);
           fileStream.pipe(res);
         } else if (req.url === '/api/backup/import' && req.method === 'POST') {
+          if (rejectForeignRequest(req, res)) return;
           let body = '';
           req.on('data', chunk => { body += chunk; });
           req.on('end', () => {
             try {
-              // Validazione minima: deve essere un JSON valido
-              JSON.parse(body);
-              fs.writeFileSync(STORAGE_FILE, body, 'utf-8');
+              // Validazione minima: deve essere un oggetto JSON valido
+              const parsed = JSON.parse(body);
+              if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
+              writeFileAtomic(STORAGE_FILE, body);
               res.end(JSON.stringify({ success: true }));
             } catch (e) {
               res.statusCode = 400;
@@ -55,6 +76,7 @@ function storagePlugin() {
             }
           });
         } else if (req.url === '/api/backup/auto' && req.method === 'POST') {
+          if (rejectForeignRequest(req, res)) return;
           let body = '';
           req.on('data', chunk => { body += chunk; });
           req.on('end', () => {
@@ -63,6 +85,11 @@ function storagePlugin() {
               if (!backupPath) {
                 res.statusCode = 400;
                 res.end(JSON.stringify({ error: 'Percorso non specificato' }));
+                return;
+              }
+              if (typeof backupPath !== 'string' || !path.isAbsolute(backupPath)) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'Il percorso di backup deve essere assoluto' }));
                 return;
               }
 
@@ -118,11 +145,21 @@ function storagePlugin() {
             }
           });
         } else if (req.url === '/api/storage' && req.method === 'POST') {
+          if (rejectForeignRequest(req, res)) return;
           let body = '';
           req.on('data', chunk => { body += chunk; });
           req.on('end', () => {
-            fs.writeFileSync(STORAGE_FILE, body, 'utf-8');
-            res.end(JSON.stringify({ success: true }));
+            try {
+              const parsed = JSON.parse(body);
+              if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.customers)) {
+                throw new Error('Formato dati non valido');
+              }
+              writeFileAtomic(STORAGE_FILE, body);
+              res.end(JSON.stringify({ success: true }));
+            } catch (e) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: e.message }));
+            }
           });
         } else {
           next();

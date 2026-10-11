@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import IconComponent from './IconComponent';
 import { aiTextService } from '../utils/aiTextService';
+import { sanitizeHtml, sanitizeChildrenInPlace } from '../utils/sanitizeHtml';
 
 const BASIC_COLORS = [
   '#000000', '#E74C3C', '#E67E22', '#F1C40F', '#2ECC71',
@@ -729,7 +730,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
     if (editorRef.current && value !== editorRef.current.innerHTML) {
       if (document.activeElement !== editorRef.current) {
-        editorRef.current.innerHTML = value || '';
+        editorRef.current.innerHTML = sanitizeHtml(value);
       }
     }
   }, [value]);
@@ -737,7 +738,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   // Sync innerHTML when toggling fullscreen to prevent content loss due to re-mounting
   useEffect(() => {
     if (editorRef.current) {
-      editorRef.current.innerHTML = value || '';
+      editorRef.current.innerHTML = sanitizeHtml(value);
     }
     // Lock body scroll in fullscreen
     if (isFullScreen) {
@@ -778,7 +779,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     setShowAlignment(false);
   };
 
-  const insertHtml = (html) => {
+  const insertHtml = (rawHtml) => {
+    const html = sanitizeHtml(rawHtml);
     if (cursorMarkerRef.current && editorRef.current) {
       const marker = cursorMarkerRef.current;
       const tempDiv = document.createElement('div');
@@ -1211,6 +1213,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       const name = linkInputName.trim() || (path.split(/[\\\/]/).filter(Boolean).pop() || path);
       htmlToInsert = `<a href="#" class="folder-internal-link" data-path="${path.replace(/\\/g, '\\\\')}" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📁 ${name}</a>&nbsp;`;
     }
+
+    htmlToInsert = sanitizeHtml(htmlToInsert);
 
     // Use the temporary marker to restore cursor position
     if (cursorMarkerRef.current && editorRef.current) {
@@ -1906,6 +1910,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     // After paste, fix any links without target
     setTimeout(() => {
       if (!editorRef.current) return;
+      // Rimuove script, gestori di eventi e link javascript: dal contenuto incollato
+      sanitizeChildrenInPlace(editorRef.current);
       const links = editorRef.current.querySelectorAll('a:not([target])');
       links.forEach(link => {
         link.setAttribute('target', '_blank');

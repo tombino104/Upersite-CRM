@@ -1,34 +1,54 @@
 # Dependencies
+
 node_modules/
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
 # Build outputs
+
 dist/
 build/
 *.log
 
 # Environment files
+
 .env
 .env.*
 !.env.example
 
 # IDE files
+
 .vscode/
 .idea/
 *.swp
 *.swo
 
 # OS files
+
 .DS_Store
 Thumbs.db
 
 # Temporary files
+
 *.tmp
 *.temp
 .cache/
 
-# Sensitive files (auto-detected)
-node_modules
+# CRM local data & backups (contengono dati clienti e credenziali: MAI su git)
 
+Upersite CRM - software/crm_data.json
+Upersite CRM - software/crm_data.json.tmp
+Upersite CRM - software/sync_storage.html
+
+Upersite CRM - software/Desktop/*/backup.json
+Upersite CRM - software/crm_data.json.bak
+Upersite CRM - software/crm_data_backup_*.json
+
+# Local backup directories
+
+backup/
+backups/
+Backup/
+Backups/

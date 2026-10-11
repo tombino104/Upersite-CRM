@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { GEMINI_API_KEY } from '../utils/geminiConfig';
 
 // Importiamo la configurazione Gemini da GeminiChat
 const AI_MODELS = [
@@ -20,7 +21,6 @@ const AI_MODELS = [
     }
 ];
 
-const GEMINI_API_KEY = "CHIAVE_RIMOSSA_VEDI_.env.local";
 
 export default function SmartSummarizerModal({ customer, onClose }) {
     const [isGenerating, setIsGenerating] = useState(false);

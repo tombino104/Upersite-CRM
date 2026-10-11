@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { GEMINI_API_KEY } from '../utils/geminiConfig';
 
 // Importiamo la configurazione Gemini da GeminiChat
 const AI_MODELS = [
@@ -22,7 +23,6 @@ const AI_MODELS = [
     }
 ];
 
-const GEMINI_API_KEY = "CHIAVE_RIMOSSA_VEDI_.env.local";
 
 // Funzione per renderizzare testo Markdown correttamente
 function renderMarkdown(text) {
