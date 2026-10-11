@@ -495,46 +495,6 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
     const closeModal = () => setEditModalTodo(null);
 
-    const linkFileToTodo = (todoId, fileId) => {
-
-        const updateRecursive = (items) => items.map(t => {
-
-            if (t.id === todoId) {
-
-                const current = t.linkedFiles || [];
-
-                if (current.includes(fileId)) return t;
-
-                return { ...t, linkedFiles: [...current, fileId] };
-
-            }
-
-            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
-
-            return t;
-
-        });
-
-        update('todo', updateRecursive(todos));
-
-    };
-
-    const unlinkFileFromTodo = (todoId, fileId) => {
-
-        const updateRecursive = (items) => items.map(t => {
-
-            if (t.id === todoId) return { ...t, linkedFiles: (t.linkedFiles || []).filter(f => f !== fileId) };
-
-            if (t.subtasks && t.subtasks.length > 0) return { ...t, subtasks: updateRecursive(t.subtasks) };
-
-            return t;
-
-        });
-
-        update('todo', updateRecursive(todos));
-
-    };
-
     const linkNoteToTodo = (todoId, noteId) => {
 
         const updateRecursive = (items) => items.map(t => {
@@ -963,58 +923,6 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                         )}
 
-                        <div className="todo-details-section">
-
-                            <label className="todo-details-label">📁 File collegati</label>
-
-                            {linkedFileObjects.length > 0 && (
-
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-
-                                    {linkedFileObjects.map(f => (
-
-                                        <span key={f.id} className="todo-linked-badge clickable" onClick={() => onOpenFile && onOpenFile(f.id)}>
-
-                                            📄 {f.name}
-
-                                            <span className="todo-linked-remove" onClick={(e) => { e.stopPropagation(); unlinkFileFromTodo(t.id, f.id); }}>✕</span>
-
-                                        </span>
-
-                                    ))}
-
-                                </div>
-
-                            )}
-
-                            {allFiles.filter(f => !f.isQuote && !(t.linkedFiles || []).includes(f.id)).length > 0 && (
-
-                                <select
-
-                                    className="input"
-
-                                    style={{ fontSize: '0.8rem' }}
-
-                                    value=""
-
-                                    onChange={e => { if (e.target.value) linkFileToTodo(t.id, e.target.value); }}
-
-                                >
-
-                                    <option value="">+ Collega un file...</option>
-
-                                    {allFiles.filter(f => !f.isQuote && !(t.linkedFiles || []).includes(f.id)).map(f => (
-
-                                        <option key={f.id} value={f.id}>{f.name}</option>
-
-                                    ))}
-
-                                </select>
-
-                            )}
-
-                        </div>
-
                         {/* Linked Notes */}
 
                         <div className="todo-details-section">
@@ -1029,9 +937,9 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                                         <span key={n.id} className="todo-linked-badge clickable" onClick={() => onOpenNote && onOpenNote(n.id)}>
 
-                                            📝 {getNoteSnippet(n.text)}
+                                            <span className="todo-linked-label">📝 {getNoteSnippet(n.text)}</span>
 
-                                            <span className="todo-linked-remove" onClick={(e) => { e.stopPropagation(); unlinkNoteFromTodo(t.id, n.id); }}>✕</span>
+                                            <span className="todo-linked-remove" title="Scollega" onClick={(e) => { e.stopPropagation(); unlinkNoteFromTodo(t.id, n.id); }}>✕</span>
 
                                         </span>
 
@@ -1083,9 +991,9 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                                         <span key={e.todo.id} className="todo-linked-badge clickable" onClick={() => goToTodo(e.todo.id)}>
 
-                                            🔗 {todoLabel(e)}
+                                            <span className="todo-linked-label">🔗 {todoLabel(e)}</span>
 
-                                            <span className="todo-linked-remove" onClick={(ev) => { ev.stopPropagation(); unlinkTodoFromTodo(t.id, e.todo.id); }}>✕</span>
+                                            <span className="todo-linked-remove" title="Scollega" onClick={(ev) => { ev.stopPropagation(); unlinkTodoFromTodo(t.id, e.todo.id); }}>✕</span>
 
                                         </span>
 
@@ -1961,13 +1869,19 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                     color: var(--text-primary);
 
-                    max-width: 200px;
+                    max-width: 280px;
+
+                    white-space: nowrap;
+
+                }
+
+                .todo-linked-label {
+
+                    min-width: 0;
 
                     overflow: hidden;
 
                     text-overflow: ellipsis;
-
-                    white-space: nowrap;
 
                 }
 
@@ -1979,9 +1893,15 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
                     font-weight: 700;
 
-                    font-size: 0.65rem;
+                    font-size: 0.75rem;
 
-                    margin-left: 2px;
+                    line-height: 1;
+
+                    padding: 3px 5px;
+
+                    margin: -3px -6px -3px 0;
+
+                    border-radius: 50%;
 
                     flex-shrink: 0;
 
