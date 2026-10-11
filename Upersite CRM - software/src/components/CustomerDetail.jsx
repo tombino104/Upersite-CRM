@@ -14,7 +14,7 @@ import IconComponent from './IconComponent';
 
 import NotesGraphView from './NotesGraphView';
 
-import { generateId, sanitizePositiveNumber, formatBytes, saveFile, verifyMasterPassword, PACKAGES, ADDONS, uploadQuote, fetchQuoteDataUrl } from '../utils/storage';
+import { generateId, sanitizePositiveNumber, formatBytes, saveFile, verifyMasterPassword, PACKAGES, ADDONS, uploadQuote, fetchQuoteDataUrl, deleteQuote } from '../utils/storage';
 import { encryptSecret, decryptSecret } from '../utils/credentialVault';
 
 const STATUSES = [
@@ -2677,6 +2677,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                                 update={update}
 
+                                updateCustomer={updateCustomer}
+
                                 settings={settings}
 
                                 confirmDelete={confirmDelete}
@@ -3478,7 +3480,7 @@ const ConfigSection = React.memo(({ form, update }) => {
 
 /* ── FINANCE ── */
 
-const FinanceSection = React.memo(({ form, update, settings, confirmDelete, showAdvancedFinance, setShowAdvancedFinance }) => {
+const FinanceSection = React.memo(({ form, update, updateCustomer, settings, confirmDelete, showAdvancedFinance, setShowAdvancedFinance }) => {
 
     const installments = form.installments || [];
 
@@ -3576,9 +3578,9 @@ const FinanceSection = React.memo(({ form, update, settings, confirmDelete, show
 
             <div className="detail-group" style={{ marginTop: '20px', borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
 
-                <label className="input-label">📄 Preventivo (PDF)</label>
+                <label className="input-label">📄 Preventivi (PDF o DOCX)</label>
 
-                <QuoteFileUpload form={form} update={update} />
+                <QuoteFileUpload form={form} update={update} updateCustomer={updateCustomer} />
 
             </div>
 
@@ -6190,29 +6192,44 @@ function NoteModal({ note, folders, onSave, onClose, onOpenFile, onOpenNote, all
 
 /* ── QUOTE FILE UPLOAD HELPERS ── */
 
-function QuoteFileUpload({ form, update }) {
+function QuoteFileUpload({ form, update, updateCustomer }) {
 
     const fileRef = useRef(null);
 
-    const quoteFile = (form.files || []).find(f => f.isQuote);
+    const quotes = (form.files || []).filter(f => f.isQuote);
 
     const [previewFile, setPreviewFile] = useState(null);
 
     const [busy, setBusy] = useState(false);
 
-    // Il preventivo viene salvato come file nella cartella dei salvataggi (sottocartella Preventivi)
+    const [confirmId, setConfirmId] = useState(null);
+
+    // I file dei preventivi esistono già su disco: il collegamento al cliente viene salvato subito,
+    // senza aspettare "Salva", così file e dati restano sempre allineati
+
+    const applyFiles = (files) => {
+
+        update('files', files);
+
+        if (updateCustomer && form.id) updateCustomer(form.id, { files });
+
+    };
+
+    // Ogni preventivo viene salvato come file nella cartella dei salvataggi (sottocartella Preventivi)
 
     const handleUpload = async (e) => {
 
-        const file = e.target.files[0];
+        const selected = Array.from(e.target.files || []);
 
         e.target.value = '';
 
-        if (!file) return;
+        if (selected.length === 0) return;
 
-        if (file.size > 100 * 1024 * 1024) {
+        const tooBig = selected.filter(f => f.size > 100 * 1024 * 1024);
 
-            alert('File troppo grande (max 100MB)');
+        if (tooBig.length > 0) {
+
+            alert(`File troppo grandi (max 100MB): ${tooBig.map(f => f.name).join(', ')}`);
 
             return;
 
@@ -6220,33 +6237,33 @@ function QuoteFileUpload({ form, update }) {
 
         setBusy(true);
 
+        const added = [];
+
         try {
 
-            const storedPath = await uploadQuote(file, file.name, form.name);
+            for (const file of selected) {
 
-            const newFile = {
+                const storedPath = await uploadQuote(file, file.name, form.name);
 
-                id: generateId(),
+                added.push({
 
-                name: file.name,
+                    id: generateId(),
 
-                size: file.size,
+                    name: file.name,
 
-                type: file.type,
+                    size: file.size,
 
-                storedPath,
+                    type: file.type,
 
-                uploadedAt: new Date().toISOString(),
+                    storedPath,
 
-                isQuote: true // Metadata to distinguish it
+                    uploadedAt: new Date().toISOString(),
 
-            };
+                    isQuote: true // Metadata to distinguish it
 
-            // Sostituisce il preventivo nel cliente; il file precedente resta nella cartella
+                });
 
-            const otherFiles = (form.files || []).filter(f => !f.isQuote);
-
-            update('files', [...otherFiles, newFile]);
+            }
 
         } catch (err) {
 
@@ -6254,7 +6271,31 @@ function QuoteFileUpload({ form, update }) {
 
         } finally {
 
+            if (added.length > 0) applyFiles([...(form.files || []), ...added]);
+
             setBusy(false);
+
+        }
+
+    };
+
+    // Elimina definitivamente il file (dopo conferma) e lo scollega dal cliente
+
+    const removeQuote = async (file) => {
+
+        try {
+
+            if (file.storedPath) await deleteQuote(file.storedPath);
+
+            applyFiles((form.files || []).filter(f => f.id !== file.id));
+
+        } catch (err) {
+
+            alert(err.message);
+
+        } finally {
+
+            setConfirmId(null);
 
         }
 
@@ -6302,49 +6343,81 @@ function QuoteFileUpload({ form, update }) {
 
     return (
 
-        <div className="quote-file-box">
+        <div className="quote-file-box" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
-            {quoteFile ? (
+            {quotes.map(quoteFile => (
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-input)', padding: '10px', borderRadius: 'var(--radius-md)' }}>
+                <div key={quoteFile.id} style={{ background: 'var(--bg-input)', padding: '10px', borderRadius: 'var(--radius-md)' }}>
 
-                    <span style={{ fontSize: '1.25rem', cursor: 'pointer' }} onClick={() => openPreview(quoteFile)}>📄</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
 
-                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => openPreview(quoteFile)}>
+                        <span style={{ fontSize: '1.25rem', cursor: 'pointer' }} onClick={() => openPreview(quoteFile)}>📄</span>
 
-                        <div style={{ fontSize: '0.8125rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'underline' }}>
+                        <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => openPreview(quoteFile)}>
 
-                            {quoteFile.name}
+                            <div style={{ fontSize: '0.8125rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'underline' }}>
+
+                                {quoteFile.name}
+
+                            </div>
+
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{formatBytes(quoteFile.size)}</div>
 
                         </div>
 
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{formatBytes(quoteFile.size)}</div>
+                        <button className="btn btn-ghost btn-icon-sm" onClick={() => downloadFile(quoteFile)} title="Scarica">⬇</button>
+
+                        <button className="btn btn-ghost btn-icon-sm" title="Elimina preventivo"
+
+                            onClick={() => setConfirmId(quoteFile.id)}>✕</button>
 
                     </div>
 
-                    <button className="btn btn-ghost btn-icon-sm" onClick={() => downloadFile(quoteFile)} title="Scarica">⬇</button>
+                    {confirmId === quoteFile.id && (
 
-                    <button className="btn btn-ghost btn-icon-sm" title="Scollega dal cliente (il file resta nella cartella Preventivi)"
+                        <div style={{ marginTop: '10px', padding: '10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-card)', border: '1px solid var(--danger)', fontSize: '0.8rem' }}>
 
-                        onClick={() => update('files', (form.files || []).filter(f => f.id !== quoteFile.id))}>✕</button>
+                            <div style={{ marginBottom: '8px' }}>
+
+                                Eliminare definitivamente <strong>{quoteFile.name}</strong>?
+
+                                {quoteFile.storedPath && <> Il file verrà cancellato dalla cartella Preventivi (le copie nei backup restano).</>}
+
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+
+                                <button className="btn btn-ghost btn-sm" onClick={() => setConfirmId(null)}>Annulla</button>
+
+                                <button className="btn btn-danger btn-sm" onClick={() => removeQuote(quoteFile)}>Elimina</button>
+
+                            </div>
+
+                        </div>
+
+                    )}
 
                 </div>
 
-            ) : (
+            ))}
 
-                <div className="quote-upload-placeholder" onClick={() => !busy && fileRef.current?.click()}>
+            <div className="quote-upload-placeholder" onClick={() => !busy && fileRef.current?.click()}
 
-                    <span style={{ fontSize: '1.5rem', marginBottom: '4px' }}>📤</span>
+                style={quotes.length > 0 ? { padding: '10px', flexDirection: 'row', justifyContent: 'center', gap: '8px' } : undefined}>
 
-                    <span>{busy ? 'Caricamento...' : 'Carica preventivo (PDF o DOCX)'}</span>
+                <span style={{ fontSize: quotes.length > 0 ? '1rem' : '1.5rem', marginBottom: quotes.length > 0 ? 0 : '4px' }}>📤</span>
 
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Max 100MB • Salvato nella cartella Preventivi</span>
+                <span>{busy ? 'Caricamento...' : quotes.length > 0 ? 'Aggiungi preventivi' : 'Carica preventivi (PDF o DOCX)'}</span>
 
-                </div>
+                {quotes.length === 0 && (
 
-            )}
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Anche più file insieme • Max 100MB ciascuno • Salvati nella cartella Preventivi</span>
 
-            <input ref={fileRef} type="file" accept=".pdf,.docx" hidden onChange={handleUpload} />
+                )}
+
+            </div>
+
+            <input ref={fileRef} type="file" accept=".pdf,.docx" multiple hidden onChange={handleUpload} />
 
             {previewFile && (
 

@@ -117,3 +117,4 @@ export const APP_VERSION = '1.3.1-stable';
 - 1.14.2-stable: Fix scollegamento di note e todo collegati (la X veniva nascosta quando il nome era lungo); rimossa la sezione "File collegati" dai dettagli dei todo.
 
 - 1.15.0-stable: Preventivi come file veri nella sottocartella Preventivi della cartella dei salvataggi scelta nelle Impostazioni (non più in base64 dentro crm_data.json); accettati PDF e DOCX; il preventivo precedente resta nella cartella; ogni backup con data contiene una copia dei preventivi; spostamento automatico dei preventivi esistenti al primo accesso.
+- 1.16.0-stable: Più preventivi per cliente (caricamento anche di più file insieme); la X chiede conferma e, se confermi, elimina definitivamente il file dalla cartella Preventivi (le copie nei backup restano); caricamenti ed eliminazioni dei preventivi salvati subito nel cliente.

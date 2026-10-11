@@ -819,3 +819,25 @@ export async function migrateQuotesToFolder(customers) {
     return changes;
 
 }
+
+
+
+// Elimina definitivamente un preventivo dalla cartella Preventivi (le copie nei backup restano)
+
+export async function deleteQuote(storedPath) {
+
+    const response = await fetch('/api/quotes/delete', {
+
+        method: 'POST',
+
+        headers: CRM_REQUEST_HEADERS,
+
+        body: JSON.stringify({ path: storedPath })
+
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) throw new Error(result.error || `Eliminazione non riuscita (errore ${response.status})`);
+
+}

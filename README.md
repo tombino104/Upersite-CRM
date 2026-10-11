@@ -2,7 +2,7 @@
 
 CRM personale per gestire clienti, preventivi, pagamenti, task e note di progetto. Funziona in locale sul proprio PC: i dati restano in un file e non vengono inviati a nessun server (tranne il testo che invii alle funzioni AI).
 
-**Versione attuale:** 1.15.0-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
+**Versione attuale:** 1.16.0-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
 ## Funzionalità
 
@@ -62,7 +62,7 @@ Al primo avvio crei una password master. Viene salvata come hash (PBKDF2), mai i
 
 Tutto è in `Upersite CRM - software/crm_data.json`. Questo file contiene clienti e credenziali ed è **escluso da git** insieme ai backup (`crm_data_backup_*.json`, `.bak`, `sync_storage.html`). Non rimuoverlo dal `.gitignore` e non caricarlo online. Per salvarlo usa il menu `⋯` → Backup, oppure imposta la cartella di backup automatico nelle Impostazioni.
 
-**Preventivi (PDF/DOCX):** non stanno nel file dati ma come file veri nella sottocartella `Preventivi` della **cartella di backup scelta nelle Impostazioni** (`Preventivi\<cliente>\<file>`). Caricando un nuovo preventivo il precedente resta nella cartella (il CRM non cancella mai file). Ogni backup con data contiene anche una copia dei preventivi. Se cambi cartella di backup, sposta anche la cartella `Preventivi`.
+**Preventivi (PDF/DOCX):** non stanno nel file dati ma come file veri nella sottocartella `Preventivi` della **cartella di backup scelta nelle Impostazioni** (`Preventivi\<cliente>\<file>`). Ogni cliente può avere più preventivi. Un file viene cancellato dalla cartella solo se lo elimini tu con ✕ e confermi (le copie nei backup restano). Ogni backup con data contiene anche una copia dei preventivi. Se cambi cartella di backup, sposta anche la cartella `Preventivi`.
 
 ## Struttura del progetto
 

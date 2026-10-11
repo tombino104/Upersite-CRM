@@ -248,6 +248,26 @@ function storagePlugin() {
               sendError(res, e);
             }
           });
+        } else if (req.url === '/api/quotes/delete' && req.method === 'POST') {
+          // Elimina definitivamente un preventivo (solo su richiesta esplicita dell'utente).
+          // Le copie nei backup con data non vengono toccate.
+          if (rejectForeignRequest(req, res)) return;
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => {
+            try {
+              const { path: rel } = JSON.parse(body || '{}');
+              const relative = String(rel || '').replace(/^Preventivi\//, '');
+              const quotesRoot = path.join(getBackupRoot(), QUOTES_DIR);
+              const file = resolveInside(quotesRoot, relative);
+              if (file === path.resolve(quotesRoot)) throw Object.assign(new Error('Percorso non valido'), { status: 400 });
+              if (fs.existsSync(file) && fs.statSync(file).isFile()) fs.unlinkSync(file);
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true }));
+            } catch (e) {
+              sendError(res, e);
+            }
+          });
         } else if (req.url.startsWith('/api/quotes?') && req.method === 'GET') {
           // Legge un preventivo, solo dall'interno della cartella Preventivi
           try {
