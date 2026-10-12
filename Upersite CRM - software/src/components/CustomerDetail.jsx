@@ -6383,7 +6383,7 @@ function QuoteFileUpload({ form, update, updateCustomer }) {
 
     };
 
-    // Ogni preventivo viene salvato come file nella cartella dei salvataggi (sottocartella Preventivi)
+    // Ogni preventivo viene salvato come file nella cartella Dati\Preventivi del CRM (copiata in ogni backup con data)
 
     const handleUpload = async (e) => {
 

@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# File di lavoro del CRM (preventivi e calcolatore dei clienti): mai su git
+Dati/

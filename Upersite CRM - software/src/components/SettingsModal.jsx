@@ -262,7 +262,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                     value={settings.backupPath || ''}
                                     onChange={e => updateSettings({ backupPath: e.target.value })}
                                     placeholder="C:\Users\...\Backup" />
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Cartella dove verranno creati i backup datati. Qui vengono salvati anche i preventivi (sottocartella <strong>Preventivi</strong>): se cambi cartella, sposta anche la cartella Preventivi.</span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Cartella dove verranno creati i backup datati: contiene solo le cartelle con data, ognuna con il file dati e una copia di <strong>Preventivi</strong> e <strong>Calcolatore</strong>. Gli originali di lavoro stanno nella cartella <strong>Dati</strong> del CRM.</span>
                             </div>
 
                             <button className="btn btn-primary"

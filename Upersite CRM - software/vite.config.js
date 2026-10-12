@@ -38,6 +38,17 @@ const QUOTES_DIR = 'Preventivi'
 const QUOTE_TYPES = { '.pdf': 'application/pdf', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
 const MAX_QUOTE_BYTES = 100 * 1024 * 1024
 
+// File di lavoro (preventivi, calcolatore) nella cartella del CRM, accanto a crm_data.json: nella cartella
+// dei backup restano solo le cartelle con data, che ne contengono una copia
+const DATA_DIR = path.join(path.dirname(STORAGE_FILE), 'Dati')
+
+function getQuotesRoot() {
+  migrateLegacyFolders()
+  const root = path.join(DATA_DIR, QUOTES_DIR)
+  fs.mkdirSync(root, { recursive: true })
+  return root
+}
+
 // Cartella dei salvataggi scelta nelle Impostazioni, letta dal file dati (non dal browser)
 function getBackupRoot() {
   const data = fs.existsSync(STORAGE_FILE) ? JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8')) : {}
@@ -101,9 +112,54 @@ function getCalcRoot() {
     }
     return custom
   }
-  const root = path.join(getBackupRoot(), CALC_DIR)
+  migrateLegacyFolders()
+  const root = path.join(DATA_DIR, CALC_DIR)
   fs.mkdirSync(root, { recursive: true })
   return root
+}
+
+// Fino alla 1.21.0 Preventivi e Calcolatore stavano nella radice della cartella dei backup: si spostano in Dati.
+// Ogni file viene copiato, verificato e solo dopo tolto dalla vecchia posizione; se esiste già un file diverso
+// con lo stesso nome, quello vecchio resta dov'è (nessun dato perso).
+let legacyMigrated = false
+
+function moveTreeSafely(src, dest, report) {
+  fs.mkdirSync(dest, { recursive: true })
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const from = path.join(src, entry.name)
+    const to = path.join(dest, entry.name)
+    if (entry.isDirectory()) {
+      moveTreeSafely(from, to, report)
+      if (fs.readdirSync(from).length === 0) fs.rmdirSync(from)
+    } else if (entry.isFile()) {
+      const data = fs.readFileSync(from)
+      if (fs.existsSync(to)) {
+        if (Buffer.compare(fs.readFileSync(to), data) !== 0) { report.kept.push(from); continue }
+      } else {
+        fs.writeFileSync(to, data)
+        if (Buffer.compare(fs.readFileSync(to), data) !== 0) { report.kept.push(from); continue }
+      }
+      fs.unlinkSync(from)
+      report.moved++
+    }
+  }
+}
+
+function migrateLegacyFolders() {
+  if (legacyMigrated) return
+  let backupPath
+  try { backupPath = getBackupRoot() } catch { return } // disco non collegato: si riprova alla prossima richiesta
+  const report = { moved: 0, kept: [] }
+  for (const name of [QUOTES_DIR, CALC_DIR]) {
+    const src = path.join(backupPath, name)
+    if (statKind(src) !== 'directory') continue
+    moveTreeSafely(src, path.join(DATA_DIR, name), report)
+    if (fs.readdirSync(src).length === 0) fs.rmdirSync(src)
+  }
+  legacyMigrated = true
+  if (report.moved || report.kept.length) {
+    console.log(`[CRM] Spostati ${report.moved} file da ${backupPath} a ${DATA_DIR}` + (report.kept.length ? ` · lasciati al loro posto (nome già usato con contenuto diverso): ${report.kept.join(', ')}` : ''))
+  }
 }
 
 // Percorso relativo dal calcolatore ("Configurazioni/Mario - Pro.json"): ogni parte deve essere un nome valido
@@ -206,6 +262,7 @@ function storagePlugin() {
   return {
     name: 'crm-storage-plugin',
     configureServer(server) {
+      try { migrateLegacyFolders() } catch (e) { console.error('[CRM] Spostamento cartelle non riuscito:', e.message) }
       server.middlewares.use((req, res, next) => {
         if (req.url === '/api/storage' && req.method === 'GET') {
           if (!fs.existsSync(STORAGE_FILE)) {
@@ -321,7 +378,7 @@ function storagePlugin() {
               // Copia nel backup anche i preventivi salvati come file (Preventivi/<cliente>/<file>)
               let quotesCopied = 0, quotesMissing = 0;
               if (includeFiles) {
-                const quotesRoot = path.join(originalData.settings?.backupPath || backupPath, QUOTES_DIR);
+                const quotesRoot = getQuotesRoot();
                 for (const customer of originalData.customers || []) {
                   for (const file of customer.files || []) {
                     if (!file.storedPath) continue;
@@ -370,7 +427,7 @@ function storagePlugin() {
               const ext = path.extname(fileName).toLowerCase();
               if (!QUOTE_TYPES[ext]) throw Object.assign(new Error('Sono ammessi solo file PDF o DOCX'), { status: 400 });
               const customerFolder = safeName(decodeURIComponent(req.headers['x-customer-name'] || ''), 'Senza nome');
-              const dir = resolveInside(path.join(getBackupRoot(), QUOTES_DIR), customerFolder);
+              const dir = resolveInside(getQuotesRoot(), customerFolder);
               fs.mkdirSync(dir, { recursive: true });
               const finalName = freeFileName(dir, fileName);
               fs.writeFileSync(path.join(dir, finalName), Buffer.concat(chunks));
@@ -390,7 +447,7 @@ function storagePlugin() {
             try {
               const { path: rel } = JSON.parse(body || '{}');
               const relative = String(rel || '').replace(/^Preventivi\//, '');
-              const quotesRoot = path.join(getBackupRoot(), QUOTES_DIR);
+              const quotesRoot = getQuotesRoot();
               const file = resolveInside(quotesRoot, relative);
               if (file === path.resolve(quotesRoot)) throw Object.assign(new Error('Percorso non valido'), { status: 400 });
               if (fs.existsSync(file) && fs.statSync(file).isFile()) fs.unlinkSync(file);
@@ -405,7 +462,7 @@ function storagePlugin() {
           try {
             const rel = new URL(req.url, 'http://localhost').searchParams.get('path') || '';
             const relative = rel.replace(/^Preventivi\//, '');
-            const file = resolveInside(path.join(getBackupRoot(), QUOTES_DIR), relative);
+            const file = resolveInside(getQuotesRoot(), relative);
             if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
               throw Object.assign(new Error('Preventivo non trovato nella cartella dei salvataggi'), { status: 404 });
             }
@@ -489,5 +546,6 @@ export default defineConfig({
   plugins: [react(), storagePlugin()],
   base: './',
   // Porta fissa: i collegamenti di avvio ed Electron aprono sempre http://localhost:5173
-  server: { port: 5173, strictPort: true }
+  // Dati/ (preventivi, calcolatore) cambia mentre lavori: non deve far ricaricare la pagina
+  server: { port: 5173, strictPort: true, watch: { ignored: ['**/Dati/**'] } }
 })

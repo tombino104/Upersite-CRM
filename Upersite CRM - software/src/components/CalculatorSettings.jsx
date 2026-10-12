@@ -105,7 +105,7 @@ export default function CalculatorSettings({ settings, updateSettings }) {
                     <label className="input-label">Dove salva configurazioni e pacchetti completi</label>
                     <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.88rem', cursor: 'pointer' }}>
                         <input type="radio" name="calcStorage" checked={storage.mode !== 'custom'} onChange={() => setStorage({ mode: 'crm' })} style={{ marginTop: 3 }} />
-                        <span><strong>Insieme ai backup del CRM</strong> (consigliato): sottocartella <strong>Calcolatore</strong> della cartella dei backup, copiata anche nei backup con data</span>
+                        <span><strong>Nella cartella dati del CRM</strong> (consigliato): <strong>Dati\Calcolatore</strong>, accanto ai preventivi, copiata in ogni backup con data</span>
                     </label>
                     <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.88rem', cursor: 'pointer', marginTop: 6 }}>
                         <input type="radio" name="calcStorage" checked={storage.mode === 'custom'} onChange={() => setStorage({ mode: 'custom' })} style={{ marginTop: 3 }} />
