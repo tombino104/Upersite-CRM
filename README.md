@@ -2,7 +2,7 @@
 
 CRM personale per gestire clienti, preventivi, pagamenti, task e note di progetto. Funziona in locale sul proprio PC: i dati restano in un file e non vengono inviati a nessun server (tranne il testo che invii alle funzioni AI).
 
-**Versione attuale:** 1.21.1-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
+**Versione attuale:** 1.22.0-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
 ## Funzionalità
 
@@ -63,6 +63,8 @@ Al primo avvio crei una password master. Viene salvata come hash (PBKDF2), mai i
 Tutto è in `Upersite CRM - software/crm_data.json`. Questo file contiene clienti e credenziali ed è **escluso da git** insieme ai backup (`crm_data_backup_*.json`, `.bak`, `sync_storage.html`). Non rimuoverlo dal `.gitignore` e non caricarlo online. Per salvarlo usa il menu `⋯` → Backup, oppure imposta la cartella di backup automatico nelle Impostazioni.
 
 **Preventivi (PDF/DOCX):** non stanno nel file dati ma come file veri in `Upersite CRM - software\Dati\Preventivi\<cliente>\<file>` (cartella esclusa da git come `crm_data.json`). Ogni cliente può avere più preventivi. Un file viene cancellato dalla cartella solo se lo elimini tu con ✕ e confermi (le copie nei backup restano). Ogni backup con data contiene anche una copia dei preventivi e del calcolatore: nella cartella di backup ci sono solo le cartelle con data. (Fino alla 1.21.0 `Preventivi` e `Calcolatore` stavano nella radice della cartella di backup: il CRM li sposta da solo in `Dati`.) Ogni preventivo ha uno stato (In attesa / Accettato / Rifiutato).
+
+**Backup e ripristino:** ogni backup scrive **tutto** nella cartella del giorno dentro la cartella dei backup (`gg-mm-aa\`): `backup_ore_HH-MM-SS.json` (tutti i dati, con le preferenze del browser), `Preventivi\`, `Calcolatore\` e ogni altra cartella di `Dati`. Nella cartella dei backup non c'è nient'altro. Il ripristino è in Impostazioni → Backup Dati → **Ripristina da un backup…**: tutto (scegliendo le parti) o solo alcuni clienti; prima salva sempre lo stato attuale in un backup «prima del ripristino» e non cancella mai file. Le istruzioni complete sono nel **Manuale d'uso** (Impostazioni → Manuale d'uso).
 
 **Fogli ore:** il pulsante ⏱️ nella scheda cliente apre il foglio ore (righe con data, ore e descrizione, grafici, esportazione CSV/PDF e guadagno €/ora). Le ore sono salvate nel cliente (`timesheets`), quindi dentro `crm_data.json` e nei backup.
 

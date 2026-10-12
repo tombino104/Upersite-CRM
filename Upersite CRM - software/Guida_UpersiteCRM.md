@@ -1,5 +1,7 @@
 # Upersite CRM — Guida all'Uso
 
+> Il manuale aggiornato e completo è dentro il CRM: **Impostazioni → 📖 Manuale d'uso** (con ricerca). Questa pagina è un riassunto.
+
 Benvenuto in **Upersite CRM**, la piattaforma progettata su misura per gestire i clienti, i pagamenti, e le configurazioni dei tuoi progetti.
 
 ---
@@ -84,3 +86,8 @@ Aprirà un menu strategico per:
 - **Scaricare un Backup:** Se formatti il computer salva prima tutto!
 - **Importarlo altrove:** Avvialo dal computer o portatile in un lampo con le sue foto.
 - **Lock Manuale:** *Chiudi* le porte a chiave dal comando "Blocca CRM" se vai in pausa pranzo.
+- **Termina sessione di lavoro:** fa un backup completo e blocca il CRM.
+
+### Backup e ripristino
+Ogni backup (Impostazioni → 💾 Crea Backup Ora, «Termina sessione di lavoro» o un'automazione) mette **tutto** nella cartella del giorno dentro la cartella dei backup: il file dati di quell'ora, i Preventivi, il Calcolatore e le altre cartelle di `Dati`.
+Per tornare indietro: Impostazioni → Backup Dati → **♻️ Ripristina da un backup…**, scegli giorno e ora, poi **Ripristina tutto** oppure **Solo alcuni clienti**, scrivi la password master e ricarica. Prima del ripristino il CRM salva sempre lo stato attuale (backup «prima del ripristino»), quindi puoi sempre annullare.

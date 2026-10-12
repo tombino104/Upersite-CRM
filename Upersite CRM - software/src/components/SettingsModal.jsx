@@ -4,6 +4,8 @@ import { reencryptCredentials } from '../utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
 import { getAvailableModels, getCurrentModel, setAIModel } from '../utils/aiTextService';
 import CalculatorSettings from './CalculatorSettings';
+import RestoreModal from './RestoreModal';
+import ManualModal from './ManualModal';
 
 export default function SettingsModal({ settings, updateSettings, onClose, setCustomers, customers }) {
     const [currentPassword, setCurrentPassword] = useState('');
@@ -16,6 +18,8 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
     const [realSize, setRealSize] = useState(null);
 
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [showRestore, setShowRestore] = useState(false);
+    const [showManual, setShowManual] = useState(false);
     const [clearPassword, setClearPassword] = useState('');
     const [clearError, setClearError] = useState('');
     const [isClearing, setIsClearing] = useState(false);
@@ -166,6 +170,19 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                         <button className="btn btn-ghost btn-icon" onClick={onClose}>✕</button>
                     </div>
 
+                    <button onClick={() => setShowManual(true)} style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: '14px', textAlign: 'left', cursor: 'pointer',
+                        padding: '16px 18px', marginBottom: '28px', borderRadius: 'var(--radius-lg)', font: 'inherit',
+                        border: '1px solid rgba(108,92,231,0.18)', background: 'linear-gradient(135deg, var(--primary-ghost), rgba(245,158,11,0.06))',
+                    }}>
+                        <span style={{ fontSize: '1.6rem' }}>📖</span>
+                        <span style={{ flex: 1 }}>
+                            <span style={{ display: 'block', fontWeight: 700, color: 'var(--text-primary)' }}>Manuale d'uso del CRM</span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Come funziona tutto: clienti, calcolatore, fogli ore, automazioni, backup e ripristino</span>
+                        </span>
+                        <span style={{ color: 'var(--primary)', fontWeight: 700 }}>Apri →</span>
+                    </button>
+
                     <div className="settings-section" style={{ marginBottom: '32px' }}>
                         <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Preferenze App</h3>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -277,7 +294,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                         const { triggerAutoBackup } = await import('../utils/storage');
                                         const result = await triggerAutoBackup();
                                         if (result.success) {
-                                            setBackupSuccess(`Backup creato: ${result.folder}${result.quotesCopied ? ` (con ${result.quotesCopied} preventivi)` : ''}${result.quotesMissing ? ` · ${result.quotesMissing} preventivi non trovati` : ''}${result.calcCopied ? ' · cartella del calcolatore inclusa' : ''}`);
+                                            setBackupSuccess(`Backup completo in ${result.folder}\\${result.file || ''}${result.dataFiles ? ` · ${result.dataFiles} file (preventivi e calcolatore)` : ''}${result.quotesMissing ? ` · ${result.quotesMissing} preventivi non trovati` : ''}`);
                                         } else {
                                             setError(`Errore backup: ${result.error}`);
                                         }
@@ -290,6 +307,13 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                             </button>
 
                             {backupSuccess && <div style={{ color: 'var(--success)', fontSize: '0.8rem', fontWeight: 600, marginTop: '8px', textAlign: 'center' }}>✅ {backupSuccess}</div>}
+
+                            <button className="btn btn-secondary" onClick={() => setShowRestore(true)} disabled={!settings.backupPath} style={{ width: '100%', justifyContent: 'center' }}>
+                                ♻️ Ripristina da un backup…
+                            </button>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '-8px' }}>
+                                Tutto (dati, preventivi, calcolatore) o solo alcuni clienti. Prima di ripristinare viene salvato lo stato attuale.
+                            </span>
 
                             <div style={{ height: '1px', background: 'var(--border-light)', margin: '8px 0' }} />
 
@@ -309,6 +333,9 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                     </div>
 
                     <CalculatorSettings settings={settings} updateSettings={updateSettings} />
+
+                    {showRestore && <RestoreModal onClose={() => setShowRestore(false)} />}
+                    {showManual && <ManualModal onClose={() => setShowManual(false)} />}
 
                     {/* Clear Confirmation */}
                     {showClearConfirm && (

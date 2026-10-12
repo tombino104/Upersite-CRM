@@ -405,6 +405,30 @@ export function hasMasterPassword() {
 
 
 
+// Preferenze salvate nel browser (modello AI, scelte del calcolatore, ecc.): finiscono nel backup del giorno.
+// Esclusi i dati completi e la password master, che sono già nel file dati.
+export function getBrowserPrefs() {
+    const prefs = {};
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key === STORAGE_KEY || key === MASTER_KEY) continue;
+            const value = localStorage.getItem(key);
+            if (typeof value === 'string' && value.length <= 200000) prefs[key] = value;
+        }
+    } catch { /* localStorage non disponibile */ }
+    return prefs;
+}
+
+// Rimette le preferenze di un backup ripristinato (stesse esclusioni di getBrowserPrefs)
+export function applyBrowserPrefs(prefs) {
+    if (!prefs || typeof prefs !== 'object') return;
+    Object.entries(prefs).forEach(([key, value]) => {
+        if (key === STORAGE_KEY || key === MASTER_KEY || typeof value !== 'string') return;
+        try { localStorage.setItem(key, value); } catch { /* spazio esaurito: preferenza saltata */ }
+    });
+}
+
 export async function triggerAutoBackup(options = {}) {
 
     try {
@@ -427,7 +451,7 @@ export async function triggerAutoBackup(options = {}) {
 
             headers: CRM_REQUEST_HEADERS,
 
-            body: JSON.stringify({ backupPath, includeFiles })
+            body: JSON.stringify({ backupPath, includeFiles, prefs: getBrowserPrefs() })
 
         });
 

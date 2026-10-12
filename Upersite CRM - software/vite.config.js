@@ -258,6 +258,235 @@ function importCalcConfigs(from) {
   return { copied, skipped, settings, dest }
 }
 
+// ── Backup completo e ripristino ──
+// Un backup scrive TUTTO nella cartella del giorno (<cartella backup>\gg-mm-aa): file dati (con le preferenze
+// del browser), cartella Dati (Preventivi, Calcolatore e ogni altra sottocartella) e, se è in una cartella
+// scelta a mano, anche la cartella del calcolatore. Il ripristino legge solo da lì.
+
+const DAY_FOLDER_RE = /^\d{2}-\d{2}-\d{2}$/
+const BACKUP_FILE_RE = /^backup_ore_\d{2}-\d{2}-\d{2}(_[A-Z0-9-]+)*\.json$/
+
+function pad2(n) { return String(n).padStart(2, '0') }
+
+function countFiles(dir) {
+  if (statKind(dir) !== 'directory') return 0
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .reduce((n, e) => n + (e.isDirectory() ? countFiles(path.join(dir, e.name)) : e.isFile() ? 1 : 0), 0)
+}
+
+// Copia una cartella dentro un'altra senza mai cancellare nulla (i file con lo stesso nome vengono aggiornati)
+function copyTree(src, dest) {
+  if (statKind(src) !== 'directory') return 0
+  fs.mkdirSync(dest, { recursive: true })
+  fs.cpSync(src, dest, { recursive: true, force: true })
+  return countFiles(src)
+}
+
+// Preferenze del browser (localStorage) mandate dal CRM: solo testo piccolo, mai i dati completi o la password
+const PREF_SKIP = new Set(['upersite_crm_data', 'upersite_crm_master'])
+function cleanPrefs(prefs) {
+  const out = {}
+  if (!prefs || typeof prefs !== 'object') return out
+  for (const [k, v] of Object.entries(prefs)) {
+    if (PREF_SKIP.has(k) || typeof v !== 'string' || v.length > 200000) continue
+    out[k] = v
+  }
+  return out
+}
+
+function createBackup(backupPath, { includeFiles = true, suffix = '', prefs = null } = {}) {
+  if (typeof backupPath !== 'string' || !path.isAbsolute(backupPath)) {
+    throw Object.assign(new Error('Il percorso di backup deve essere assoluto'), { status: 400 })
+  }
+  if (!fs.existsSync(STORAGE_FILE)) throw Object.assign(new Error('Nessun dato da salvare'), { status: 404 })
+  migrateLegacyFolders()
+
+  const originalData = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8'))
+  const backupData = { ...originalData }
+  if (!includeFiles && backupData.customers) {
+    backupData.customers = backupData.customers.map(c => { const copy = { ...c }; delete copy.files; return copy })
+  }
+  const cleanedPrefs = cleanPrefs(prefs)
+  if (Object.keys(cleanedPrefs).length) backupData.browserPrefs = cleanedPrefs
+  backupData.backupInfo = { createdAt: new Date().toISOString(), version: 2, includeFiles }
+
+  const now = new Date()
+  const folder = `${pad2(now.getDate())}-${pad2(now.getMonth() + 1)}-${String(now.getFullYear()).slice(-2)}`
+  const targetDir = path.join(backupPath, folder)
+  fs.mkdirSync(targetDir, { recursive: true })
+  const time = `${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}`
+  let file = `backup_ore_${time}${includeFiles ? '' : '_LIGHT'}${suffix}.json`
+  for (let i = 2; fs.existsSync(path.join(targetDir, file)); i++) file = file.replace(/(_\d+)?\.json$/, `_${i}.json`)
+  fs.writeFileSync(path.join(targetDir, file), JSON.stringify(backupData, null, 2))
+
+  let dataFiles = 0, calcCopied = false, quotesCopied = 0, quotesMissing = 0
+  if (includeFiles) {
+    // Tutta la cartella Dati: Preventivi, Calcolatore e qualunque altra sottocartella
+    dataFiles = copyTree(DATA_DIR, targetDir)
+    quotesCopied = countFiles(path.join(DATA_DIR, QUOTES_DIR))
+    calcCopied = statKind(path.join(targetDir, CALC_DIR)) === 'directory'
+    // Calcolatore in una cartella scelta a mano: copiato comunque dentro la cartella del giorno
+    try {
+      const calcRoot = getCalcRoot()
+      if (path.resolve(calcRoot) !== path.resolve(path.join(DATA_DIR, CALC_DIR))) {
+        dataFiles += copyTree(calcRoot, path.join(targetDir, CALC_DIR))
+        calcCopied = true
+      }
+    } catch { /* cartella personalizzata non raggiungibile: segnalato da calcCopied */ }
+    // Preventivi collegati ai clienti ma assenti dal disco (per avvisare)
+    for (const c of originalData.customers || []) {
+      for (const f of c.files || []) {
+        if (!f.storedPath) continue
+        try {
+          if (statKind(resolveInside(path.join(DATA_DIR, QUOTES_DIR), f.storedPath.replace(/^Preventivi\//, ''))) !== 'file') quotesMissing++
+        } catch { quotesMissing++ }
+      }
+    }
+  }
+  return { success: true, folder, file, dataFiles, quotesCopied, quotesMissing, calcCopied }
+}
+
+// gg-mm-aa → aaaa-mm-gg (senza passare da Date: con il fuso orario il giorno slitterebbe)
+function dayFolderIso(name) {
+  const [d, m, y] = name.split('-')
+  return `20${y}-${m}-${d}`
+}
+
+function listBackups() {
+  const backupPath = getBackupRoot()
+  const days = fs.readdirSync(backupPath, { withFileTypes: true })
+    .filter(e => e.isDirectory() && DAY_FOLDER_RE.test(e.name))
+    .map(e => {
+      const dir = path.join(backupPath, e.name)
+      const backups = fs.readdirSync(dir, { withFileTypes: true })
+        .filter(f => f.isFile() && BACKUP_FILE_RE.test(f.name))
+        .map(f => ({
+          file: f.name,
+          time: f.name.slice(11, 19).replace(/-/g, ':'),
+          light: f.name.includes('_LIGHT'),
+          beforeRestore: f.name.includes('PRIMA-DEL-RIPRISTINO'),
+          size: fs.statSync(path.join(dir, f.name)).size,
+        }))
+        .sort((a, b) => b.file.localeCompare(a.file))
+      return {
+        folder: e.name,
+        date: dayFolderIso(e.name),
+        backups,
+        quotes: countFiles(path.join(dir, QUOTES_DIR)),
+        calc: countFiles(path.join(dir, CALC_DIR)),
+      }
+    })
+    .filter(d => d.backups.length)
+    .sort((a, b) => b.date.localeCompare(a.date))
+  return { root: backupPath, days }
+}
+
+function backupLocation(folder, file) {
+  if (!DAY_FOLDER_RE.test(String(folder || '')) || !BACKUP_FILE_RE.test(String(file || ''))) {
+    throw Object.assign(new Error('Backup non valido'), { status: 400 })
+  }
+  const dir = path.join(getBackupRoot(), folder)
+  const jsonFile = path.join(dir, file)
+  if (statKind(jsonFile) !== 'file') throw Object.assign(new Error('Backup non trovato'), { status: 404 })
+  return { dir, jsonFile }
+}
+
+function readJsonFile(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf-8'))
+}
+
+function inspectBackup(folder, file) {
+  const { dir, jsonFile } = backupLocation(folder, file)
+  const data = readJsonFile(jsonFile)
+  const current = fs.existsSync(STORAGE_FILE) ? readJsonFile(STORAGE_FILE) : {}
+  const currentIds = new Set((current.customers || []).map(c => c.id))
+  const customers = (data.customers || []).map(c => ({
+    id: c.id, name: c.name || 'Senza nome', company: c.company || '', status: c.status || '',
+    quoteAmount: c.quoteAmount || '', quotes: (c.files || []).filter(f => f.isQuote).length,
+    hasCalc: !!c.calcConfig, existsNow: currentIds.has(c.id),
+  })).sort((a, b) => a.name.localeCompare(b.name, 'it'))
+  return {
+    folder, file,
+    createdAt: data.backupInfo?.createdAt || fs.statSync(jsonFile).mtime.toISOString(),
+    light: file.includes('_LIGHT'),
+    customers,
+    counts: {
+      customers: customers.length,
+      currentCustomers: (current.customers || []).length,
+      events: (data.events || []).length,
+      workflows: (data.workflows || []).length,
+      tags: (data.tags || []).length,
+    },
+    samePassword: (data.masterPassword || null) === (current.masterPassword || null),
+    hasPrefs: !!data.browserPrefs,
+    quotes: countFiles(path.join(dir, QUOTES_DIR)),
+    calc: countFiles(path.join(dir, CALC_DIR)),
+    other: fs.readdirSync(dir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && e.name !== QUOTES_DIR && e.name !== CALC_DIR).map(e => e.name),
+  }
+}
+
+// Ripristino: prima salva sempre lo stato attuale (backup "PRIMA-DEL-RIPRISTINO" nella cartella di oggi),
+// poi rimette dati e file. I file non vengono mai cancellati: quelli del backup vengono rimessi al loro posto.
+function applyRestore({ folder, file, mode = 'all', parts = {}, customerIds = [], prefs = null }) {
+  const { dir, jsonFile } = backupLocation(folder, file)
+  const backup = readJsonFile(jsonFile)
+  const backupPath = getBackupRoot()
+  const safety = createBackup(backupPath, { suffix: '_PRIMA-DEL-RIPRISTINO', prefs })
+  const current = readJsonFile(STORAGE_FILE)
+  const result = { safety: { folder: safety.folder, file: safety.file }, restored: [] }
+
+  if (mode === 'customers') {
+    const ids = new Set((customerIds || []).map(String))
+    const chosen = (backup.customers || []).filter(c => ids.has(String(c.id)))
+    if (!chosen.length) throw Object.assign(new Error('Nessun cliente scelto'), { status: 400 })
+    const byId = new Map(chosen.map(c => [String(c.id), c]))
+    const customers = (current.customers || []).map(c => byId.has(String(c.id)) ? byId.get(String(c.id)) : c)
+    const existing = new Set(customers.map(c => String(c.id)))
+    chosen.forEach(c => { if (!existing.has(String(c.id))) customers.push(c) })
+    writeFileAtomic(STORAGE_FILE, JSON.stringify({ ...current, customers }, null, 2))
+    // Preventivi di quei clienti (le loro cartelle in Preventivi)
+    const folders = new Set()
+    chosen.forEach(c => (c.files || []).forEach(f => {
+      if (f.storedPath) folders.add(f.storedPath.replace(/^Preventivi\//, '').split('/')[0])
+    }))
+    let quotes = 0
+    folders.forEach(name => {
+      try { quotes += copyTree(resolveInside(path.join(dir, QUOTES_DIR), name), resolveInside(getQuotesRoot(), name)) } catch { /* cartella assente nel backup */ }
+    })
+    result.restored.push(`${chosen.length} client${chosen.length === 1 ? 'e' : 'i'}: ${chosen.map(c => c.name).join(', ')}`)
+    if (quotes) result.restored.push(`${quotes} file di preventivi`)
+    return result
+  }
+
+  if (parts.data !== false) {
+    const { browserPrefs, backupInfo: _info, ...data } = backup
+    // La cartella dei backup e quella del calcolatore restano quelle attuali (il backup può venire da un altro PC)
+    const settings = { ...(data.settings || {}) }
+    settings.backupPath = current.settings?.backupPath ?? settings.backupPath
+    if (current.settings?.calcStorage) settings.calcStorage = current.settings.calcStorage
+    writeFileAtomic(STORAGE_FILE, JSON.stringify({ ...data, settings }, null, 2))
+    result.restored.push(`dati del CRM (${(data.customers || []).length} clienti, impostazioni, eventi, automazioni)`)
+    if (browserPrefs) result.prefs = browserPrefs
+  }
+  if (parts.preventivi !== false) {
+    const n = copyTree(path.join(dir, QUOTES_DIR), getQuotesRoot())
+    if (n) result.restored.push(`${n} file di preventivi`)
+  }
+  if (parts.calcolatore !== false) {
+    const n = copyTree(path.join(dir, CALC_DIR), getCalcRoot())
+    if (n) result.restored.push(`${n} file del calcolatore`)
+  }
+  if (parts.altro !== false) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isDirectory() || e.name === QUOTES_DIR || e.name === CALC_DIR) continue
+      const n = copyTree(path.join(dir, e.name), path.join(DATA_DIR, e.name))
+      if (n) result.restored.push(`${n} file in ${e.name}`)
+    }
+  }
+  return result
+}
+
 function storagePlugin() {
   return {
     name: 'crm-storage-plugin',
@@ -318,100 +547,15 @@ function storagePlugin() {
           req.on('data', chunk => { body += chunk; });
           req.on('end', () => {
             try {
-              const { backupPath, includeFiles = true } = JSON.parse(body);
+              const { backupPath, includeFiles = true, prefs = null } = JSON.parse(body);
               if (!backupPath) {
                 res.statusCode = 400;
                 res.end(JSON.stringify({ error: 'Percorso non specificato' }));
                 return;
               }
-              if (typeof backupPath !== 'string' || !path.isAbsolute(backupPath)) {
-                res.statusCode = 400;
-                res.end(JSON.stringify({ error: 'Il percorso di backup deve essere assoluto' }));
-                return;
-              }
-
-              if (!fs.existsSync(STORAGE_FILE)) {
-                res.statusCode = 404;
-                res.end(JSON.stringify({ error: 'Nessun dato da salvare' }));
-                return;
-              }
-
-              // Leggi i dati originali
-              const originalData = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8'));
-              
-              // Crea una copia per il backup
-              let backupData = { ...originalData };
-              
-              // Se backup parziale, rimuovi completamente i file
-              if (!includeFiles && backupData.customers) {
-                backupData.customers = backupData.customers.map(customer => {
-                  const customerCopy = { ...customer };
-                  delete customerCopy.files; // Rimuovi completamente l'array files
-                  return customerCopy;
-                });
-              }
-
-              const now = new Date();
-              const day = String(now.getDate()).padStart(2, '0');
-              const month = String(now.getMonth() + 1).padStart(2, '0');
-              const year = String(now.getFullYear()).slice(-2);
-              const dateFolder = `${day}-${month}-${year}`;
-              
-              const targetDir = path.join(backupPath, dateFolder);
-              if (!fs.existsSync(targetDir)) {
-                fs.mkdirSync(targetDir, { recursive: true });
-              }
-
-              const hours = String(now.getHours()).padStart(2, '0');
-              const minutes = String(now.getMinutes()).padStart(2, '0');
-              const seconds = String(now.getSeconds()).padStart(2, '0');
-              const timeSuffix = `${hours}-${minutes}-${seconds}`;
-
-              // Naming intelligente
-              const fileName = includeFiles 
-                ? `backup_ore_${timeSuffix}.json`
-                : `backup_ore_${timeSuffix}_LIGHT.json`;
-              
-              const targetFile = path.join(targetDir, fileName);
-              fs.writeFileSync(targetFile, JSON.stringify(backupData, null, 2));
-
-              // Copia nel backup anche i preventivi salvati come file (Preventivi/<cliente>/<file>)
-              let quotesCopied = 0, quotesMissing = 0;
-              if (includeFiles) {
-                const quotesRoot = getQuotesRoot();
-                for (const customer of originalData.customers || []) {
-                  for (const file of customer.files || []) {
-                    if (!file.storedPath) continue;
-                    try {
-                      const relative = file.storedPath.replace(/^Preventivi\//, '');
-                      const source = resolveInside(quotesRoot, relative);
-                      const target = resolveInside(path.join(targetDir, QUOTES_DIR), relative);
-                      if (!fs.existsSync(source)) { quotesMissing++; continue; }
-                      fs.mkdirSync(path.dirname(target), { recursive: true });
-                      fs.copyFileSync(source, target);
-                      quotesCopied++;
-                    } catch {
-                      quotesMissing++;
-                    }
-                  }
-                }
-              }
-
-              // ...e la cartella del calcolatore (configurazioni e pacchetti completi)
-              let calcCopied = false;
-              if (includeFiles) {
-                try {
-                  fs.cpSync(getCalcRoot(), path.join(targetDir, CALC_DIR), { recursive: true });
-                  calcCopied = true;
-                } catch {
-                  calcCopied = false;
-                }
-              }
-
-              res.end(JSON.stringify({ success: true, folder: dateFolder, quotesCopied, quotesMissing, calcCopied }));
+              res.end(JSON.stringify(createBackup(backupPath, { includeFiles, prefs })));
             } catch (e) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: e.message }));
+              sendError(res, e);
             }
           });
         } else if (req.url === '/api/quotes' && req.method === 'POST') {
@@ -471,6 +615,33 @@ function storagePlugin() {
           } catch (e) {
             sendError(res, e);
           }
+        } else if ((req.url === '/api/restore/list' || req.url.startsWith('/api/restore/inspect?')) && req.method === 'GET') {
+          // Elenco e anteprima dei backup (solo lettura)
+          if (rejectForeignRequest(req, res)) return;
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            if (req.url === '/api/restore/list') {
+              res.end(JSON.stringify(listBackups()));
+            } else {
+              const q = new URL(req.url, 'http://localhost').searchParams;
+              res.end(JSON.stringify(inspectBackup(q.get('folder'), q.get('file'))));
+            }
+          } catch (e) {
+            sendError(res, e);
+          }
+        } else if (req.url === '/api/restore/apply' && req.method === 'POST') {
+          // Ripristino da un backup (dopo aver salvato lo stato attuale)
+          if (rejectForeignRequest(req, res)) return;
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => {
+            res.setHeader('Content-Type', 'application/json');
+            try {
+              res.end(JSON.stringify(applyRestore(JSON.parse(body || '{}'))));
+            } catch (e) {
+              sendError(res, e);
+            }
+          });
         } else if (req.url.startsWith('/api/calc/fs?')) {
           // File del calcolatore integrato (usato dalla pagina public/calcolatore)
           if (rejectForeignRequest(req, res)) return;
