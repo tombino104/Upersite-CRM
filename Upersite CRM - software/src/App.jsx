@@ -18,6 +18,7 @@ import AutomationEditor from './components/AutomationEditor/AutomationEditor';
 import RecentTransactionsModal from './components/RecentTransactionsModal';
 import CRMAnalyticsModal from './components/CRMAnalyticsModal';
 import MonitorModal from './components/MonitorModal';
+import CalculatorModal from './components/CalculatorModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
@@ -272,6 +273,9 @@ export default function App() {
   const [showAutomationEditor, setShowAutomationEditor] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showMonitor, setShowMonitor] = useState(false);
+  const [showCalculator, setShowCalculator] = useState(false);
+  // Configurazione da aprire nel calcolatore ("Apri nel calcolatore" dalla scheda cliente)
+  const [calcRequest, setCalcRequest] = useState(null);
   const [showRecentTransactions, setShowRecentTransactions] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
@@ -349,6 +353,21 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showCharts, showOverdue, showClientList, showSettings, showDataGridView, showTagMenu, showNotifications, showTaskFilter, showTicketDashboard]);
+
+  // ── Calcolatore ──
+  const closeCalculator = useCallback(() => setShowCalculator(false), []);
+  const openSettingsFromCalculator = useCallback(() => setShowSettings(true), []);
+  const clearCalcRequest = useCallback(() => setCalcRequest(null), []);
+  const openCustomerFromCalculator = useCallback((c) => {
+    setSelectedCustomer(c);
+    setTimeout(() => window.dispatchEvent(new CustomEvent('setActiveTab', { detail: 'config' })), 100);
+  }, []);
+  // config = JSON del calcolatore salvato nel cliente (null = calcolatore vuoto, con il nome del cliente)
+  const openInCalculator = useCallback((customer) => {
+    const cc = customer?.calcConfig;
+    if (cc?.config) setCalcRequest({ config: cc.config, configName: cc.configName || null, label: customer.name });
+    setShowCalculator(true);
+  }, []);
 
   // Unified preferences sync
   const viewMode = settings.viewMode || 'kanban';
@@ -904,6 +923,7 @@ export default function App() {
       {/* Detail Modal */}
       {(selectedCustomer || showNew) && (
         <CustomerDetail
+          key={selectedCustomer?.id || 'new'}
           customer={selectedCustomer}
           allTags={allTags}
           settings={settings}
@@ -911,6 +931,7 @@ export default function App() {
           onDelete={handleDelete}
           updateCustomer={updateCustomer}
           onClose={() => { setSelectedCustomer(null); setShowNew(false); }}
+          onOpenInCalculator={openInCalculator}
         />
       )}
 
@@ -1044,6 +1065,65 @@ export default function App() {
           onClose={() => setShowMonitor(false)}
         />
       )}
+
+      {/* Calcolatore preventivi (copia integrata del calcolatore, resta aperto in background) */}
+      <CalculatorModal
+        open={showCalculator}
+        onClose={closeCalculator}
+        customers={customers}
+        settings={settings}
+        updateSettings={updateSettings}
+        updateCustomer={updateCustomer}
+        onOpenSettings={openSettingsFromCalculator}
+        onOpenCustomer={openCustomerFromCalculator}
+        request={calcRequest}
+        onRequestDone={clearCalcRequest}
+        settingsOpen={showSettings}
+      />
+
+      {/* Calculator Button */}
+      <button
+        onClick={() => setShowCalculator(true)}
+        title="Calcolatore preventivi"
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          left: '310px',
+          width: 60,
+          height: 60,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          boxShadow: '0 10px 40px rgba(245, 158, 11, 0.4)',
+          transition: 'all 0.4s cubic-bezier(0.175,0.885,0.32,1.275)',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'scale(1.1) rotate(5deg)';
+          e.currentTarget.style.boxShadow = '0 15px 50px rgba(245, 158, 11, 0.6)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+          e.currentTarget.style.boxShadow = '0 10px 40px rgba(245, 158, 11, 0.4)';
+        }}
+      >
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="4" y="2" width="16" height="20" rx="2" />
+          <line x1="8" y1="6" x2="16" y2="6" />
+          <line x1="8" y1="11" x2="8" y2="11.01" />
+          <line x1="12" y1="11" x2="12" y2="11.01" />
+          <line x1="16" y1="11" x2="16" y2="11.01" />
+          <line x1="8" y1="15" x2="8" y2="15.01" />
+          <line x1="12" y1="15" x2="12" y2="15.01" />
+          <line x1="16" y1="15" x2="16" y2="18" />
+          <line x1="8" y1="18" x2="12" y2="18" />
+        </svg>
+      </button>
 
       {/* Analytics Button */}
       <button

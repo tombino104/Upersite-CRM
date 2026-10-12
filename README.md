@@ -2,7 +2,7 @@
 
 CRM personale per gestire clienti, preventivi, pagamenti, task e note di progetto. Funziona in locale sul proprio PC: i dati restano in un file e non vengono inviati a nessun server (tranne il testo che invii alle funzioni AI).
 
-**Versione attuale:** 1.19.0-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
+**Versione attuale:** 1.21.0-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
 ## Funzionalità
 
@@ -65,6 +65,11 @@ Tutto è in `Upersite CRM - software/crm_data.json`. Questo file contiene client
 **Preventivi (PDF/DOCX):** non stanno nel file dati ma come file veri nella sottocartella `Preventivi` della **cartella di backup scelta nelle Impostazioni** (`Preventivi\<cliente>\<file>`). Ogni cliente può avere più preventivi. Un file viene cancellato dalla cartella solo se lo elimini tu con ✕ e confermi (le copie nei backup restano). Ogni backup con data contiene anche una copia dei preventivi. Se cambi cartella di backup, sposta anche la cartella `Preventivi`. Ogni preventivo ha uno stato (In attesa / Accettato / Rifiutato).
 
 **Fogli ore:** il pulsante ⏱️ nella scheda cliente apre il foglio ore (righe con data, ore e descrizione, grafici, esportazione CSV/PDF e guadagno €/ora). Le ore sono salvate nel cliente (`timesheets`), quindi dentro `crm_data.json` e nei backup.
+
+**Calcolatore preventivi:** il pulsante arancione 🧮 in basso a sinistra apre il calcolatore prezzi dentro il CRM. È una copia del calcolatore originale (`public/calcolatore/index.html`; l'originale nella cartella CALCOLATORE non viene toccato) con tutte le sue funzioni: export PDF/Word/Excel, riepilogo interno, configurazioni salvate, pacchetto completo, costi fissi, listino ore e redditività. In più:
+- **➕ Aggiungi al cliente CRM** manda la configurazione a un cliente: la tab *Configurazione* la mostra in sola lettura (voci, totale, ore stimate, redditività), l'importo del preventivo viene aggiornato (con conferma) e alla fine puoi allegare il preventivo PDF/DOCX tra i preventivi del cliente. Le ore stimate compaiono anche nei Fogli ore (ore residue / sforamento).
+- **Dove salva:** di default nella sottocartella `Calcolatore` della cartella di backup (`Configurazioni\` e `Pacchetti\`), copiata in ogni backup con data; dalle Impostazioni puoi scegliere un'altra cartella e importare (copiandole) le configurazioni del calcolatore standalone.
+- **Listino:** i prezzi si modificano nelle Impostazioni (sezione Calcolatore preventivi); costi fissi, ore e margini restano nelle tab del calcolatore ma vengono salvati nel file dati del CRM (`settings.calc`).
 
 ## Struttura del progetto
 

@@ -81,6 +81,127 @@ function sendError(res, e) {
   res.end(JSON.stringify({ error: e.message }))
 }
 
+// ── Calcolatore: cartella delle configurazioni e dei pacchetti completi ──
+// Modalità "crm" (default): <cartella dei salvataggi>\Calcolatore. Modalità "custom": un percorso scelto nelle Impostazioni.
+
+const CALC_DIR = 'Calcolatore'
+const MAX_CALC_BYTES = 100 * 1024 * 1024
+
+function readSettings() {
+  const data = fs.existsSync(STORAGE_FILE) ? JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8')) : {}
+  return data.settings || {}
+}
+
+function getCalcRoot() {
+  const calc = readSettings().calcStorage || {}
+  if (calc.mode === 'custom') {
+    const custom = calc.customPath
+    if (typeof custom !== 'string' || !path.isAbsolute(custom) || !fs.existsSync(custom)) {
+      throw Object.assign(new Error('La cartella del calcolatore scelta nelle Impostazioni non esiste (o il disco non è collegato)'), { status: 400 })
+    }
+    return custom
+  }
+  const root = path.join(getBackupRoot(), CALC_DIR)
+  fs.mkdirSync(root, { recursive: true })
+  return root
+}
+
+// Percorso relativo dal calcolatore ("Configurazioni/Mario - Pro.json"): ogni parte deve essere un nome valido
+function calcPath(root, rel) {
+  const parts = String(rel || '').split('/').filter(Boolean)
+  for (const part of parts) {
+    const invalid = /[<>:"\\|?*]/.test(part) || [...part].some(ch => ch.charCodeAt(0) < 32) || /[. ]$/.test(part)
+    if (part === '.' || part === '..' || part.length > 200 || invalid) {
+      throw Object.assign(new Error(`Nome non valido: ${part}`), { status: 400 })
+    }
+  }
+  return resolveInside(root, parts.join(path.sep))
+}
+
+function statKind(file) {
+  if (!fs.existsSync(file)) return 'missing'
+  return fs.statSync(file).isDirectory() ? 'directory' : 'file'
+}
+
+const CALC_TYPES = {
+  '.json': 'application/json', '.txt': 'text/plain; charset=utf-8', '.pdf': 'application/pdf',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+}
+
+function handleCalcFs(req, res) {
+  const url = new URL(req.url, 'http://localhost')
+  const op = url.searchParams.get('op')
+  const rel = url.searchParams.get('path') || ''
+  const root = getCalcRoot()
+  const target = calcPath(root, rel)
+  res.setHeader('Content-Type', 'application/json')
+
+  if (req.method === 'GET' && op === 'stat') {
+    res.end(JSON.stringify({ kind: statKind(target) }))
+  } else if (req.method === 'GET' && op === 'list') {
+    if (statKind(target) !== 'directory') throw Object.assign(new Error('Cartella non trovata'), { status: 404 })
+    const entries = fs.readdirSync(target, { withFileTypes: true })
+      .filter(d => d.isFile() || d.isDirectory())
+      .map(d => ({ name: d.name, kind: d.isDirectory() ? 'directory' : 'file' }))
+    res.end(JSON.stringify({ entries }))
+  } else if (req.method === 'GET' && op === 'read') {
+    if (statKind(target) !== 'file') throw Object.assign(new Error('File non trovato'), { status: 404 })
+    res.setHeader('Content-Type', CALC_TYPES[path.extname(target).toLowerCase()] || 'application/octet-stream')
+    fs.createReadStream(target).pipe(res)
+  } else if (req.method === 'POST' && op === 'mkdir') {
+    fs.mkdirSync(target, { recursive: true })
+    res.end(JSON.stringify({ success: true }))
+  } else if (req.method === 'POST' && op === 'remove') {
+    // Solo file singoli (le configurazioni): le cartelle non si cancellano da qui
+    if (target === path.resolve(root) || statKind(target) !== 'file') throw Object.assign(new Error('Si possono eliminare solo file'), { status: 400 })
+    fs.unlinkSync(target)
+    res.end(JSON.stringify({ success: true }))
+  } else if (req.method === 'POST' && op === 'write') {
+    if (target === path.resolve(root)) throw Object.assign(new Error('Percorso non valido'), { status: 400 })
+    const chunks = []
+    let size = 0
+    req.on('data', chunk => { size += chunk.length; if (size <= MAX_CALC_BYTES) chunks.push(chunk) })
+    req.on('end', () => {
+      try {
+        if (size > MAX_CALC_BYTES) throw Object.assign(new Error('File troppo grande (max 100MB)'), { status: 413 })
+        fs.mkdirSync(path.dirname(target), { recursive: true })
+        fs.writeFileSync(target, Buffer.concat(chunks))
+        res.end(JSON.stringify({ success: true }))
+      } catch (e) {
+        sendError(res, e)
+      }
+    })
+  } else {
+    throw Object.assign(new Error('Operazione non valida'), { status: 400 })
+  }
+}
+
+// Copia (mai sposta) le configurazioni .json di una cartella esistente in Calcolatore\Configurazioni.
+// I file con lo stesso nome già presenti non vengono toccati.
+function importCalcConfigs(from) {
+  if (typeof from !== 'string' || !path.isAbsolute(from) || statKind(from) !== 'directory') {
+    throw Object.assign(new Error('La cartella da importare non esiste (serve un percorso assoluto)'), { status: 400 })
+  }
+  const dest = path.join(getCalcRoot(), 'Configurazioni')
+  if (path.resolve(from) === path.resolve(dest)) throw Object.assign(new Error('È già la cartella del calcolatore'), { status: 400 })
+  fs.mkdirSync(dest, { recursive: true })
+  let copied = 0, skipped = 0
+  let settings = null
+  for (const d of fs.readdirSync(from, { withFileTypes: true })) {
+    if (!d.isFile() || !/\.json$/i.test(d.name)) continue
+    const source = path.join(from, d.name)
+    if (d.name === 'impostazioni-calcolatore.json') {
+      try { settings = JSON.parse(fs.readFileSync(source, 'utf-8')) } catch { settings = null }
+    }
+    const target = path.join(dest, d.name)
+    if (fs.existsSync(target)) { skipped++; continue }
+    fs.copyFileSync(source, target)
+    copied++
+  }
+  return { copied, skipped, settings, dest }
+}
+
 function storagePlugin() {
   return {
     name: 'crm-storage-plugin',
@@ -219,7 +340,18 @@ function storagePlugin() {
                 }
               }
 
-              res.end(JSON.stringify({ success: true, folder: dateFolder, quotesCopied, quotesMissing }));
+              // ...e la cartella del calcolatore (configurazioni e pacchetti completi)
+              let calcCopied = false;
+              if (includeFiles) {
+                try {
+                  fs.cpSync(getCalcRoot(), path.join(targetDir, CALC_DIR), { recursive: true });
+                  calcCopied = true;
+                } catch {
+                  calcCopied = false;
+                }
+              }
+
+              res.end(JSON.stringify({ success: true, folder: dateFolder, quotesCopied, quotesMissing, calcCopied }));
             } catch (e) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: e.message }));
@@ -282,6 +414,44 @@ function storagePlugin() {
           } catch (e) {
             sendError(res, e);
           }
+        } else if (req.url.startsWith('/api/calc/fs?')) {
+          // File del calcolatore integrato (usato dalla pagina public/calcolatore)
+          if (rejectForeignRequest(req, res)) return;
+          try {
+            handleCalcFs(req, res);
+          } catch (e) {
+            sendError(res, e);
+          }
+        } else if (req.url === '/api/calc/info' && req.method === 'GET') {
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            res.end(JSON.stringify({ root: getCalcRoot() }));
+          } catch (e) {
+            sendError(res, e);
+          }
+        } else if ((req.url === '/api/calc/import' || req.url === '/api/calc/verify') && req.method === 'POST') {
+          if (rejectForeignRequest(req, res)) return;
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => {
+            res.setHeader('Content-Type', 'application/json');
+            try {
+              const parsed = JSON.parse(body || '{}');
+              if (req.url === '/api/calc/import') {
+                res.end(JSON.stringify(importCalcConfigs(parsed.from)));
+                return;
+              }
+              // Verifica di una cartella scelta a mano: deve esistere ed essere scrivibile
+              const dir = parsed.path;
+              if (typeof dir !== 'string' || !path.isAbsolute(dir) || statKind(dir) !== 'directory') {
+                throw Object.assign(new Error('La cartella non esiste (serve un percorso assoluto, es. D:\\Lavoro\\Calcolatore)'), { status: 400 });
+              }
+              fs.accessSync(dir, fs.constants.W_OK);
+              res.end(JSON.stringify({ success: true }));
+            } catch (e) {
+              sendError(res, e);
+            }
+          });
         } else if (req.url === '/api/storage' && req.method === 'POST') {
           if (rejectForeignRequest(req, res)) return;
           let body = '';

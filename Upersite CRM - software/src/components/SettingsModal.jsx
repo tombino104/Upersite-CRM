@@ -3,6 +3,7 @@ import { getMasterPassword, verifyMasterPassword, setMasterPassword, exportData,
 import { reencryptCredentials } from '../utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
 import { getAvailableModels, getCurrentModel, setAIModel } from '../utils/aiTextService';
+import CalculatorSettings from './CalculatorSettings';
 
 export default function SettingsModal({ settings, updateSettings, onClose, setCustomers, customers }) {
     const [currentPassword, setCurrentPassword] = useState('');
@@ -276,7 +277,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                         const { triggerAutoBackup } = await import('../utils/storage');
                                         const result = await triggerAutoBackup();
                                         if (result.success) {
-                                            setBackupSuccess(`Backup creato: ${result.folder}${result.quotesCopied ? ` (con ${result.quotesCopied} preventivi)` : ''}${result.quotesMissing ? ` · ${result.quotesMissing} preventivi non trovati` : ''}`);
+                                            setBackupSuccess(`Backup creato: ${result.folder}${result.quotesCopied ? ` (con ${result.quotesCopied} preventivi)` : ''}${result.quotesMissing ? ` · ${result.quotesMissing} preventivi non trovati` : ''}${result.calcCopied ? ' · cartella del calcolatore inclusa' : ''}`);
                                         } else {
                                             setError(`Errore backup: ${result.error}`);
                                         }
@@ -306,6 +307,8 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                             {importSuccess && importSuccess.includes('cancellati') && <div style={{ color: 'var(--success)', fontSize: '0.8rem', fontWeight: 600, marginTop: '8px', textAlign: 'center' }}>✅ {importSuccess}</div>}
                         </div>
                     </div>
+
+                    <CalculatorSettings settings={settings} updateSettings={updateSettings} />
 
                     {/* Clear Confirmation */}
                     {showClearConfirm && (

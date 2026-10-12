@@ -64,7 +64,8 @@ const cellInput = {
 
 // Finestra "Fogli ore" di un cliente: tabella modificabile stile foglio di calcolo, grafici e guadagno €/ora.
 // `projectValue` = valore del progetto (preventivo o somma rate), `paidAmount` = quanto incassato finora.
-const TimesheetSection = ({ customerName, entries: rawEntries, onChange, projectValue, paidAmount, onClose }) => {
+// `estimatedHours`, `estimatedRate` (netto €/h) e `targetRate` arrivano dal calcolatore (tab Configurazione).
+const TimesheetSection = ({ customerName, entries: rawEntries, onChange, projectValue, paidAmount, estimatedHours, estimatedRate, targetRate, onClose }) => {
     const entries = useMemo(() => rawEntries || [], [rawEntries]);
     const [from, setFrom] = useState('');
     const [to, setTo] = useState('');
@@ -85,6 +86,15 @@ const TimesheetSection = ({ customerName, entries: rawEntries, onChange, project
     // Il guadagno €/ora riguarda tutto il progetto, quindi usa sempre tutte le ore (non il filtro per periodo)
     const rateProject = allHours > 0 && projectValue > 0 ? projectValue / allHours : null;
     const rateCollected = allHours > 0 && paidAmount > 0 ? paidAmount / allHours : null;
+
+    // Budget ore stimato dal calcolatore: anche questo riguarda tutto il progetto
+    const hasEstimate = estimatedHours > 0;
+    const usedPct = hasEstimate ? (allHours / estimatedHours) * 100 : 0;
+    const budgetColor = usedPct > 100 ? 'var(--danger)' : usedPct >= 80 ? 'var(--warning)' : 'var(--success)';
+    const ratePlanned = hasEstimate && projectValue > 0 ? projectValue / estimatedHours : null;
+    const estimateLine = hasEstimate
+        ? `Ore stimate dal calcolatore: ${formatHours(estimatedHours)} · registrate ${formatHours(allHours)} (${Math.round(usedPct)}%)`
+        : '';
 
     const chartData = useMemo(() => {
         const map = {};
@@ -186,7 +196,7 @@ th{background:#f3f3f7}
 tfoot td{font-weight:bold;border-top:2px solid #222}
 </style></head><body>
 <h1>Foglio ore – ${escapeHtml(customerName || '')}</h1>
-<p>${escapeHtml(periodLabel)}</p>
+<p>${escapeHtml(periodLabel)}${estimateLine ? '<br>' + escapeHtml(estimateLine) : ''}</p>
 <table><thead><tr><th>Data</th><th class="r">Ore</th><th>Descrizione</th></tr></thead>
 <tbody>${rows}</tbody>
 <tfoot><tr><td>Totale</td><td class="r">${formatHours(totalHours)}</td><td></td></tr></tfoot></table>
@@ -234,6 +244,28 @@ tfoot td{font-weight:bold;border-top:2px solid #222}
                         {kpi('Guadagno €/ora', rateProject ? money(rateProject) : '—', 'valore progetto ÷ tutte le ore', 'var(--success)', 'var(--success-bg)')}
                         {kpi('€/ora incassato', rateCollected ? money(rateCollected) : '—', `incassato ${money(paidAmount || 0)}`)}
                     </div>
+
+                    {hasEstimate && (
+                        <div style={{ padding: '14px 18px', background: 'var(--bg-input)', borderRadius: '14px', marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                                <strong style={{ fontSize: '0.9rem' }}>
+                                    Ore stimate dal calcolatore: {formatHours(estimatedHours)}
+                                </strong>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: budgetColor, fontVariantNumeric: 'tabular-nums' }}>
+                                    {formatHours(allHours)} registrate · {Math.round(usedPct)}% · {allHours <= estimatedHours
+                                        ? `${formatHours(estimatedHours - allHours)} residue`
+                                        : `sforamento di ${formatHours(allHours - estimatedHours)}`}
+                                </span>
+                            </div>
+                            <div style={{ height: 10, borderRadius: 999, background: 'var(--border-light)', overflow: 'hidden' }}>
+                                <div style={{ width: `${Math.min(usedPct, 100)}%`, height: '100%', background: budgetColor, borderRadius: 999, transition: 'width 0.3s' }} />
+                            </div>
+                            <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap', marginTop: '10px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                {ratePlanned && <span>Valore €/ora previsto: <strong>{money(ratePlanned)}</strong> → attuale: <strong>{rateProject ? money(rateProject) : '—'}</strong></span>}
+                                {estimatedRate != null && <span>Netto stimato nel preventivo: <strong>{money(estimatedRate)}/h</strong>{targetRate ? ` (minimo ${money(targetRate)}/h)` : ''}</span>}
+                            </div>
+                        </div>
+                    )}
 
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '22px' }}>
                         <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Periodo</span>

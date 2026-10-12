@@ -12,6 +12,8 @@ import SmartReportSection from './SmartReportSection';
 import TicketSection from './TicketSection';
 import TimesheetSection from './TimesheetSection';
 import MonitorStatusBadge from './MonitorStatusBadge';
+import { CUSTOMER_EXTERNAL_UPDATE } from './CalculatorModal';
+import { CALC_PACKAGE_NAMES } from '../utils/calcListino';
 
 import IconComponent from './IconComponent';
 
@@ -1934,7 +1936,7 @@ const TodoSection = React.memo(({ form, update, confirmDelete, onInternalLink, o
 
 });
 
-export default function CustomerDetail({ customer, allTags, settings, onSave, onDelete, updateCustomer, onClose }) {
+export default function CustomerDetail({ customer, allTags, settings, onSave, onDelete, updateCustomer, onClose, onOpenInCalculator }) {
 
     const [form, setForm] = useState(customer || {
 
@@ -2115,6 +2117,24 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
     // Come update, ma calcola il nuovo valore dal valore più recente (utile dopo operazioni asincrone)
     const updateWith = (key, fn) => setForm(prev => ({ ...prev, [key]: fn(prev[key]) }));
 
+    // Dati salvati da fuori mentre la scheda è aperta (calcolatore → "Aggiungi al cliente"): entrano nel form
+    // e nello snapshot, così non risultano modifiche da salvare e "Salva" non li sovrascrive con quelli vecchi
+    useEffect(() => {
+        const onExternalUpdate = (e) => {
+            const { id, updates } = e.detail || {};
+            if (!id || id !== form.id || !updates) return;
+            setForm(prev => ({ ...prev, ...updates }));
+            try {
+                const snap = JSON.parse(snapshot.current);
+                delete snap.newNote;
+                delete snap.newTag;
+                snapshot.current = JSON.stringify({ ...snap, ...updates, newNote: '', newTag: '' });
+            } catch { /* snapshot non leggibile: resta com'è */ }
+        };
+        window.addEventListener(CUSTOMER_EXTERNAL_UPDATE, onExternalUpdate);
+        return () => window.removeEventListener(CUSTOMER_EXTERNAL_UPDATE, onExternalUpdate);
+    }, [form.id]);
+
     const hasChanges = JSON.stringify({ ...form, newNote, newTag }) !== snapshot.current;
 
     const handleClose = () => {
@@ -2175,47 +2195,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
     }, [hasChanges, showUnsavedConfirm, showDeleteConfirm, deleteTarget, showPasswordConfirm]);
 
-    const prevConfig = useRef({ pkg: form.packageType, addons: JSON.stringify(form.addons) });
-
-    // Auto-calculate total price based on package and selected addons
-
-    useEffect(() => {
-
-        const pkgChanged = prevConfig.current.pkg !== form.packageType;
-
-        const addonsChanged = prevConfig.current.addons !== JSON.stringify(form.addons);
-
-        if (pkgChanged || addonsChanged) {
-
-            let total = 0;
-
-            const pkg = PACKAGES.find(p => p.id === form.packageType);
-
-            if (pkg) total += pkg.price;
-
-            (form.addons || []).forEach(addonId => {
-
-                const addon = ADDONS.find(a => a.id === addonId);
-
-                if (addon) total += addon.price;
-
-            });
-
-            // Only auto-update if quoteAmount is empty or we just changed the selection
-
-            // This prevents overwriting manual overrides when just opening the modal
-
-            if (total > 0) {
-
-                update('quoteAmount', total.toString());
-
-            }
-
-            prevConfig.current = { pkg: form.packageType, addons: JSON.stringify(form.addons) };
-
-        }
-
-    }, [form.packageType, form.addons]);
+    // Il totale del preventivo non si calcola più qui (prima sommava i valori di mercato del vecchio listino):
+    // arriva dal calcolatore con "Aggiungi al cliente" (vedi CalculatorModal)
 
     const handleSave = () => {
 
@@ -2555,6 +2536,9 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                             onChange={saveTimesheets}
                             projectValue={parseFloat(form.quoteAmount) || sumInstallments}
                             paidAmount={paid}
+                            estimatedHours={form.calcConfig?.hours?.total}
+                            estimatedRate={form.calcConfig?.margin?.rate}
+                            targetRate={form.calcConfig?.margin?.target}
                             onClose={() => setShowTimesheet(false)}
                         />
 
@@ -2722,7 +2706,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                         {activeTab === 'general' && <GeneralSection form={form} update={update} updateWith={updateWith} formatPhone={formatPhone} onCompleteWithUnpaid={() => { setPendingStatus('completed'); setShowPaymentWarning(true); }} allTags={allTags} newTag={newTag} setNewTag={setNewTag} />}
 
-                        {activeTab === 'config' && <ConfigSection form={form} update={update} />}
+                        {activeTab === 'config' && <ConfigSection form={form} onOpenInCalculator={onOpenInCalculator ? () => onOpenInCalculator(form) : null} />}
 
                         {activeTab === 'finance' && (
 
@@ -3374,7 +3358,9 @@ const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCo
 
                     <label className="input-label">Pacchetto</label>
 
-                    <select className="input select" value={form.packageType || ''} onChange={e => update('packageType', e.target.value)}>
+                    {/* Con una configurazione del calcolatore il pacchetto viene da lì (si cambia dal calcolatore) */}
+                    <select className="input select" value={form.packageType || ''} onChange={e => update('packageType', e.target.value)}
+                        disabled={!!form.calcConfig} title={form.calcConfig ? 'Impostato dal calcolatore (tab Configurazione)' : undefined}>
 
                         <option value="">Nessuno</option>
 
@@ -3466,89 +3452,192 @@ const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCo
 
 });
 
-/* ── CONFIGURATION (Add-ons) ── */
+/* ── CONFIGURATION (dal calcolatore, sola lettura) ── */
 
-const ConfigSection = React.memo(({ form, update }) => {
+const ccMoney = (n) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(Number(n) || 0);
+const ccHours = (h) => `${String(Math.round((Number(h) || 0) * 100) / 100).replace('.', ',')} h`;
+const CC_BASE_PAGES = { base: 3, pro: 5, premium: 10 };
 
-    const selectedPackage = form.packageType || '';
+const ConfigSection = React.memo(({ form, onOpenInCalculator }) => {
 
-    const selectedAddons = form.addons || [];
+    const cc = form.calcConfig;
 
-    const toggleAddon = (addonId) => {
+    // Clienti senza configurazione del calcolatore: dati del vecchio listino, solo da leggere
+    if (!cc) {
 
-        if (selectedAddons.includes(addonId)) {
+        const legacyPkg = PACKAGES.find(p => p.id === form.packageType);
+        const legacyAddons = ADDONS.filter(a => (form.addons || []).includes(a.id));
 
-            update('addons', selectedAddons.filter(a => a !== addonId));
+        return (
 
-        } else {
+            <div className="detail-section">
 
-            update('addons', [...selectedAddons, addonId]);
+                <div className="cc-empty">
+                    <div className="cc-empty-title">Nessuna configurazione dal calcolatore</div>
+                    <p>Crea il preventivo con il calcolatore (pulsante 🧮 in basso a sinistra) e usa «➕ Aggiungi al cliente CRM»: qui comparirà tutto quello che hai scelto, con totale, ore stimate e redditività.</p>
+                    {onOpenInCalculator && <button className="btn btn-primary btn-sm" onClick={onOpenInCalculator}>🧮 Apri il calcolatore</button>}
+                </div>
 
-        }
+                {(legacyPkg || legacyAddons.length > 0) && (
+                    <>
+                        <label className="input-label" style={{ marginTop: '16px' }}>Configurazione precedente al calcolatore</label>
+                        <div className="cc-legacy">
+                            {legacyPkg && <span className="tag-badge">{legacyPkg.label}</span>}
+                            {legacyAddons.map(a => <span key={a.id} className="tag-badge">{a.label}</span>)}
+                        </div>
+                    </>
+                )}
 
+                <style>{CC_CSS}</style>
+
+            </div>
+
+        );
+
+    }
+
+    const q = cc.quote || {};
+    const totals = q.totals || {};
+    const state = cc.config?.state || {};
+    const pkg = state.package;
+    const pages = state.totalPages > 10 ? state.totalPages : CC_BASE_PAGES[pkg];
+    const margin = cc.margin;
+    const level = !margin || margin.rate == null ? '' : margin.rate >= margin.target ? 'good' : margin.rate >= margin.target * 0.8 ? 'warn' : 'bad';
+    const quoteFile = (form.files || []).find(f => f.id === cc.quoteFileId);
+    const amount = parseFloat(form.quoteAmount);
+    const amountDiffers = !isNaN(amount) && Math.abs(amount - (totals.total || 0)) > 0.009;
+
+    const downloadJson = () => {
+        const blob = new Blob([JSON.stringify(cc.config, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = cc.configName || `${form.name || 'cliente'} - ${CALC_PACKAGE_NAMES[pkg] || 'configurazione'}.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
 
     return (
 
         <div className="detail-section">
 
-            <label className="input-label">Pacchetto Scelto</label>
-
-            <div className="config-packages">
-
-                {PACKAGES.map(pkg => (
-
-                    <div
-
-                        key={pkg.id}
-
-                        className={`config-package-card ${selectedPackage === pkg.id ? 'active' : ''}`}
-
-                        onClick={() => update('packageType', pkg.id === selectedPackage ? '' : pkg.id)}
-
-                    >
-
-                        <div className="config-package-name">{pkg.label}</div>
-
+            <div className="cc-head">
+                <div>
+                    <div className="cc-pkg">{pkg ? `Pacchetto ${CALC_PACKAGE_NAMES[pkg]}` : 'Nessun pacchetto'}{pages ? ` · ${pages} pagine` : ''}</div>
+                    <div className="cc-meta">
+                        Dal calcolatore il {new Date(cc.attachedAt).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })}
+                        {cc.configName ? ` · ${cc.configName}` : ' · configurazione non salvata in cartella'}
                     </div>
+                </div>
+                <div className="cc-actions">
+                    {onOpenInCalculator && <button className="btn btn-primary btn-sm" onClick={onOpenInCalculator} title="Apre questa configurazione nel calcolatore: modificala e riaggiungila al cliente">🧮 Apri nel calcolatore</button>}
+                    <button className="btn btn-secondary btn-sm" onClick={downloadJson}>⬇ JSON</button>
+                </div>
+            </div>
 
-                ))}
+            {amountDiffers && (
+                <div className="cc-warn">⚠ L'importo del preventivo nel cliente ({ccMoney(amount)}) è diverso dal totale del calcolatore ({ccMoney(totals.total)}).</div>
+            )}
+
+            <table className="cc-table">
+                <thead><tr><th>Descrizione</th><th>Q.tà</th><th>Importo</th></tr></thead>
+                <tbody>
+                    {(q.items || []).map((item, i) => (
+                        <tr key={`${item.key}-${i}`}>
+                            <td>{item.desc}</td>
+                            <td>{item.qty}</td>
+                            <td className={item.amount === null ? 'cc-included' : ''}>{item.amount === null ? 'Incluso' : ccMoney(item.amount)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+                <tfoot>
+                    <tr><td colSpan={2}>Subtotale</td><td>{ccMoney(totals.subtotal)}</td></tr>
+                    {totals.discount > 0 && <tr className="cc-discount"><td colSpan={2}>Sconto Bundle Marketing</td><td>−{ccMoney(totals.discount)}</td></tr>}
+                    {totals.vat > 0 && <tr><td colSpan={2}>IVA {totals.vat}%</td><td>{ccMoney(totals.taxes)}</td></tr>}
+                    <tr className="cc-total"><td colSpan={2}>Totale</td><td>{ccMoney(totals.total)}</td></tr>
+                </tfoot>
+            </table>
+
+            <div className="cc-grid">
+
+                <div className="cc-card">
+                    <div className="cc-card-title">⏱️ Ore stimate <strong>{ccHours(cc.hours?.total)}</strong></div>
+                    {(cc.hours?.items || []).map((h, i) => (
+                        <div key={`${h.key}-${i}`} className="cc-row"><span>{h.desc}</span><span>{ccHours(h.hours)}</span></div>
+                    ))}
+                    {cc.hours?.extra > 0 && <div className="cc-row"><span>Ore extra una tantum</span><span>{ccHours(cc.hours.extra)}</span></div>}
+                </div>
+
+                {margin && (
+                    <div className={`cc-card cc-margin ${level}`}>
+                        <div className="cc-card-title">📊 Redditività stimata <strong>{margin.rate == null ? '—' : `${ccMoney(margin.rate)}/h`}</strong></div>
+                        <div className="cc-row"><span>Su {ccHours(margin.hours)} ({margin.hoursSource}) · minimo {ccMoney(margin.target)}/h</span></div>
+                        <div className="cc-row"><span>Incasso (senza IVA)</span><span>{ccMoney(margin.revenue)}</span></div>
+                        <div className="cc-row"><span>Costi fissi ({ccMoney(margin.hourlyCost)}/h) + extra</span><span>−{ccMoney(margin.costs)}</span></div>
+                        <div className="cc-row"><span>Tasse e contributi ({String(margin.taxPct).replace('.', ',')}%)</span><span>−{ccMoney(margin.tax)}</span></div>
+                        <div className="cc-row cc-net"><span>Guadagno netto</span><span>{ccMoney(margin.net)}</span></div>
+                    </div>
+                )}
 
             </div>
 
-            <label className="input-label" style={{ marginTop: '16px' }}>Servizi Aggiuntivi</label>
-
-            <div className="config-addons">
-
-                {ADDONS.map(addon => (
-
-                    <label key={addon.id} className={`config-addon-item ${selectedAddons.includes(addon.id) ? 'active' : ''}`}>
-
-                        <input
-
-                            type="checkbox"
-
-                            checked={selectedAddons.includes(addon.id)}
-
-                            onChange={() => toggleAddon(addon.id)}
-
-                            className="config-addon-check"
-
-                        />
-
-                        <span className="config-addon-label">{addon.label}</span>
-
-                    </label>
-
-                ))}
-
+            <div className="cc-details">
+                {(q.client || q.contact) && <div><span>Alla c.a. di</span>{[q.client, q.contact].filter(Boolean).join(' · ')}</div>}
+                {q.date && <div><span>Data preventivo</span>{new Date(q.date).toLocaleDateString('it-IT')}</div>}
+                {q.terms && <div><span>Termini</span>{q.terms}</div>}
+                <div>
+                    <span>Preventivo allegato</span>
+                    {quoteFile ? (
+                        <button className="btn btn-ghost btn-sm" onClick={() => window.dispatchEvent(new CustomEvent('setActiveTab', { detail: 'finance' }))}>
+                            📄 {quoteFile.name} → Pagamenti
+                        </button>
+                    ) : 'nessuno'}
+                </div>
             </div>
+
+            <style>{CC_CSS}</style>
 
         </div>
 
     );
 
 });
+
+const CC_CSS = `
+.cc-empty { background: var(--bg-input); border-radius: var(--radius-lg); padding: 18px 20px; }
+.cc-empty-title { font-weight: 700; margin-bottom: 6px; }
+.cc-empty p { color: var(--text-secondary); font-size: 0.88rem; margin: 0 0 12px; }
+.cc-legacy { display: flex; flex-wrap: wrap; gap: 6px; }
+.cc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.cc-pkg { font-size: 1.1rem; font-weight: 800; color: var(--text-primary); }
+.cc-meta { font-size: 0.8rem; color: var(--text-tertiary); margin-top: 2px; }
+.cc-actions { display: flex; gap: 6px; }
+.cc-warn { background: var(--warning-bg); color: var(--warning); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 0.85rem; margin-bottom: 12px; }
+.cc-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: 14px; }
+.cc-table th { text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.cc-table td { padding: 7px 8px; border-bottom: 1px solid var(--border-light); }
+.cc-table th:nth-child(2), .cc-table td:nth-child(2) { text-align: center; width: 60px; }
+.cc-table th:last-child, .cc-table td:last-child { text-align: right; width: 120px; white-space: nowrap; }
+.cc-table tfoot td { border-bottom: none; padding: 5px 8px; color: var(--text-secondary); }
+.cc-table tfoot td:first-child { text-align: right; }
+.cc-included { color: var(--success); font-weight: 600; }
+.cc-discount td { color: #8b5cf6 !important; }
+.cc-total td { font-weight: 800; color: var(--text-primary) !important; font-size: 1rem; border-top: 2px solid var(--border); }
+.cc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.cc-card { background: var(--bg-input); border-radius: var(--radius-lg); padding: 12px 14px; font-size: 0.85rem; border-left: 4px solid var(--border); }
+.cc-card-title { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 8px; color: var(--text-primary); }
+.cc-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; color: var(--text-secondary); }
+.cc-net { font-weight: 700; color: var(--text-primary); border-top: 1px solid var(--border); margin-top: 4px; padding-top: 6px; }
+.cc-margin.good { border-left-color: var(--success); }
+.cc-margin.warn { border-left-color: var(--warning); }
+.cc-margin.bad { border-left-color: var(--danger); }
+.cc-margin.good .cc-card-title strong { color: var(--success); }
+.cc-margin.warn .cc-card-title strong { color: var(--warning); }
+.cc-margin.bad .cc-card-title strong { color: var(--danger); }
+.cc-details { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; }
+.cc-details > div { display: flex; gap: 10px; align-items: center; }
+.cc-details span { min-width: 140px; color: var(--text-tertiary); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+`;
 
 /* ── FINANCE ── */
 
