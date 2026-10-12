@@ -1,62 +1,44 @@
 import React, { useState, useRef, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { GEMINI_API_KEY } from '../utils/geminiConfig';
-
-// Importiamo la configurazione Gemini da GeminiChat
-const AI_MODELS = [
-    {
-        id: 'gemini-2.5-flash',
-        apiVersion: 'v1',
-        label: 'Gemini 2.5 Flash',
-        rpd: 20,
-        badge: '20/g',
-        description: 'Modello stabile (20 RPD)',
-    },
-    {
-        id: 'gemini-3.1-flash-lite-preview',
-        apiVersion: 'v1beta',
-        label: 'Gemini 3.1 Flash Lite',
-        rpd: 500,
-        badge: '500/g',
-        description: 'Alta capacità (500 RPD)',
-    }
-];
+import { generateText, AI_MODELS, findModel, getCurrentModel } from '../utils/aiClient';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 
 // Funzione per renderizzare testo Markdown correttamente
 function renderMarkdown(text) {
     // Rimuovi linee di trattini (---) usati come separatori
     text = text.replace(/^---+$/gm, '');
-    
+
     // Convert ## headers to strong
     text = text.replace(/^##\s+(.*?)$/gm, '<strong>$1</strong>');
-    
+
     // Convert ### headers to strong
     text = text.replace(/^###\s+(.*?)$/gm, '<strong>$1</strong>');
-    
+
     // Convert # headers to strong
     text = text.replace(/^#\s+(.*?)$/gm, '<strong>$1</strong>');
-    
+
     // Convert **bold** to <strong>
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    
+
     // Convert *italic* to <em>
     text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    
+
     // Rimuovi linee vuote multiple (inclusi spazi bianchi)
     text = text.replace(/\n\s*\n\s*\n/g, '\n\n');
-    
+
     // Rimuovi spazi bianchi all'inizio e fine delle linee
     text = text.split('\n').map(line => line.trim()).join('\n');
-    
+
     // Convert line breaks (ma non tra paragrafi)
     text = text.replace(/\n/g, '<br>');
-    
+
     // Rimuovi <br> multipli
     text = text.replace(/(<br\s*\/?>){3,}/g, '<br><br>');
-    
-    return text.trim();
+
+    // Il testo arriva dall'AI: va sanificato prima di essere mostrato come HTML
+    return sanitizeHtml(text.trim());
 }
 
 // Componente per visualizzare grafici testuali
@@ -68,9 +50,9 @@ function TextualChart({ content }) {
             // Rileva bar charts
             if (line.includes('█') || line.includes('▓') || line.includes('░')) {
                 return (
-                    <div key={index} className="chart-bar-line" style={{ 
-                        fontFamily: 'monospace', 
-                        fontSize: '12px', 
+                    <div key={index} className="chart-bar-line" style={{
+                        fontFamily: 'monospace',
+                        fontSize: '12px',
                         lineHeight: '1.2',
                         color: '#2D3436',
                         whiteSpace: 'pre'
@@ -79,7 +61,7 @@ function TextualChart({ content }) {
                     </div>
                 );
             }
-            
+
             // Rileva titoli sezioni
             if (line.startsWith('[') && line.endsWith(']')) {
                 return (
@@ -94,12 +76,12 @@ function TextualChart({ content }) {
                     </div>
                 );
             }
-            
+
             // Linea normale
             return (
-                <div key={index} className="chart-line" style={{ 
-                    fontFamily: 'monospace', 
-                    fontSize: '12px', 
+                <div key={index} className="chart-line" style={{
+                    fontFamily: 'monospace',
+                    fontSize: '12px',
                     lineHeight: '1.4',
                     color: '#2D3436',
                     whiteSpace: 'pre'
@@ -128,7 +110,11 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
     const [isGenerating, setIsGenerating] = useState(false);
     const [reportData, setReportData] = useState(initialReport || null);
     const [error, setError] = useState('');
-    const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
+    const [selectedModel, setSelectedModel] = useState(() => getCurrentModel().id);
+    const abortRef = useRef(null);
+
+    // Chiudendo la finestra la richiesta in corso viene annullata
+    useEffect(() => () => abortRef.current?.abort(), []);
     const [savedReports, setSavedReports] = useState([]);
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [pendingAction, setPendingAction] = useState(null);
@@ -137,7 +123,6 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
     // Se c'è un report iniziale, impostalo come reportData
     useEffect(() => {
         if (initialReport) {
-            console.log('InitialReport ricevuto:', initialReport);
             setReportData({
                 ...initialReport,
                 generatedAt: initialReport.createdAt
@@ -161,7 +146,7 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
             onClose();
             return;
         }
-        
+
         // Se c'è un report generato, mostra il dialogo di conferma
         if (reportData) {
             setShowConfirmDialog(true);
@@ -178,12 +163,12 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
         if (initialReport) {
             return;
         }
-        
+
         // Se sta generando un report, non permettere la chiusura
         if (isGenerating) {
             return;
         }
-        
+
         // Se non c'è un report generato, chiudi direttamente
         if (!reportData) {
             onClose();
@@ -194,7 +179,7 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
     // Gestione azioni del dialogo di conferma
     const handleConfirmAction = (action) => {
         setShowConfirmDialog(false);
-        
+
         switch (action) {
             case 'close':
                 onClose();
@@ -213,30 +198,23 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
                 // Non fare nulla, rimani nella vista report
                 break;
         }
-        
+
         setPendingAction(null);
     };
     // Salva report come nota nel cliente
     const saveReport = (reportContent) => {
-        console.log('=== INIZIO SALVATAGGIO REPORT COME NOTA ===');
-        console.log('saveReportAsNote chiamato con:', reportContent);
-        console.log('customers:', customers);
-        console.log('onUpdateCustomer disponibile?', !!onUpdateCustomer);
-        console.log('onUpdateCustomer type:', typeof onUpdateCustomer);
-        
         if (customers.length !== 1 || !onUpdateCustomer) {
-            console.error('Condizioni non soddisfatte:', { 
-                customersLength: customers.length, 
+            console.error('Condizioni non soddisfatte:', {
+                customersLength: customers.length,
                 hasUpdateCustomer: !!onUpdateCustomer,
                 updateCustomerType: typeof onUpdateCustomer
             });
             alert('Errore: impossibile salvare il report. Cliente non valido o funzione di aggiornamento mancante.');
             return;
         }
-        
+
         const customer = customers[0];
-        console.log('Cliente corrente:', customer);
-        
+
         const smartReportNote = {
             id: `smartreport_${Date.now()}`,
             text: `🤖 **SmartReport** - ${new Date().toLocaleString('it-IT')}\n\n${reportContent}`,
@@ -244,8 +222,6 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
             readAt: null,
             type: 'smartreport' // Tipo speciale per identificare i report
         };
-
-        console.log('Nota da salvare:', smartReportNote);
 
         // Aggiungi solo ai report salvati, non alle note
         const updatedCustomer = {
@@ -258,21 +234,13 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
             }]
         };
 
-        console.log('Cliente aggiornato:', updatedCustomer);
-
         try {
-            console.log('Tentativo di salvataggio report...');
-            console.log('Cliente ID:', customer.id);
-            console.log('Report content:', reportContent);
-            console.log('Chiamando onUpdateCustomer con parametri:', customer.id, updatedCustomer);
-            
             if (typeof onUpdateCustomer === 'function') {
                 onUpdateCustomer(customer.id, updatedCustomer);
-                console.log('onUpdateCustomer chiamato con successo');
             } else {
                 throw new Error('onUpdateCustomer non è una funzione');
             }
-            
+
             // Aggiorna la lista dei report salvati
             setSavedReports([...(customer.smartReports || []), {
                 id: smartReportNote.id,
@@ -280,7 +248,7 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
                 createdAt: smartReportNote.createdAt,
                 model: reportData.model
             }]);
-            
+
             // Notifica il componente parent che un report è stato salvato
             if (onReportSaved) {
                 onReportSaved({
@@ -290,10 +258,7 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
                     model: reportData.model
                 });
             }
-            
-            console.log('=== SALVATAGGIO COMPLETATO ===');
-            console.log('Report salvato con ID:', smartReportNote.id);
-            
+
             // Chiudi solo la finestra del report, non la scheda utente
             onClose();
         } catch (error) {
@@ -304,7 +269,7 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
     const analyzeCustomerData = () => {
         // Se c'è un solo cliente, analizza solo quello
         const singleCustomer = customers.length === 1 ? customers[0] : null;
-        
+
         if (!singleCustomer) {
             return {
                 error: "Nessun cliente da analizzare",
@@ -314,7 +279,7 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         const stats = {
             customer: {
                 name: singleCustomer.name,
@@ -339,11 +304,11 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
                 if (task.completed) {
                     stats.completedTasks++;
                 }
-                
+
                 if (task.dueDate && !task.completed) {
                     const dueDate = new Date(task.dueDate);
                     const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
-                    
+
                     if (daysUntilDue <= 7) {
                         stats.urgentTasks.push({
                             task: task.text,
@@ -353,7 +318,7 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
                         });
                     }
                 }
-                
+
                 if (task.subtasks) {
                     traverseTasks(task.subtasks);
                 }
@@ -364,12 +329,12 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
         // Analizza pagamenti del cliente
         (singleCustomer.installments || []).forEach(installment => {
             const amount = parseFloat(installment.amount) || 0;
-            
+
             if (installment.paid) {
                 stats.totalPaid += amount;
             } else {
                 stats.totalPending += amount;
-                
+
                 if (installment.dueDate) {
                     const dueDate = new Date(installment.dueDate);
                     if (dueDate < today) {
@@ -394,12 +359,14 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
 
     // Genera il report con Gemini
     const generateReport = async () => {
+        const controller = new AbortController();
+        abortRef.current = controller;
         setIsGenerating(true);
         setError('');
 
         try {
             const customerStats = analyzeCustomerData();
-            
+
             // Crea il prompt per Gemini
             const prompt = `Analizza i seguenti dati del SINGOLO cliente e genera un report dettagliato in formato Markdown:
 
@@ -421,50 +388,37 @@ IMPORTANTE:
 - Usa emoji per rendere il report più leggibile 📊📈⚠️
 - Analisi approfondita del singolo cliente, non confronti`;
 
-            const currentModel = AI_MODELS.find(m => m.id === selectedModel);
-            const apiUrl = `https://generativelanguage.googleapis.com/${currentModel.apiVersion}/models/${currentModel.id}:generateContent?key=${GEMINI_API_KEY}`;
+            const currentModel = findModel(selectedModel) || getCurrentModel();
 
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: prompt }]
-                    }],
-                    generationConfig: {
-                        temperature: 0.7,
-                        maxOutputTokens: 4000,
-                    }
-                })
+            const result = await generateText({
+                prompt,
+                modelId: currentModel.id,
+                signal: controller.signal,
+                temperature: 0.7,
+                maxOutputTokens: 4000
             });
-
-            if (!response.ok) {
-                throw new Error(`Errore API: ${response.status} ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-            if (!generatedText) {
-                throw new Error('Nessuna risposta generata dall\'IA');
-            }
 
             setReportData({
                 generatedAt: new Date().toISOString(),
                 stats: customerStats,
-                content: generatedText,
-                model: currentModel.label
+                content: result.text,
+                model: currentModel.label,
+                truncated: result.truncated
             });
 
         } catch (err) {
-            console.error('Errore generazione report:', err);
-            setError(err.message || 'Errore durante la generazione del report');
+            // Annullato dall'utente: nessun errore da mostrare
+            if (err?.code !== 'aborted') {
+                console.error('Errore generazione report:', err);
+                setError(err.message || 'Errore durante la generazione del report');
+            }
         } finally {
+            if (abortRef.current === controller) abortRef.current = null;
             setIsGenerating(false);
         }
     };
+
+    const cancelGeneration = () => abortRef.current?.abort();
 
     // Esporta in PDF
     const exportToPDF = async () => {
@@ -480,7 +434,7 @@ IMPORTANTE:
 
             const imgData = canvas.toDataURL('image/png');
             const pdf = new jsPDF('p', 'mm', 'a4');
-            
+
             const imgWidth = 210;
             const pageHeight = 297;
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -508,14 +462,14 @@ IMPORTANTE:
 
     return (
         <div className="modal-overlay" onClick={handleOverlayClick} style={{ zIndex: 1200 }}>
-            <div className="modal-content animate-scale-in" style={{ 
-                maxWidth: '900px', 
-                width: '95vw', 
-                maxHeight: '90vh', 
+            <div className="modal-content animate-scale-in" style={{
+                maxWidth: '900px',
+                width: '95vw',
+                maxHeight: '90vh',
                 padding: '24px',
                 overflow: 'auto'
             }} onClick={e => e.stopPropagation()}>
-                
+
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -534,7 +488,7 @@ IMPORTANTE:
                             <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
                                 Modello IA:
                             </label>
-                            <select 
+                            <select
                                 value={selectedModel}
                                 onChange={(e) => setSelectedModel(e.target.value)}
                                 className="input"
@@ -548,23 +502,23 @@ IMPORTANTE:
                             </select>
                         </div>
 
-                        <button 
-                            className="btn btn-primary" 
+                        <button
+                            className="btn btn-primary"
                             onClick={generateReport}
                             disabled={isGenerating}
                             style={{ width: '100%' }}
                         >
                             {isGenerating ? (
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
                                     justifyContent: 'center',
                                     width: '100%',
                                     gap: '12px'
                                 }}>
-                                    <div className="spinner" style={{ 
-                                        width: '16px', 
-                                        height: '16px', 
+                                    <div className="spinner" style={{
+                                        width: '16px',
+                                        height: '16px',
                                         border: '2px solid #fff',
                                         borderTopColor: 'transparent',
                                         margin: 0,
@@ -578,22 +532,31 @@ IMPORTANTE:
                                 </>
                             )}
                         </button>
+                        {isGenerating && (
+                            <button
+                                className="btn btn-ghost"
+                                onClick={cancelGeneration}
+                                style={{ width: '100%', marginTop: '8px' }}
+                            >
+                                Annulla
+                            </button>
+                        )}
                     </div>
                 )}
 
                 {/* Report Esistente */}
                 {initialReport && !reportData && (
-                    <div style={{ 
-                        background: 'var(--bg-card)', 
-                        border: '1px solid var(--border-light)', 
-                        borderRadius: 'var(--radius-md)', 
-                        padding: '20px', 
+                    <div style={{
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-light)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '20px',
                         marginBottom: '20px',
                         textAlign: 'center'
                     }}>
-                        <div className="spinner" style={{ 
-                            width: '24px', 
-                            height: '24px', 
+                        <div className="spinner" style={{
+                            width: '24px',
+                            height: '24px',
                             margin: '0 auto 16px auto',
                             border: '2px solid var(--primary)',
                             borderTopColor: 'transparent',
@@ -610,11 +573,11 @@ IMPORTANTE:
 
                 {/* Messaggio se non c'è contenuto */}
                 {reportData && !reportData.content && (
-                    <div style={{ 
-                        background: 'var(--bg-card)', 
-                        border: '1px solid var(--border-light)', 
-                        borderRadius: 'var(--radius-md)', 
-                        padding: '20px', 
+                    <div style={{
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-light)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '20px',
                         marginBottom: '20px',
                         textAlign: 'center'
                     }}>
@@ -637,13 +600,18 @@ IMPORTANTE:
                 {/* Report Generato */}
                 {reportData && reportData.content && (
                     <div>
+                        {reportData.truncated && (
+                            <div className="alert alert-warning" style={{ marginBottom: '12px' }}>
+                                Il report è stato interrotto perché troppo lungo: potrebbe essere incompleto.
+                            </div>
+                        )}
                         {/* Header Report */}
-                        <div style={{ 
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
-                            color: 'white', 
-                            padding: '20px', 
-                            borderRadius: '8px', 
-                            marginBottom: '20px' 
+                        <div style={{
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            color: 'white',
+                            padding: '20px',
+                            borderRadius: '8px',
+                            marginBottom: '20px'
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>
@@ -657,13 +625,13 @@ IMPORTANTE:
                         Report Generato
                     </h4>
                                     <p style={{ margin: 0, opacity: 0.9, fontSize: '0.9rem' }}>
-                                        {new Date(reportData.generatedAt).toLocaleString('it-IT')} • 
-                                        Modello: {reportData.model} • 
+                                        {new Date(reportData.generatedAt).toLocaleString('it-IT')} •
+                                        Modello: {reportData.model} •
                                         Clienti analizzati: {reportData.stats?.totalCustomers || 1}
                                     </p>
                                 </div>
-                                <button 
-                                    className="btn btn-secondary" 
+                                <button
+                                    className="btn btn-secondary"
                                     onClick={exportToPDF}
                                     style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)' }}
                                 >
@@ -678,28 +646,28 @@ IMPORTANTE:
                         </div>
 
                         {/* Contenuto Report */}
-                        <div ref={reportRef} style={{ 
-                            background: 'white', 
-                            padding: '24px', 
-                            borderRadius: '8px', 
-                            border: '1px solid #e1e4e8' 
+                        <div ref={reportRef} style={{
+                            background: 'white',
+                            padding: '24px',
+                            borderRadius: '8px',
+                            border: '1px solid #e1e4e8'
                         }}>
-                            <div style={{ 
+                            <div style={{
                                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                                 lineHeight: '1.6',
                                 color: '#2D3436'
                             }}>
                                 {reportData.content.split('\n').map((paragraph, index) => {
                                     const trimmed = paragraph.trim();
-                                    
+
                                     // Salta linee vuote
                                     if (!trimmed) return null;
-                                    
+
                                     // Rileva titoli
                                     if (trimmed.startsWith('##')) {
                                         return (
-                                            <h2 key={index} style={{ 
-                                                color: '#6C5CE7', 
+                                            <h2 key={index} style={{
+                                                color: '#6C5CE7',
                                                 margin: '24px 0 16px 0',
                                                 fontSize: '1.5rem',
                                                 fontWeight: 'bold'
@@ -708,11 +676,11 @@ IMPORTANTE:
                                             </h2>
                                         );
                                     }
-                                    
+
                                     if (trimmed.startsWith('###')) {
                                         return (
-                                            <h3 key={index} style={{ 
-                                                color: '#2D3436', 
+                                            <h3 key={index} style={{
+                                                color: '#2D3436',
                                                 margin: '20px 0 12px 0',
                                                 fontSize: '1.2rem',
                                                 fontWeight: '600'
@@ -721,11 +689,11 @@ IMPORTANTE:
                                             </h3>
                                         );
                                     }
-                                    
+
                                     if (trimmed.startsWith('#')) {
                                         return (
-                                            <h3 key={index} style={{ 
-                                                color: '#2D3436', 
+                                            <h3 key={index} style={{
+                                                color: '#2D3436',
                                                 margin: '20px 0 12px 0',
                                                 fontSize: '1.2rem',
                                                 fontWeight: '600'
@@ -734,33 +702,33 @@ IMPORTANTE:
                                             </h3>
                                         );
                                     }
-                                    
+
                                     // Lista con asterischi
                                     if (trimmed.startsWith('* ')) {
                                         return (
-                                            <div key={index} style={{ 
-                                                margin: '8px 0', 
+                                            <div key={index} style={{
+                                                margin: '8px 0',
                                                 paddingLeft: '20px',
                                                 fontSize: '14px',
                                                 lineHeight: '1.5'
                                             }}>
-                                                <div dangerouslySetInnerHTML={{ 
-                                                    __html: renderMarkdown(trimmed.replace('* ', '')) 
+                                                <div dangerouslySetInnerHTML={{
+                                                    __html: renderMarkdown(trimmed.replace('* ', ''))
                                                 }} />
                                             </div>
                                         );
                                     }
-                                    
+
                                     // Paragrafo normale
                                     return (
-                                        <div key={index} style={{ 
-                                            margin: '12px 0', 
+                                        <div key={index} style={{
+                                            margin: '12px 0',
                                             textAlign: 'justify',
                                             fontSize: '14px',
                                             lineHeight: '1.5'
                                         }}>
-                                            <div dangerouslySetInnerHTML={{ 
-                                                __html: renderMarkdown(trimmed) 
+                                            <div dangerouslySetInnerHTML={{
+                                                __html: renderMarkdown(trimmed)
                                             }} />
                                         </div>
                                     );
@@ -772,7 +740,7 @@ IMPORTANTE:
                         <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
                             {/* Mostra "Salva come nota" solo per report appena generati, non per report esistenti */}
                             {!initialReport && (
-                                <button 
+                                <button
                                     className="btn btn-secondary"
                                     onClick={() => saveReport(reportData.content)}
                                     style={{ flex: 1 }}
@@ -787,7 +755,7 @@ IMPORTANTE:
                                     Salva come nota
                                 </button>
                             )}
-                            <button 
+                            <button
                                 className="btn btn-primary"
                                 onClick={exportToPDF}
                                 style={{ flex: initialReport ? 1 : 1 }}
@@ -802,7 +770,7 @@ IMPORTANTE:
                         </div>
                     </div>
                 )}
-                
+
                 {/* Dialogo di Conferma */}
                 {showConfirmDialog && (
                     <div style={{

@@ -23,7 +23,7 @@ import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustom
 import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
-import { syncAISettings } from './utils/aiTextService';
+import { syncAISettings, setAIUsageListener } from './utils/aiClient';
 
 /* ── Notification Component (Hoisted/Top-level) ── */
 const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggleRead, customers, setSelectedCustomer }) => {
@@ -320,6 +320,18 @@ export default function App() {
   useEffect(() => {
     syncAISettings(settings);
   }, [settings?.aiWritingModel, settings?.aiSummaryModel]);
+
+  // Ogni risposta AI riuscita (editor, chat, SmartReport) conta nelle richieste del giorno
+  useEffect(() => {
+    setAIUsageListener(() => {
+      const today = new Date().toISOString().slice(0, 10);
+      updateAiUsageStats(prev => ({
+        date: today,
+        count: (prev?.date === today ? prev.count : 0) + 1
+      }));
+    });
+    return () => setAIUsageListener(null);
+  }, [updateAiUsageStats]);
 
   // Toggle custom cursor class on body based on settings
   useEffect(() => {

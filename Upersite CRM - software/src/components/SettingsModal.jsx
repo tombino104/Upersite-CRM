@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { getMasterPassword, verifyMasterPassword, setMasterPassword, exportData, importData, formatBytes, getStorageInfo } from '../utils/storage';
 import { reencryptCredentials } from '../utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
-import { getAvailableModels, getCurrentModel, getCurrentSummaryModel, setAIModel, setAISummaryModel } from '../utils/aiTextService';
+import { getAvailableModels, getCurrentModel, getCurrentSummaryModel, setAIModel, setAISummaryModel } from '../utils/aiClient';
 import CalculatorSettings from './CalculatorSettings';
 import RestoreModal from './RestoreModal';
 import ManualModal from './ManualModal';

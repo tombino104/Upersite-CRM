@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
-// import SmartSummarizerButton from './SmartSummarizerButton';
 
 import RichTextEditor from './RichTextEditor';
 

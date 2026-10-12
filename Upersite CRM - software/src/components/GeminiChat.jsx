@@ -1,35 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { GEMINI_API_KEY } from '../utils/geminiConfig';
-
-// === MODELLI DISPONIBILI ===
-// apiVersion: 'v1' è l'endpoint stabile originale, 'v1beta' per i modelli più nuovi
-const AI_MODELS = [
-    {
-        id: 'gemini-2.5-flash',
-        apiVersion: 'v1',          // endpoint originale che funzionava
-        label: 'Gemini 2.5 Flash',
-        rpd: 20,
-        badge: '20/g',
-        description: 'Modello stabile (20 RPD)',
-    },
-    {
-        id: 'gemini-3.1-flash-lite-preview',
-        apiVersion: 'v1beta',      // endpoint per i modelli preview
-        label: 'Gemini 3.1 Flash Lite',
-        rpd: 500,
-        badge: '500/g',
-        description: 'Alta capacità (500 RPD)',
-    },
-    {
-        id: 'gemma-4-31b-it',
-        apiVersion: 'v1beta',      // endpoint per i modelli Gemma
-        label: 'Gemma 4 31B',
-        rpd: 1500,
-        badge: '1.5k/g',
-        description: 'Modello Gemma 4 da 31B (1.5k RPD)',
-        default: true
-    },
-];
+import { generateText, AI_MODELS, findModel, defaultModel } from '../utils/aiClient';
+import { htmlToText } from '../utils/htmlToText';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 const MODEL_STORAGE_KEY = 'upersite_ai_model';
 
@@ -46,6 +18,66 @@ function formatChatTitle(date) {
     return new Date(date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+// Stima dei token di un dato (circa 4 caratteri per token)
+const estimateTokens = (data) => Math.round(JSON.stringify(data).length / 4);
+
+// Dati del CRM mandati all'AI come contesto. Le note sono salvate in HTML: si inviano come testo semplice.
+// optimized: solo ciò che è ancora aperto (rate non pagate, task non completati, ticket aperti, eventi futuri).
+function buildCrmContext(customers, events, optimized) {
+    const noteText = (html) => htmlToText(html);
+
+    return {
+        clienti: customers.map(c => ({
+            id: c.id,
+            nome: c.name,
+            azienda: c.company,
+            sito: c.website,
+            stato: c.status,
+            tags: c.tags || [],
+            rate: (c.installments || []).filter(i => !optimized || !i.paid).map(i => ({
+                id: i.id,
+                scadenza: i.dueDate,
+                importo: i.amount,
+                pagata: i.paid,
+                descrizione: i.description || ''
+            })),
+            task: (c.todo || []).filter(t => !optimized || !t.completed).map(t => ({
+                testo: t.text,
+                scadenza: t.dueDate,
+                completato: t.completed
+            })),
+            tickets: (c.tickets || []).filter(t => !optimized || t.isOpen).map(t => ({
+                id: t.id,
+                link: t.link,
+                priorita: t.priority || 2,
+                stato: t.isOpen ? 'aperto' : 'chiuso',
+                note: noteText(t.description || ''),
+                noteCollegate: (t.linkedNotes || []).map(nid => {
+                    const note = (c.notes || []).find(n => n.id === nid);
+                    return note ? noteText(note.text).substring(0, 100) + '...' : '';
+                }).filter(Boolean),
+                creatoIl: t.createdAt
+            })),
+            links: (c.links || []).map(l => ({
+                id: l.id,
+                etichetta: l.label,
+                url: l.url,
+                note: noteText(l.note || ''),
+                creatoIl: l.createdAt
+            })),
+            // Esclude i report SmartReport
+            note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => noteText(n.text)).filter(Boolean)
+        })),
+        eventi: (events || []).filter(e => !optimized || new Date(e.date) >= new Date()).map(e => ({
+            id: e.id,
+            titolo: e.title,
+            data: e.date,
+            tipo: 'evento_globale'
+        }))
+    };
+}
+
+// Il testo dell'AI è formattato in HTML minimo: va sempre sanificato prima di mostrarlo
 function formatText(text) {
     if (!text) return '';
     let formatted = text
@@ -58,12 +90,14 @@ function formatText(text) {
         .replace(/^\* (.*?)$/gm, '<li>$1</li>')
         .replace(/^\d+\. (.*?)$/gm, '<li>$1</li>');
 
+    const safe = (html) => ({ __html: sanitizeHtml(html) });
+
     return formatted.split('\n').map((line, idx) => {
-        if (line.includes('<li>')) return <ul key={idx} style={{ margin: 0, paddingLeft: '20px' }} dangerouslySetInnerHTML={{ __html: line }} />;
-        if (line.includes('<h')) return <div key={idx} dangerouslySetInnerHTML={{ __html: line }} />;
+        if (line.includes('<li>')) return <ul key={idx} style={{ margin: 0, paddingLeft: '20px' }} dangerouslySetInnerHTML={safe(line)} />;
+        if (line.includes('<h')) return <div key={idx} dangerouslySetInnerHTML={safe(line)} />;
         return (
             <span key={idx}>
-                <span dangerouslySetInnerHTML={{ __html: line }} />
+                <span dangerouslySetInnerHTML={safe(line)} />
                 <br />
             </span>
         );
@@ -82,7 +116,7 @@ export default function GeminiChat({
     updateSettings
 }) {
     // Ripristina il modello salvato o usa il default
-    const savedModelId = localStorage.getItem(MODEL_STORAGE_KEY) || AI_MODELS[0].id;
+    const savedModelId = localStorage.getItem(MODEL_STORAGE_KEY) || defaultModel().id;
     const [selectedModelId, setSelectedModelId] = useState(savedModelId);
     const [showModelMenu, setShowModelMenu] = useState(false);
 
@@ -98,7 +132,7 @@ export default function GeminiChat({
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
 
-    const currentModel = AI_MODELS.find(m => m.id === selectedModelId) || AI_MODELS[0];
+    const currentModel = findModel(selectedModelId) || defaultModel();
 
     const handleModelChange = (modelId) => {
         setSelectedModelId(modelId);
@@ -150,6 +184,36 @@ export default function GeminiChat({
         }
     }, [chatHistory, onUpdateChatHistory]);
 
+    // Richiesta in corso: serve per il pulsante "Ferma" e per annullarla se la chat viene chiusa/smontata
+    const abortRef = useRef(null);
+    const stopGeneration = () => abortRef.current?.abort();
+    useEffect(() => () => abortRef.current?.abort(), []);
+
+    // Messaggio da mostrare in chat per un errore del servizio AI
+    const errorMessage = (error) => {
+        if (error?.code === 'aborted') return '⏹ Richiesta interrotta.';
+
+        if (error?.code === 'quota') {
+            if (error.zeroQuota) {
+                return `⚠️ **Quota 0 per "${currentModel.label}"**\n\n` +
+                    `Questo modello non ha quota gratuita per la tua API key.\n` +
+                    `Modello chiamato: \`${currentModel.id}\` (endpoint: /${currentModel.apiVersion}/)\n\n` +
+                    `**Soluzione rapida:** cambia modello → seleziona **Gemini 2.5 Flash** dal menu in cima alla chat.\n` +
+                    `Per sbloccare il modello: https://ai.dev/rate-limit`;
+            }
+            return `⚠️ **Limite giornaliero raggiunto per "${currentModel.label}"** (${currentModel.rpd} RPD)\n\n` +
+                `Modello: \`${currentModel.id}\` | Endpoint: /${currentModel.apiVersion}/\n` +
+                (error.retryAfterSeconds ? `Riprova tra: **${error.retryAfterSeconds}s** (o domani dopo mezzanotte UTC)\n\n` : '\n') +
+                `Hai esaurito le ${currentModel.rpd} richieste giornaliere gratuite.\n` +
+                `Questo è normale se hai fatto molti test oggi — il contatore si azzera a mezzanotte UTC.`;
+        }
+
+        if (error?.code === 'http') {
+            return `⚠️ Errore API (${currentModel.label} / ${currentModel.id}): ${error.message}`;
+        }
+        return `⚠️ ${error?.message || 'Errore imprevisto del servizio AI.'}`;
+    };
+
     const handleSend = async (e) => {
         if (e) e.preventDefault();
         const text = inputValue.trim();
@@ -166,189 +230,27 @@ export default function GeminiChat({
         setInputValue('');
         setIsLoading(true);
 
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        const finish = (msgs) => {
+            setMessages(msgs);
+            saveCurrentSession(msgs, sessionId);
+        };
+
         try {
-            let dbSummary, fullTokenCount = 0, optimizedTokenCount = 0;
-            
-            // Funzione per contare token
-            const countTokens = (data) => Math.round(JSON.stringify(data).length / 4);
-            
-            if (settings.aiOptimization) {
-                // Dati ottimizzati
-                dbSummary = {
-                    clienti: customers.map(c => ({
-                        id: c.id,
-                        nome: c.name,
-                        azienda: c.company,
-                        sito: c.website,
-                        stato: c.status,
-                        tags: c.tags || [],
-                        rate: (c.installments || []).filter(i => !i.paid).map(i => ({ 
-                            id: i.id,
-                            scadenza: i.dueDate, 
-                            importo: i.amount, 
-                            pagata: i.paid,
-                            descrizione: i.description || ''
-                        })),
-                        task: (c.todo || []).filter(t => !t.completed).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
-                        tickets: (c.tickets || []).filter(t => t.isOpen).map(t => ({
-                            id: t.id,
-                            link: t.link,
-                            priorita: t.priority || 2,
-                            stato: t.isOpen ? 'aperto' : 'chiuso',
-                            note: t.description || '',
-                            noteCollegate: (t.linkedNotes || []).map(nid => {
-                                const note = (c.notes || []).find(n => n.id === nid);
-                                return note ? note.text.substring(0, 100) + '...' : '';
-                            }).filter(Boolean),
-                            creatoIl: t.createdAt
-                        })),
-                        links: (c.links || []).map(l => ({
-                            id: l.id,
-                            etichetta: l.label,
-                            url: l.url,
-                            note: l.note || '',
-                            creatoIl: l.createdAt
-                        })),
-                        note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => n.text) // Esclude i report SmartReport
-                    })),
-                    eventi: (events || []).filter(e => {
-                        const eventDate = new Date(e.date);
-                        const today = new Date();
-                        return eventDate >= today; // solo eventi futuri
-                    }).map(e => ({
-                        id: e.id,
-                        titolo: e.title,
-                        data: e.date,
-                        tipo: 'evento_globale'
-                    }))
-                };
-                
-                // Calcola token ottimizzati
-                optimizedTokenCount = countTokens(dbSummary);
-                
-                // Calcola token completi per statistica
-                const fullData = {
-                    clienti: customers.map(c => ({
-                        id: c.id,
-                        nome: c.name,
-                        azienda: c.company,
-                        stato: c.status,
-                        tags: c.tags || [],
-                        rate: (c.installments || []).map(i => ({ 
-                            id: i.id,
-                            scadenza: i.dueDate, 
-                            importo: i.amount, 
-                            pagata: i.paid,
-                            descrizione: i.description || ''
-                        })),
-                        task: (c.todo || []).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
-                        tickets: (c.tickets || []).map(t => ({
-                            id: t.id,
-                            link: t.link,
-                            priorita: t.priority || 2,
-                            stato: t.isOpen ? 'aperto' : 'chiuso',
-                            note: t.description || '',
-                            noteCollegate: (t.linkedNotes || []).map(nid => {
-                                const note = (c.notes || []).find(n => n.id === nid);
-                                return note ? note.text.substring(0, 100) + '...' : '';
-                            }).filter(Boolean),
-                            creatoIl: t.createdAt
-                        })),
-                        links: (c.links || []).map(l => ({
-                            id: l.id,
-                            etichetta: l.label,
-                            url: l.url,
-                            note: l.note || '',
-                            creatoIl: l.createdAt
-                        })),
-                        note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => n.text)
-                    })),
-                    eventi: (events || []).map(e => ({
-                        id: e.id,
-                        titolo: e.title,
-                        data: e.date,
-                        tipo: 'evento_globale'
-                    }))
-                };
-                fullTokenCount = countTokens(fullData);
-                
-                // Aggiorna statistiche
-                const currentStats = settings.tokenStats || { totalUsed: 0, totalSaved: 0 };
-                const savedTokens = fullTokenCount - optimizedTokenCount;
-                
-                updateSettings({
-                    tokenStats: {
-                        totalUsed: currentStats.totalUsed + optimizedTokenCount,
-                        totalSaved: currentStats.totalSaved + savedTokens
-                    }
-                });
-                
-            } else {
-                // Dati completi
-                dbSummary = {
-                    clienti: customers.map(c => ({
-                        id: c.id,
-                        nome: c.name,
-                        azienda: c.company,
-                        sito: c.website,
-                        stato: c.status,
-                        tags: c.tags || [],
-                        rate: (c.installments || []).map(i => ({ 
-                            id: i.id,
-                            scadenza: i.dueDate, 
-                            importo: i.amount, 
-                            pagata: i.paid,
-                            descrizione: i.description || ''
-                        })),
-                        task: (c.todo || []).map(t => ({ testo: t.text, scadenza: t.dueDate, completato: t.completed })),
-                        tickets: (c.tickets || []).map(t => ({
-                            id: t.id,
-                            link: t.link,
-                            priorita: t.priority || 2,
-                            stato: t.isOpen ? 'aperto' : 'chiuso',
-                            note: t.description || '',
-                            noteCollegate: (t.linkedNotes || []).map(nid => {
-                                const note = (c.notes || []).find(n => n.id === nid);
-                                return note ? note.text.substring(0, 100) + '...' : '';
-                            }).filter(Boolean),
-                            creatoIl: t.createdAt
-                        })),
-                        links: (c.links || []).map(l => ({
-                            id: l.id,
-                            etichetta: l.label,
-                            url: l.url,
-                            note: l.note || '',
-                            creatoIl: l.createdAt
-                        })),
-                        note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => n.text) // Esclude i report SmartReport
-                    })),
-                    eventi: (events || []).map(e => ({
-                        id: e.id,
-                        titolo: e.title,
-                        data: e.date,
-                        tipo: 'evento_globale'
-                    }))
-                };
-                
-                // Aggiorna statistiche (solo token usati)
-                fullTokenCount = countTokens(dbSummary);
-                const currentStats = settings.tokenStats || { totalUsed: 0, totalSaved: 0 };
-                
-                updateSettings({
-                    tokenStats: {
-                        totalUsed: currentStats.totalUsed + fullTokenCount,
-                        totalSaved: currentStats.totalSaved
-                    }
-                });
-            }
+            const optimized = !!settings.aiOptimization;
+            const dbSummary = buildCrmContext(customers, events, optimized);
+            const usedTokens = estimateTokens(dbSummary);
+            const savedTokens = optimized ? estimateTokens(buildCrmContext(customers, events, false)) - usedTokens : 0;
 
             const systemPrompt = `Sei Upersite AI Assistant, l'assistente IA intelligente di Upersite Studio. Hai accesso al Database in sola lettura. Non inventare dati.
             Fornisci SOLO le informazioni richieste, senza aggiungere dettagli non richiesti. Se ti chiedo i task, elenca solo i task senza includere note o altri contenuti.
             Hai accesso a: clienti, tickets, rate, links, task, note e eventi globali.
-            
+
 FORMATTAZIONE OBBLIGATORIA:
 - # Titolo Grande
-- ## Titolo Medio  
+- ## Titolo Medio
 - ### Titolo Piccolo (nomi clienti)
 - **Grassetto** per importi (€), date (GG/MM/AAAA) e nomi clienti
 - - Lista puntata (usa solo il trattino)
@@ -367,86 +269,41 @@ REGOLE:
 DATABASE CONTEXT:
 ${JSON.stringify(dbSummary)}`;
 
-            // Usa l'ID modello reale E l'endpoint API corretto per il modello selezionato
-            const apiUrl = `https://generativelanguage.googleapis.com/${currentModel.apiVersion}/models/${currentModel.id}:generateContent?key=${GEMINI_API_KEY}`;
+            // Ultimi 10 messaggi; la conversazione deve iniziare con un messaggio dell'utente
+            // (il messaggio di benvenuto è dell'assistente e non va inviato)
+            const history = newMessages.slice(-10).map(msg => ({
+                role: msg.role === 'model' ? 'model' : 'user',
+                text: msg.text
+            }));
+            while (history.length > 0 && history[0].role === 'model') history.shift();
 
-            // LOG visibile nei DevTools (F12 → Console) per verificare il modello chiamato
-            console.log(`[Upersite AI] Calling model: ${currentModel.id} | Endpoint: ${currentModel.apiVersion} | URL: ${apiUrl.replace(GEMINI_API_KEY, '***KEY***')}`);
-
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [
-                        { role: 'user', parts: [{ text: systemPrompt }] },
-                        ...newMessages.slice(-10).map(msg => ({
-                            role: msg.role === 'model' ? 'model' : 'user',
-                            parts: [{ text: msg.text }]
-                        }))
-                    ]
-                })
+            const result = await generateText({
+                system: systemPrompt,
+                messages: history,
+                modelId: currentModel.id,
+                signal: controller.signal
             });
 
-            const data = await response.json();
-
-            if (data.error) {
-                const msg = data.error.message || '';
-                const isQuotaError = data.error.status === 'RESOURCE_EXHAUSTED' ||
-                    msg.toLowerCase().includes('quota') ||
-                    msg.toLowerCase().includes('limit: 0') ||
-                    msg.toLowerCase().includes('exceeded');
-
-                // Prova a estrarre il tempo di retry dal messaggio
-                const retryMatch = msg.match(/retry in ([\d.]+)s/i);
-                const retrySeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
-
-                let errText;
-                if (isQuotaError) {
-                    const isZeroLimit = msg.includes('limit: 0');
-                    if (isZeroLimit) {
-                        errText = `⚠️ **Quota 0 per "${currentModel.label}"**\n\n` +
-                            `Questo modello non ha quota gratuita per la tua API key.\n` +
-                            `Modello chiamato: \`${currentModel.id}\` (endpoint: /${currentModel.apiVersion}/)\n\n` +
-                            `**Soluzione rapida:** cambia modello → seleziona **Gemini 2.5 Flash** dal menu in cima alla chat.\n` +
-                            `Per sbloccare il modello: https://ai.dev/rate-limit`;
-                    } else {
-                        errText = `⚠️ **Limite giornaliero raggiunto per "${currentModel.label}"** (${currentModel.rpd} RPD)\n\n` +
-                            `Modello: \`${currentModel.id}\` | Endpoint: /${currentModel.apiVersion}/\n` +
-                            (retrySeconds ? `Riprova tra: **${retrySeconds}s** (o domani dopo mezzanotte UTC)\n\n` : '\n') +
-                            `Hai esaurito le ${currentModel.rpd} richieste giornaliere gratuite.\n` +
-                            `Questo è normale se hai fatto molti test oggi — il contatore si azzera a mezzanotte UTC.`;
+            // I token si contano solo se la richiesta è andata a buon fine
+            if (updateSettings) {
+                const currentStats = settings.tokenStats || { totalUsed: 0, totalSaved: 0 };
+                updateSettings({
+                    tokenStats: {
+                        totalUsed: currentStats.totalUsed + usedTokens,
+                        totalSaved: currentStats.totalSaved + savedTokens
                     }
-                } else {
-                    errText = `⚠️ Errore API (${currentModel.label} / ${currentModel.id}): ${msg}`;
-                }
-
-                console.error(`[Upersite AI] API Error:`, data.error);
-                const errMsgs = [...newMessages, { role: 'model', text: errText }];
-                setMessages(errMsgs);
-                saveCurrentSession(errMsgs, sessionId);
-                return;
+                });
             }
 
-            const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text
-                || "Scusami, ho avuto un problema nel processare la richiesta. Riprova tra poco.";
-
-            // Aggiorna contatore richieste SOLO dopo risposta positiva
-            const today = new Date().toISOString().slice(0, 10);
-            const newStats = {
-                date: today,
-                count: (aiUsageStats.date === today ? aiUsageStats.count : 0) + 1
-            };
-            if (onUpdateAiUsageStats) onUpdateAiUsageStats(newStats);
-
-            const finalMsgs = [...newMessages, { role: 'model', text: aiText }];
-            setMessages(finalMsgs);
-            saveCurrentSession(finalMsgs, sessionId);
+            const aiText = result.truncated
+                ? `${result.text}\n\n⚠️ Risposta interrotta perché troppo lunga: chiedimi di continuare.`
+                : result.text;
+            finish([...newMessages, { role: 'model', text: aiText }]);
         } catch (error) {
-            console.error("Gemini Fetch Error:", error);
-            const errMsgs = [...newMessages, { role: 'model', text: "⚠️ Errore di connessione con Gemini. Controlla la tua chiave API o la connessione internet." }];
-            setMessages(errMsgs);
-            saveCurrentSession(errMsgs, sessionId);
+            if (error?.code !== 'aborted') console.error('[Upersite AI] Errore:', error);
+            finish([...newMessages, { role: 'model', text: errorMessage(error) }]);
         } finally {
+            if (abortRef.current === controller) abortRef.current = null;
             setIsLoading(false);
             setTimeout(() => inputRef.current?.focus(), 100);
         }
@@ -744,9 +601,11 @@ ${JSON.stringify(dbSummary)}`;
                         placeholder={`Chiedimi qualcosa... (${currentModel.label})`}
                         disabled={isLoading}
                     />
-                    <button type="submit" disabled={isLoading || !inputValue.trim()}>
-                        {isLoading ? '⌛' : '➤'}
-                    </button>
+                    {isLoading ? (
+                        <button type="button" onClick={stopGeneration} title="Interrompi la risposta" aria-label="Interrompi la risposta">■</button>
+                    ) : (
+                        <button type="submit" disabled={!inputValue.trim()} title="Invia" aria-label="Invia">➤</button>
+                    )}
                 </form>
             </div>
 
