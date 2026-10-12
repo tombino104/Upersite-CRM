@@ -17,6 +17,7 @@ import TicketDashboardModal from './components/TicketDashboardModal';
 import AutomationEditor from './components/AutomationEditor/AutomationEditor';
 import RecentTransactionsModal from './components/RecentTransactionsModal';
 import CRMAnalyticsModal from './components/CRMAnalyticsModal';
+import MonitorModal from './components/MonitorModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
@@ -270,6 +271,7 @@ export default function App() {
   const [showTicketDashboard, setShowTicketDashboard] = useState(false);
   const [showAutomationEditor, setShowAutomationEditor] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showMonitor, setShowMonitor] = useState(false);
   const [showRecentTransactions, setShowRecentTransactions] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
@@ -293,6 +295,21 @@ export default function App() {
     saveWorkflow, deleteWorkflow,
     notifyLogin, notifyLogout,
   } = useCustomers();
+
+  // Un monitor UptimeRobot appartiene a un solo cliente (customerId null = scollega).
+  // Aggiornamento funzionale: più collegamenti di fila ("Collega tutti") si sommano.
+  const linkMonitorToCustomer = useCallback((monitorId, customerId) => {
+    const id = String(monitorId);
+    const target = customerId === null ? null : String(customerId);
+    setCustomers(prev => prev.map(c => {
+      const ids = (c.uptimeMonitorIds || []).map(String);
+      const has = ids.includes(id);
+      const isTarget = String(c.id) === target;
+      if (isTarget && !has) return { ...c, uptimeMonitorIds: [...ids, id] };
+      if (!isTarget && has) return { ...c, uptimeMonitorIds: ids.filter(x => x !== id) };
+      return c;
+    }));
+  }, [setCustomers]);
 
   // Toggle custom cursor class on body based on settings
   useEffect(() => {
@@ -1016,6 +1033,18 @@ export default function App() {
         />
       )}
 
+      {/* Monitor Modal (UptimeRobot dentro il CRM) */}
+      {showMonitor && (
+        <MonitorModal
+          apiKey={settings.uptimeRobotApiKey || ''}
+          onSaveApiKey={key => updateSettings({ uptimeRobotApiKey: key })}
+          customers={customers}
+          onLinkMonitor={linkMonitorToCustomer}
+          onOpenCustomer={c => { setShowMonitor(false); setSelectedCustomer(c); }}
+          onClose={() => setShowMonitor(false)}
+        />
+      )}
+
       {/* Analytics Button */}
       <button
         onClick={() => setShowAnalytics(true)}
@@ -1094,7 +1123,7 @@ export default function App() {
 
       {/* Monitor Button */}
       <button
-        onClick={() => window.open('https://dashboard.uptimerobot.com/monitors', '_blank')}
+        onClick={() => setShowMonitor(true)}
         title="Monitoraggio"
         style={{
           position: 'fixed',

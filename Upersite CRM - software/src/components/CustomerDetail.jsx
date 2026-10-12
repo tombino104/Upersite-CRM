@@ -11,6 +11,7 @@ import SmartReportSection from './SmartReportSection';
 
 import TicketSection from './TicketSection';
 import TimesheetSection from './TimesheetSection';
+import MonitorStatusBadge from './MonitorStatusBadge';
 
 import IconComponent from './IconComponent';
 
@@ -2604,6 +2605,8 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+
+                        <MonitorStatusBadge apiKey={settings?.uptimeRobotApiKey} monitorIds={form.uptimeMonitorIds} />
 
                         <button
 

@@ -7,6 +7,8 @@ const __dirname = path.dirname(__filename);
 
 const isDev = !app.isPackaged;
 
+const WEBVIEW_ALLOWED = /^https:\/\/([a-z0-9-]+\.)*uptimerobot\.com(\/|$)/i;
+
 function createWindow() {
     const win = new BrowserWindow({
         width: 1280,
@@ -23,14 +25,36 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.cjs'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: true
+            sandbox: true,
+            // Serve per mostrare UptimeRobot dentro il CRM (blocca gli iframe)
+            webviewTag: true
         }
     });
 
     // I link esterni si aprono nel browser di sistema, non dentro l'app
-    win.webContents.setWindowOpenHandler(({ url }) => {
+    const openExternally = ({ url }) => {
         if (/^https?:\/\//i.test(url)) shell.openExternal(url);
         return { action: 'deny' };
+    };
+    win.webContents.setWindowOpenHandler(openExternally);
+
+    // Il <webview> può caricare solo UptimeRobot, senza preload né accesso a Node
+    win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+        delete webPreferences.preload;
+        webPreferences.nodeIntegration = false;
+        webPreferences.contextIsolation = true;
+        webPreferences.sandbox = true;
+        if (!WEBVIEW_ALLOWED.test(params.src)) event.preventDefault();
+    });
+
+    win.webContents.on('did-attach-webview', (_event, guest) => {
+        guest.setWindowOpenHandler(openExternally);
+        guest.on('will-navigate', (e, url) => {
+            if (!WEBVIEW_ALLOWED.test(url)) {
+                e.preventDefault();
+                openExternally({ url });
+            }
+        });
     });
 
     if (isDev) {
