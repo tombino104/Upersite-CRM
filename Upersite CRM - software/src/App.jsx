@@ -23,6 +23,7 @@ import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustom
 import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
+import { syncAISettings } from './utils/aiTextService';
 
 /* ── Notification Component (Hoisted/Top-level) ── */
 const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggleRead, customers, setSelectedCustomer }) => {
@@ -314,6 +315,11 @@ export default function App() {
       return c;
     }));
   }, [setCustomers]);
+
+  // I modelli AI scelti nelle impostazioni (crm_data.json) sono la fonte di verità per l'editor note
+  useEffect(() => {
+    syncAISettings(settings);
+  }, [settings?.aiWritingModel, settings?.aiSummaryModel]);
 
   // Toggle custom cursor class on body based on settings
   useEffect(() => {

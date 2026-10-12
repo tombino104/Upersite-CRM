@@ -3,6 +3,84 @@ import { createPortal } from 'react-dom';
 import IconComponent from './IconComponent';
 import { aiTextService } from '../utils/aiTextService';
 import { sanitizeHtml, sanitizeChildrenInPlace } from '../utils/sanitizeHtml';
+import { markdownToHtml, escapeHtml } from '../utils/markdownToHtml';
+
+const AI_TOOLS = [
+  { id: 'rewrite', label: '📝 Riscrivi' },
+  { id: 'summarize', label: '📊 Riassumi' },
+  { id: 'improve', label: '🚀 Migliora' },
+  { id: 'expand', label: '📈 Espandi' },
+  { id: 'ideas', label: '💡 Idee' },
+  { id: 'grammar', label: '✅ Correggi grammatica' }
+];
+
+const AI_LANGUAGES = ['inglese', 'francese', 'spagnolo', 'tedesco', 'portoghese', 'italiano'];
+
+// Altezza massima stimata del menu contestuale, per tenerlo dentro lo schermo
+const CONTEXTUAL_MENU_MAX_HEIGHT = 460;
+
+// Il menu comandi si apre con "/" (o "\" come alias storico), ma solo a inizio riga o dopo uno spazio:
+// così non scatta in percorsi (D:\cartella), URL (https://...) o frasi come "e/o".
+// Restituisce { filter, length } (length = caratteri da cancellare: simbolo + testo digitato) o null.
+function getSlashMatch(textBeforeCaret) {
+  const match = textBeforeCaret.match(/(?:^|[\s\u00a0])([/\\])(\w*)$/);
+  if (!match) return null;
+  return { filter: match[2].toLowerCase(), length: match[1].length + match[2].length };
+}
+
+// Comandi di formattazione di cui la toolbar mostra lo stato attivo
+const TRACKED_FORMATS = ['bold', 'italic', 'underline', 'strikeThrough', 'insertUnorderedList', 'insertOrderedList'];
+
+// File che non devono mai essere lanciati partendo dal contenuto di una nota
+const BLOCKED_OPEN_EXTENSIONS = /\.(exe|com|bat|cmd|scr|msi|msp|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|hta|lnk|reg|jar|cpl|dll)$/i;
+
+// CSV → righe di celle. Riconosce il separatore (virgola o punto e virgola, come negli export italiani di Excel)
+// e le celle tra virgolette con separatori e a capo al loro interno.
+function parseCsv(text) {
+  const firstLine = text.split(/\r?\n/, 1)[0] || '';
+  const delimiter = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; } else inQuotes = false;
+      } else cell += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delimiter) {
+      row.push(cell);
+      cell = '';
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = '';
+    } else cell += ch;
+  }
+  row.push(cell);
+  rows.push(row);
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+
+function csvToTableHtml(text) {
+  const rows = parseCsv(text.replace(/^﻿/, ''));
+  let html = '<table border="1" style="border-collapse:collapse;width:100%;margin-bottom:1em;">';
+  rows.forEach((cells, i) => {
+    html += '<tr>';
+    cells.forEach(cell => {
+      const safe = escapeHtml(cell.trim());
+      html += i === 0 ? `<th style="padding:4px 8px;background:#f4f5f9;">${safe}</th>` : `<td style="padding:4px 8px;">${safe}</td>`;
+    });
+    html += '</tr>';
+  });
+  return html + '</table><br>';
+}
 
 const BASIC_COLORS = [
   '#000000', '#E74C3C', '#E67E22', '#F1C40F', '#2ECC71',
@@ -25,6 +103,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const [linkInputVal, setLinkInputVal] = useState('');
   const [linkInputName, setLinkInputName] = useState('');
   const cursorMarkerRef = useRef(null); // Temporary marker for cursor position
+  const linkRangeRef = useRef(null); // Testo selezionato che il link in inserimento sostituirà
   // Note link modal states
   const [noteSearchQuery, setNoteSearchQuery] = useState('');
   const [noteSelectedIndex, setNoteSelectedIndex] = useState(0);
@@ -62,6 +141,12 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const debounceTimerRef = useRef(null);
   const pendingHtmlRef = useRef(null);
 
+  // Sempre l'ultima versione dei callback: evita closure obsolete in debounce, paste e cleanup
+  const onChangeRef = useRef(onChange);
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onChangeRef.current = onChange;
+  onDirtyChangeRef.current = onDirtyChange;
+
   // Reset initial value when the component receives a fundamentally new value
   // (e.g. switching notes)
   useEffect(() => {
@@ -69,6 +154,18 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     isDirtyRef.current = false;
     if (onDirtyChange) onDirtyChange(false);
   }, []); // Only on mount
+
+  // All'uscita (chiusura della nota, Esc...) non si perdono le ultime battute ancora nel debounce
+  useEffect(() => () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+      if (pendingHtmlRef.current !== null) {
+        onChangeRef.current?.(pendingHtmlRef.current);
+        pendingHtmlRef.current = null;
+      }
+    }
+  }, []);
 
   // Gestione selezione testo per menu contestuale
   useEffect(() => {
@@ -78,6 +175,9 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
       // Solo se l'evento è dentro l'editor
       if (!editorRef.current || !editorRef.current.contains(e.target)) return;
+
+      // Un clic su un collegamento (cartella, file, nota) non è una selezione di testo da formattare
+      if (e.target.closest?.('a.internal-link, a.folder-internal-link')) return;
 
       setTimeout(() => {
         const selection = window.getSelection();
@@ -131,16 +231,53 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     };
   }, []);
 
-  // Chiudi tutti i menu quando si clicca fuori
+  // Chiudi tutti i menu quando si clicca fuori (o si preme Esc)
   useEffect(() => {
+    const closeToolbarDropdowns = () => {
+      setShowColors(false);
+      setShowHeadings(false);
+      setShowAlignment(false);
+    };
+
     const handleClickOutside = (e) => {
       if (!e.target.closest('.rte-btn') && !e.target.closest('.rte-dropdown') && !e.target.closest('.contextual-menu')) {
         setTextSelection(null);
       }
+      if (!e.target.closest('.rte-dropdown-wrap')) closeToolbarDropdowns();
+    };
+
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') closeToolbarDropdowns();
     };
 
     document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
+
+  // Stato "attivo" dei pulsanti di formattazione (grassetto, corsivo, elenchi...) secondo la posizione del cursore
+  const [activeFormats, setActiveFormats] = useState({});
+  useEffect(() => {
+    const update = () => {
+      const editor = editorRef.current;
+      const sel = window.getSelection();
+      if (!editor || !sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
+      const next = {};
+      TRACKED_FORMATS.forEach(cmd => {
+        try {
+          next[cmd] = document.queryCommandState(cmd);
+        } catch {
+          next[cmd] = false;
+        }
+      });
+      setActiveFormats(prev => (TRACKED_FORMATS.every(cmd => prev[cmd] === next[cmd]) ? prev : next));
+    };
+
+    document.addEventListener('selectionchange', update);
+    return () => document.removeEventListener('selectionchange', update);
   }, []);
 
   // Salva la selezione corrente per il menu contestuale
@@ -219,7 +356,6 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     const selection = window.getSelection();
     if (selection.rangeCount > 0 && selection.toString().trim()) {
       savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
-      console.log('Selection saved:', savedSelectionRef.current.toString());
     }
   };
 
@@ -235,156 +371,257 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     }, 100);
   };
 
-  // Gestione AI Writing Tools
+  // ── AI Writing Tools ──
+  const [aiError, setAiError] = useState('');
+  const [aiTruncated, setAiTruncated] = useState(false);
+  const [aiLastTool, setAiLastTool] = useState(null);
+  const [aiTargetLang, setAiTargetLang] = useState('inglese');
+  const [aiCopied, setAiCopied] = useState(false);
+  const aiAbortRef = useRef(null);
+  // Per riassunti e idee il gesto naturale è aggiungere sotto, non sostituire l'originale
+  const aiPreferBelow = aiLastTool === 'summarize' || aiLastTool === 'ideas';
+
+  // Risposta AI (Markdown) → HTML sicuro per anteprima e inserimento
+  const renderAIMarkdown = (text) => sanitizeHtml(markdownToHtml(text, { forceBlocks: true }).html);
+
+  const resetAIState = () => {
+    setAiResult('');
+    setAiError('');
+    setAiTruncated(false);
+    setAiLastTool(null);
+    setAiCopied(false);
+  };
+
+  const cancelAIRequest = () => {
+    aiAbortRef.current?.abort();
+    aiAbortRef.current = null;
+    setAiLoading(false);
+  };
+
+  // Apre il pannello AI sul testo selezionato (menu contestuale o Ctrl+Shift+A)
+  const openAIMenu = () => {
+    const selection = window.getSelection();
+    const text = selection.toString().trim();
+    if (!text || selection.rangeCount === 0) return false;
+    const range = selection.getRangeAt(0);
+    if (!editorRef.current?.contains(range.commonAncestorContainer)) return false;
+
+    cancelAIRequest();
+    resetAIState();
+    aiSelectionRef.current = range.cloneRange();
+    setSelectedText(text);
+    setShowAIMenu(true);
+    setTextSelection(null);
+    return true;
+  };
+
   const handleAITool = async (tool) => {
     if (!selectedText) return;
 
+    // Una nuova richiesta annulla quella in corso
+    aiAbortRef.current?.abort();
+    const controller = new AbortController();
+    aiAbortRef.current = controller;
+    const options = { signal: controller.signal };
+
     setAiLoading(true);
     setAiResult('');
+    setAiError('');
+    setAiTruncated(false);
+    setAiCopied(false);
+    setAiLastTool(tool);
 
     try {
-      let result;
+      let response;
       switch (tool) {
         case 'rewrite':
-          result = await aiTextService.rewrite(selectedText);
+          response = await aiTextService.rewrite(selectedText, options);
           break;
         case 'summarize':
-          result = await aiTextService.summarize(selectedText);
+          response = await aiTextService.summarize(selectedText, options);
           break;
         case 'improve':
-          result = await aiTextService.improve(selectedText);
+          response = await aiTextService.improve(selectedText, options);
           break;
         case 'expand':
-          result = await aiTextService.expand(selectedText);
+          response = await aiTextService.expand(selectedText, options);
           break;
         case 'translate':
-          const targetLang = prompt('In quale lingua vuoi tradurre? (es: inglese, francese, spagnolo):');
-          if (targetLang) {
-            result = await aiTextService.translate(selectedText, targetLang);
-          } else {
-            setAiLoading(false);
-            return;
-          }
+          response = await aiTextService.translate(selectedText, aiTargetLang, options);
           break;
         case 'ideas':
-          result = await aiTextService.generateIdeas(selectedText);
+          response = await aiTextService.generateIdeas(selectedText, options);
           break;
         case 'grammar':
-          result = await aiTextService.fixGrammar(selectedText);
+          response = await aiTextService.fixGrammar(selectedText, options);
           break;
         default:
           throw new Error('Strumento non riconosciuto');
       }
 
-      setAiResult(result);
+      if (controller.signal.aborted) return;
+      setAiResult(response.text);
+      setAiTruncated(response.truncated);
     } catch (error) {
+      if (controller.signal.aborted) return;
       console.error('AI Error:', error);
-      setAiResult('Errore: ' + error.message);
+      setAiError(error.message || 'Errore imprevisto del servizio AI.');
     } finally {
-      setAiLoading(false);
+      // Se nel frattempo è partita un'altra richiesta, è lei a gestire lo stato di caricamento
+      if (aiAbortRef.current === controller) {
+        aiAbortRef.current = null;
+        setAiLoading(false);
+      }
     }
   };
 
-  const applyAIResult = () => {
+  // mode: 'replace' sostituisce la selezione, 'below' inserisce dopo il blocco che la contiene
+  const applyAIResult = (mode = 'replace') => {
     if (!aiResult || !aiSelectionRef.current) return;
 
-    // Salva una copia della selezione e del risultato
-    const selectionToRestore = aiSelectionRef.current.cloneRange();
-    const resultText = aiResult;
+    const range = aiSelectionRef.current.cloneRange();
+    const { html } = markdownToHtml(aiResult, { forceBlocks: mode === 'below' });
+    const safeHtml = sanitizeHtml(html);
+    const plainText = aiResult;
 
-    // Chiudi menu AI
-    setShowAIMenu(false);
-    setAiResult('');
-    setSelectedText('');
+    closeAIMenu();
 
-    // Usa requestAnimationFrame per assicurarsi che il DOM sia aggiornato
     requestAnimationFrame(() => {
-      // Focus sull'editor
-      editorRef.current?.focus();
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.focus();
 
-      // Ripristina la selezione
       const selection = window.getSelection();
       selection.removeAllRanges();
-      selection.addRange(selectionToRestore);
 
-      // Inserisci il risultato AI
-      document.execCommand('insertText', false, resultText);
+      // Se la nota è cambiata e la selezione non è più valida, si inserisce in fondo
+      let target = range;
+      if (!editor.contains(range.commonAncestorContainer)) {
+        target = document.createRange();
+        target.selectNodeContents(editor);
+        target.collapse(false);
+        mode = 'replace';
+      }
+
+      if (mode === 'below') {
+        let block = target.endContainer;
+        while (block && block.parentNode !== editor) block = block.parentNode;
+        if (block) {
+          target = document.createRange();
+          target.setStartAfter(block);
+          target.collapse(true);
+        }
+      }
+      selection.addRange(target);
+
+      // execCommand mantiene il risultato nello storico di annulla (Ctrl+Z)
+      const inserted = document.execCommand('insertHTML', false, safeHtml);
+      if (!inserted) document.execCommand('insertText', false, plainText);
       handleInput();
 
-      // Reset ref
       aiSelectionRef.current = null;
     });
   };
 
   const closeAIMenu = () => {
+    cancelAIRequest();
     setShowAIMenu(false);
-    setAiResult('');
+    resetAIState();
     setSelectedText('');
   };
 
-  // AI Summary popup state
+  const copyAIText = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setAiCopied(true);
+      setTimeout(() => setAiCopied(false), 1500);
+    } catch {
+      // Appunti non disponibili: nessun effetto sulla nota
+    }
+  };
+
+  // ── Riassunto AI dell'intera nota ──
   const [showSummaryPopup, setShowSummaryPopup] = useState(false);
   const [summaryText, setSummaryText] = useState('');
+  const [summaryError, setSummaryError] = useState('');
+  const [summaryTruncated, setSummaryTruncated] = useState(false);
+  const summaryAbortRef = useRef(null);
 
-  // Handle AI Summary for entire note - shows popup instead of replacing
+  const closeSummaryPopup = () => {
+    summaryAbortRef.current?.abort();
+    summaryAbortRef.current = null;
+    setIsSummarizing(false);
+    setShowSummaryPopup(false);
+    setSummaryText('');
+    setSummaryError('');
+    setSummaryTruncated(false);
+    setAiCopied(false);
+  };
+
+  // Il popup si apre subito con l'indicatore di caricamento; il riassunto non modifica la nota
   const handleAISummary = async () => {
     if (!editorRef.current) return;
 
     const fullText = editorRef.current.innerText;
+    summaryAbortRef.current?.abort();
+    setSummaryText('');
+    setSummaryError('');
+    setSummaryTruncated(false);
+    setShowSummaryPopup(true);
+
     if (!fullText.trim()) {
-      alert('La nota è vuota. Scrivi qualcosa prima di riassumere.');
+      setIsSummarizing(false);
+      setSummaryError('La nota è vuota. Scrivi qualcosa prima di riassumere.');
       return;
     }
 
+    const controller = new AbortController();
+    summaryAbortRef.current = controller;
     setIsSummarizing(true);
-    setSummaryText('');
 
     try {
-      // Leggi il modello specifico per i riassunti dalle impostazioni
-      const settings = JSON.parse(localStorage.getItem('upersite_settings') || '{}');
-      const summaryModel = settings.aiSummaryModel || null;
-
-      const summary = await aiTextService.summarize(fullText, summaryModel);
-      setSummaryText(summary);
-      setShowSummaryPopup(true);
+      const response = await aiTextService.summarize(fullText, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setSummaryText(response.text);
+      setSummaryTruncated(response.truncated);
     } catch (error) {
+      if (controller.signal.aborted) return;
       console.error('AI Summary Error:', error);
-      alert('Errore durante il riassunto: ' + error.message);
+      setSummaryError(error.message || 'Errore durante il riassunto.');
     } finally {
-      setIsSummarizing(false);
+      if (summaryAbortRef.current === controller) {
+        summaryAbortRef.current = null;
+        setIsSummarizing(false);
+      }
     }
   };
 
-  // Convert markdown to HTML for summary popup
-  const renderMarkdown = (text) => {
-    if (!text) return '';
-
-    let html = text
-      // Bold: **text** or __text__
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/__(.*?)__/g, '<strong>$1</strong>')
-      // Italic: *text* or _text_
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/_(.*?)_/g, '<em>$1</em>')
-      // Headers
-      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-      // Unordered lists
-      .replace(/^\* (.*$)/gim, '<li>$1</li>')
-      .replace(/^- (.*$)/gim, '<li>$1</li>')
-      // Ordered lists
-      .replace(/^\d+\. (.*$)/gim, '<li>$1</li>')
-      // Line breaks
-      .replace(/\n/g, '<br>');
-
-    // Wrap lists
-    html = html.replace(/(<li>.*<\/li>)/g, '<ul>$1</ul>');
-    // Fix nested lists
-    html = html.replace(/<\/ul><ul>/g, '');
-
-    return html;
+  const appendSummaryToNote = () => {
+    const editor = editorRef.current;
+    if (!editor || !summaryText) return;
+    editor.insertAdjacentHTML('beforeend', `<h3>Riassunto</h3>${renderAIMarkdown(summaryText)}`);
+    handleInput();
+    closeSummaryPopup();
   };
+
+  // Esc chiude i pannelli AI (e annulla la richiesta in corso) senza chiudere la nota che li ospita
+  useEffect(() => {
+    if (!showAIMenu && !showSummaryPopup) return;
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (showSummaryPopup) closeSummaryPopup();
+      else closeAIMenu();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [showAIMenu, showSummaryPopup]);
+
+  // Annulla le richieste AI ancora in corso quando l'editor viene smontato
+  useEffect(() => () => {
+    aiAbortRef.current?.abort();
+    summaryAbortRef.current?.abort();
+  }, []);
 
   // Parse anchors and headings from content - in order of appearance
   const parseAnchors = useCallback(() => {
@@ -539,11 +776,22 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       }
     };
 
-    editor.addEventListener('scroll', handleScroll);
+    // Al massimo un calcolo per frame: handleScroll scorre tutti i titoli e le ancore della nota
+    let scrollFrame = null;
+    const onScroll = () => {
+      if (scrollFrame !== null) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = null;
+        handleScroll();
+      });
+    };
+
+    editor.addEventListener('scroll', onScroll, { passive: true });
     const timer = setTimeout(handleScroll, 100);
 
     return () => {
-      editor.removeEventListener('scroll', handleScroll);
+      editor.removeEventListener('scroll', onScroll);
+      if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);
       clearTimeout(timer);
     };
   }, [anchors, activeAnchorId]);
@@ -604,25 +852,26 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   }, []);
 
 
-  const ContextualMenu = () => {
+  // Salva la selezione quando il menu contestuale si apre
+  useEffect(() => {
+    if (textSelection) saveSelection();
+  }, [textSelection]);
+
+  // Non è un componente (niente remount a ogni render del genitore): è una funzione che restituisce JSX
+  const renderContextualMenu = () => {
     if (!textSelection) return null;
 
-    // Salva la selezione quando il menu si apre
-    useEffect(() => {
-      saveSelection();
-    }, []);
+    // Tiene il menu dentro lo schermo anche per selezioni vicine al bordo inferiore
+    const menuTop = Math.max(8, Math.min(textSelection.position.y, window.innerHeight - CONTEXTUAL_MENU_MAX_HEIGHT));
 
     // In fullscreen, posiziona relativamente all'editor wrapper
-    const menuStyle = isFullScreen ? {
-      position: 'absolute',
+    const menuStyle = {
+      position: isFullScreen ? 'absolute' : 'fixed',
       left: `${textSelection.position.x}px`,
-      top: `${textSelection.position.y}px`,
-      zIndex: 1000
-    } : {
-      position: 'fixed',
-      left: `${textSelection.position.x}px`,
-      top: `${textSelection.position.y}px`,
-      zIndex: 1000
+      top: `${menuTop}px`,
+      zIndex: 1000,
+      maxHeight: 'calc(100vh - 16px)',
+      overflowY: 'auto'
     };
 
     const MenuComponent = (
@@ -630,6 +879,11 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         className="contextual-menu animate-scale-in"
         style={menuStyle}
       >
+        {/* In cima, così resta raggiungibile anche con selezioni vicine al bordo dello schermo */}
+        <button type="button" title="Riscrivi, traduci, correggi... (Ctrl+Shift+A)" onMouseDown={(e) => handleMenuButtonMouseDown(e, openAIMenu)}>
+          <IconComponent name="sparkles" /> Strumenti AI
+        </button>
+        <div className="rte-separator" />
         <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('bold'))}>
           <IconComponent name="bold" /> Grassetto
         </button>
@@ -700,23 +954,6 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => applyTextFormat('removeFormat'))}>
           ✕ Rimuovi formattazione
         </button>
-        <div className="rte-separator" />
-        <button type="button" onMouseDown={(e) => handleMenuButtonMouseDown(e, () => {
-          // Apri menu AI
-          const selection = window.getSelection();
-          const text = selection.toString().trim();
-          if (text) {
-            setSelectedText(text);
-            // Save selection to ref for later use
-            if (selection.rangeCount > 0) {
-              aiSelectionRef.current = selection.getRangeAt(0).cloneRange();
-            }
-            setShowAIMenu(true);
-            setTextSelection(null); // Chiudi menu contestuale
-          }
-        })}>
-          <IconComponent name="sparkles" /> AI
-        </button>
       </div>
     );
 
@@ -727,10 +964,23 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   // Only update innerHTML if it completely differs from external value AND we are not actively typing in it.
   useEffect(() => {
     if (pendingHtmlRef.current !== null) return;
+    // Con il marker temporaneo del cursore nel DOM è aperto un modale di inserimento (link, nota):
+    // ricreare l'HTML ora distruggerebbe il punto in cui inserire
+    if (cursorMarkerRef.current) return;
 
-    if (editorRef.current && value !== editorRef.current.innerHTML) {
+    // Si confronta con l'HTML "pulito" (senza marker), cioè quello che l'editor ha salvato
+    if (editorRef.current && value !== getEditorHtml()) {
       if (document.activeElement !== editorRef.current) {
         editorRef.current.innerHTML = sanitizeHtml(value);
+
+        // Contenuto sostituito dall'esterno (es. nota salvata e campo svuotato): le modifiche
+        // precedenti non esistono più, quindi il nuovo testo è il punto di partenza "pulito".
+        // Senza questo reset la guardia "modifiche non salvate" non scatta dalla seconda nota in poi.
+        initialValueRef.current = editorRef.current.innerHTML;
+        if (isDirtyRef.current) {
+          isDirtyRef.current = false;
+          onDirtyChangeRef.current?.(false);
+        }
       }
     }
   }, [value]);
@@ -740,38 +990,39 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     if (editorRef.current) {
       editorRef.current.innerHTML = sanitizeHtml(value);
     }
-    // Lock body scroll in fullscreen
-    if (isFullScreen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
+    // Lock body scroll in fullscreen (ripristinando il valore precedente: l'editor può stare dentro un modale)
+    if (!isFullScreen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
   }, [isFullScreen]);
+
+  // Esc esce dalla modalità a schermo intero
+  const overlayOpenRef = useRef(false);
+  overlayOpenRef.current = !!(slashMenuParams || showInternalLinkMenu || linkModalParams || showAIMenu || showSummaryPopup);
+  useEffect(() => {
+    if (!isFullScreen) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // Menu e pannelli aperti hanno la precedenza (gestiscono Esc da soli)
+      if (overlayOpenRef.current) return;
+      e.stopPropagation();
+      setIsFullScreen(false);
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [isFullScreen]);
+
+  // Apre un solo menu a tendina alla volta della toolbar (titoli, colori, allineamento)
+  const toggleDropdown = (name) => {
+    setShowHeadings(name === 'headings' ? !showHeadings : false);
+    setShowColors(name === 'colors' ? !showColors : false);
+    setShowAlignment(name === 'alignment' ? !showAlignment : false);
+  };
 
   const exec = (cmd, val = null) => {
     editorRef.current?.focus();
-
-    // Special handling for formatBlock to ensure it works
-    if (cmd === 'formatBlock') {
-      const selection = window.getSelection();
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        const selectedText = range.toString();
-
-        // If nothing is selected, just apply the format
-        if (!selectedText) {
-          document.execCommand(cmd, false, val);
-        } else {
-          // For selected text, ensure proper formatting
-          document.execCommand(cmd, false, val);
-        }
-      } else {
-        document.execCommand(cmd, false, val);
-      }
-    } else {
-      document.execCommand(cmd, false, val);
-    }
+    document.execCommand(cmd, false, val);
 
     handleInput();
     setShowColors(false);
@@ -795,7 +1046,13 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     }
   };
 
+  // HTML interno di un blocco. Un nodo di testo "nudo" va escapato: il suo contenuto è testo, non markup
+  const blockInnerHtml = (block) => (
+    block.nodeType === Node.TEXT_NODE ? escapeHtml(block.textContent || '') : (block.innerHTML || '')
+  );
+
   const changeBlockTag = (tagName, targetElement = null) => {
+    setShowHeadings(false);
     editorRef.current?.focus();
     const sel = window.getSelection();
 
@@ -820,11 +1077,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       if (block.tagName && block.tagName.toLowerCase() === tagName.toLowerCase()) return;
 
       const newBlock = document.createElement(tagName);
-      if (block.nodeType === Node.TEXT_NODE) {
-        newBlock.innerHTML = block.textContent || '<br>';
-      } else {
-        newBlock.innerHTML = block.innerHTML || '<br>';
-      }
+      newBlock.innerHTML = blockInnerHtml(block) || '<br>';
 
       block.parentNode.replaceChild(newBlock, block);
 
@@ -876,11 +1129,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
       const textSpan = document.createElement('span');
       textSpan.style.flex = '1';
-      if (block.nodeType === Node.TEXT_NODE) {
-        textSpan.innerHTML = block.textContent || '&nbsp;';
-      } else {
-        textSpan.innerHTML = block.innerHTML || '&nbsp;';
-      }
+      textSpan.innerHTML = blockInnerHtml(block) || '&nbsp;';
 
       newTodo.appendChild(checkbox);
       newTodo.appendChild(textSpan);
@@ -926,10 +1175,9 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     if (block && block !== editorRef.current) {
       const pre = document.createElement('pre');
       const code = document.createElement('code');
-      let content = block.nodeType === Node.TEXT_NODE ? (block.textContent || '') : (block.innerHTML || '');
-      // Clean any backslash triggers
-      content = content.replace(/\\([a-zA-Z]*)$/, '').trim();
-      code.innerHTML = content || '&nbsp;';
+      // Il testo del comando (/code) è già stato rimosso da applySlashCommand: qui non va tolto altro,
+      // altrimenti un percorso come C:\temp perderebbe la parte finale
+      code.innerHTML = blockInnerHtml(block).trim() || '&nbsp;';
       pre.appendChild(code);
 
       // Ensure there is a trailing paragraph after the code block
@@ -980,11 +1228,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       const listElement = document.createElement(listType === 'ol' ? 'ol' : 'ul');
       listElement.style.marginBottom = '1em';
       const li = document.createElement('li');
-      if (block.nodeType === Node.TEXT_NODE) {
-        li.innerHTML = block.textContent || '&nbsp;';
-      } else {
-        li.innerHTML = block.innerHTML || '&nbsp;';
-      }
+      li.innerHTML = blockInnerHtml(block) || '&nbsp;';
       listElement.appendChild(li);
 
       block.parentNode.replaceChild(listElement, block);
@@ -1001,9 +1245,50 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     handleInput();
   };
 
+  // HTML della nota senza il marker temporaneo del cursore (usato dai comandi link), che non va mai salvato
+  const getEditorHtml = () => {
+    const editor = editorRef.current;
+    if (!editor) return '';
+    if (!editor.querySelector('#cursor-marker-temp')) return editor.innerHTML;
+    const clone = editor.cloneNode(true);
+    clone.querySelectorAll('#cursor-marker-temp').forEach(el => el.remove());
+    return clone.innerHTML;
+  };
+
+  // Apre/aggiorna/chiude il menu comandi in base al testo prima del cursore
+  const updateSlashMenu = () => {
+    const editor = editorRef.current;
+    const sel = window.getSelection();
+    if (editor && sel && sel.rangeCount && sel.isCollapsed) {
+      try {
+        const range = sel.getRangeAt(0);
+        const node = sel.anchorNode;
+
+        if (node && node.nodeType === Node.TEXT_NODE && editor.contains(node)) {
+          const match = getSlashMatch(node.textContent.substring(0, range.startOffset));
+          if (match) {
+            const rect = range.getBoundingClientRect();
+            // Use the relative wrapper for accurate positioning
+            const wrapperRect = editor.parentElement.getBoundingClientRect();
+            setSlashMenuParams({
+              top: rect.bottom - wrapperRect.top + 5,
+              left: rect.left - wrapperRect.left,
+              filter: match.filter
+            });
+            return;
+          }
+        }
+      } catch (e) {
+        // Ignore selection errors
+      }
+    }
+    setSlashMenuParams(null);
+    setSlashSelectedIndex(0);
+  };
+
   const handleInput = () => {
     if (!editorRef.current) return;
-    const html = editorRef.current.innerHTML;
+    const html = getEditorHtml();
 
     pendingHtmlRef.current = html;
 
@@ -1011,42 +1296,17 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     const dirty = html !== initialValueRef.current;
     if (dirty !== isDirtyRef.current) {
       isDirtyRef.current = dirty;
-      if (onDirtyChange) onDirtyChange(dirty);
+      onDirtyChangeRef.current?.(dirty);
     }
 
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      onChange(html);
+      debounceTimerRef.current = null;
+      onChangeRef.current?.(html);
       pendingHtmlRef.current = null;
     }, 400);
 
-    // Slash menu logic
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    try {
-      const range = sel.getRangeAt(0);
-      const node = sel.anchorNode;
-
-      if (node && node.nodeType === Node.TEXT_NODE) {
-        const textParam = node.textContent.substring(0, range.startOffset);
-        const match = textParam.match(/\\(\w*)$/);
-        if (match) {
-          const rect = range.getBoundingClientRect();
-          // Use the relative wrapper for accurate positioning
-          const wrapperRect = editorRef.current.parentElement.getBoundingClientRect();
-          setSlashMenuParams({
-            top: rect.bottom - wrapperRect.top + 5,
-            left: rect.left - wrapperRect.left,
-            filter: match[1].toLowerCase()
-          });
-          return;
-        }
-      }
-    } catch (e) {
-      // Ignore selection errors
-    }
-    setSlashMenuParams(null);
-    setSlashSelectedIndex(0);
+    updateSlashMenu();
   };
 
   const closeSlashMenu = () => setSlashMenuParams(null);
@@ -1076,10 +1336,9 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         }
       }
 
-      const textParam = textNode.textContent.substring(0, range.startOffset);
-      const match = textParam.match(/\\(\w*)$/);
+      const match = getSlashMatch(textNode.textContent.substring(0, range.startOffset));
       if (match) {
-        range.setStart(textNode, range.startOffset - match[0].length);
+        range.setStart(textNode, range.startOffset - match.length);
         range.deleteContents();
       }
     }
@@ -1140,6 +1399,9 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       if (sel && sel.rangeCount > 0) {
         savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
         setLinkInputName(sel.toString() || '');
+        // Intervallo del testo selezionato che il link sostituirà (savedSelectionRef viene azzerato
+        // da qualsiasi clic fuori dall'editor, quindi anche da quelli dentro il modale)
+        linkRangeRef.current = sel.isCollapsed ? null : sel.getRangeAt(0).cloneRange();
 
         // Insert a temporary marker at cursor position
         const range = sel.getRangeAt(0).cloneRange();
@@ -1168,6 +1430,9 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       if (sel && sel.rangeCount > 0) {
         savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
         setLinkInputName(sel.toString() || '');
+        // Intervallo del testo selezionato che il link sostituirà (savedSelectionRef viene azzerato
+        // da qualsiasi clic fuori dall'editor, quindi anche da quelli dentro il modale)
+        linkRangeRef.current = sel.isCollapsed ? null : sel.getRangeAt(0).cloneRange();
 
         // Insert a temporary marker at cursor position
         const range = sel.getRangeAt(0).cloneRange();
@@ -1197,6 +1462,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   useEffect(() => {
     if (!linkModalParams && !showInternalLinkMenu) {
       cleanupCursorMarker();
+      linkRangeRef.current = null;
     }
   }, [linkModalParams, showInternalLinkMenu]);
 
@@ -1206,18 +1472,31 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     const url = linkInputVal.trim();
     let htmlToInsert;
     if (linkModalParams.type === 'url') {
+      // Senza schema (es. "google.com") il browser lo tratterebbe come link relativo all'app
+      const href = /^([a-z][a-z0-9+.-]*:|#)/i.test(url) ? url : `https://${url}`;
       const name = linkInputName.trim() || url;
-      htmlToInsert = `<a href="${url}" target="_blank" rel="noopener noreferrer">${name}</a>&nbsp;`;
+      htmlToInsert = `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a>&nbsp;`;
     } else {
       const path = url;
       const name = linkInputName.trim() || (path.split(/[\\\/]/).filter(Boolean).pop() || path);
-      htmlToInsert = `<a href="#" class="folder-internal-link" data-path="${path.replace(/\\/g, '\\\\')}" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📁 ${name}</a>&nbsp;`;
+      htmlToInsert = `<a href="#" class="folder-internal-link" data-path="${escapeHtml(path)}" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;cursor:pointer;">📁 ${escapeHtml(name)}</a>&nbsp;`;
     }
 
     htmlToInsert = sanitizeHtml(htmlToInsert);
 
-    // Use the temporary marker to restore cursor position
-    if (cursorMarkerRef.current && editorRef.current) {
+    const selectedRange = linkRangeRef.current;
+    const replacesSelection = !!selectedRange && !selectedRange.collapsed &&
+      !!editorRef.current && editorRef.current.contains(selectedRange.commonAncestorContainer);
+
+    if (replacesSelection) {
+      // Il link sostituisce il testo selezionato (altrimenti ci si ritrova il testo due volte).
+      // L'intervallo contiene anche il marker temporaneo, che sparisce con la cancellazione.
+      selectedRange.deleteContents();
+      selectedRange.insertNode(selectedRange.createContextualFragment(htmlToInsert));
+      cleanupCursorMarker();
+      handleInput();
+    } else if (cursorMarkerRef.current && editorRef.current) {
+      // Use the temporary marker to restore cursor position
       const marker = cursorMarkerRef.current;
 
       // Create a temporary div to hold the HTML
@@ -1274,10 +1553,23 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   };
 
   const handleKeyDown = (e) => {
+    // Scorciatoia: Ctrl+Shift+A apre gli strumenti AI sul testo selezionato
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+      if (openAIMenu()) e.preventDefault();
+      return;
+    }
+
     // 1. Gestione Slash Menu se aperto
     if (slashMenuParams) {
       const options = getSlashOptions();
-      if (e.key === 'Escape') {
+      if (options.length === 0) {
+        // Nessun comando corrisponde: il menu non è visibile, quindi frecce e Invio funzionano come sempre
+        if (e.key === 'Escape') {
+          closeSlashMenu();
+          e.preventDefault();
+          return;
+        }
+      } else if (e.key === 'Escape') {
         closeSlashMenu();
         e.preventDefault();
         return;
@@ -1678,47 +1970,56 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     }
   };
 
-  const handleFileImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const IMPORT_MAX_BYTES = 3 * 1024 * 1024;
 
+  // Legge il file come testo: UTF-8 e, se non valido (es. CSV esportato da Excel), Windows-1252
+  const readFileAsText = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      if (file.name.endsWith('.csv')) {
-        const rows = text.split('\n').filter(r => r.trim()).map(r => r.split(','));
-        let tableHtml = '<table border="1" style="border-collapse:collapse;width:100%;margin-bottom:1em;">';
-        rows.forEach((row, i) => {
-          tableHtml += '<tr>';
-          row.forEach(cell => {
-            tableHtml += i === 0 ? `<th style="padding:4px 8px;background:#f4f5f9;">${cell}</th>` : `<td style="padding:4px 8px;">${cell}</td>`;
-          });
-          tableHtml += '</tr>';
-        });
-        tableHtml += '</table><br>';
-        insertHtml(tableHtml);
-      } else if (file.name.endsWith('.md')) {
-        // Very basic markdown conversion for demonstration (production should use marked.js)
-        let html = text
-          .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-          .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-          .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-          .replace(/\*\*(.*)\*\*/gim, '<b>$1</b>')
-          .replace(/\*(.*)\*/gim, '<i>$1</i>')
-          .replace(/\n\n/gim, '<br><br>');
-        insertHtml(html + '<br>');
-      } else {
-        // txt, html
-        insertHtml(text + '<br>');
+    reader.onerror = () => reject(new Error('Lettura del file non riuscita.'));
+    reader.onload = () => {
+      const bytes = new Uint8Array(reader.result);
+      try {
+        resolve(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+      } catch {
+        resolve(new TextDecoder('windows-1252').decode(bytes));
       }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
+  });
+
+  const handleFileImport = async (e) => {
+    const file = e.target.files[0];
     e.target.value = '';
+    if (!file) return;
+
+    if (file.size > IMPORT_MAX_BYTES) {
+      alert('File troppo grande (max 3MB).');
+      return;
+    }
+
+    let text;
+    try {
+      text = await readFileAsText(file);
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+
+    const name = file.name.toLowerCase();
+    if (name.endsWith('.csv')) {
+      insertHtml(csvToTableHtml(text));
+    } else if (name.endsWith('.md') || name.endsWith('.markdown')) {
+      insertHtml(markdownToHtml(text, { forceBlocks: true }).html + '<br>');
+    } else if (name.endsWith('.html') || name.endsWith('.htm')) {
+      insertHtml(text + '<br>');
+    } else {
+      // Testo semplice: va mostrato com'è (niente interpretazione di < e &), mantenendo gli a capo
+      insertHtml(escapeHtml(text.replace(/\r\n?/g, '\n')).replace(/\n/g, '<br>') + '<br>');
+    }
   };
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // Ridimensiona (max 800x600) e inserisce un'immagine; usato da pulsante, incolla e trascina
+  const insertImageFile = (file) => {
     if (!file.type.startsWith('image/')) {
       alert('Seleziona un file immagine.');
       return;
@@ -1729,8 +2030,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     }
 
     const reader = new FileReader();
+    reader.onerror = () => alert('Lettura dell\'immagine non riuscita.');
     reader.onload = (event) => {
       const img = new Image();
+      img.onerror = () => alert('Formato immagine non supportato.');
       img.onload = () => {
         // Auto-resize if the image is very large
         const MAX_WIDTH = 800;
@@ -1752,6 +2055,9 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
+        // Sfondo bianco: in JPEG la trasparenza dei PNG diventerebbe nera
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
         const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
@@ -1761,7 +2067,12 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       img.src = event.target.result;
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
     e.target.value = '';
+    if (file) insertImageFile(file);
   };
 
   const getFormattedText = (node) => {
@@ -1795,8 +2106,11 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     a.href = url;
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(url);
+    // Non subito: alcuni browser non hanno ancora avviato il download
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+
+  const exportFileName = (ext) => `nota_upersite_${new Date().toISOString().slice(0, 10)}.${ext}`;
 
   const exportAsTXT = () => {
     if (!editorRef.current) return;
@@ -1811,7 +2125,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     clone.querySelectorAll('li').forEach(li => li.prepend("- "));
 
     const text = getFormattedText(clone);
-    downloadFile(text.trim(), 'nota_upersite.txt', 'text/plain');
+    downloadFile(text.trim(), exportFileName('txt'), 'text/plain');
   };
 
   const exportAsMD = () => {
@@ -1835,7 +2149,34 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       .replace(/<div>/gim, '')
       .replace(/<[^>]*>/gim, ''); // Strip remaining tags
 
-    downloadFile(md.trim(), 'nota_upersite.md', 'text/markdown');
+    downloadFile(md.trim(), exportFileName('md'), 'text/markdown');
+  };
+
+  // Apre un percorso collegato nella nota. Il percorso arriva dall'HTML della nota (che può essere incollato
+  // o importato), quindi i file eseguibili non si lanciano mai da qui e ogni file (non cartella) chiede conferma.
+  const openFolderLink = async (path) => {
+    if (!path) return;
+    const copyPath = () => navigator.clipboard?.writeText(path).catch(() => {});
+
+    if (BLOCKED_OPEN_EXTENSIONS.test(path)) {
+      copyPath();
+      alert('Per sicurezza i file eseguibili non si aprono da una nota. Il percorso è stato copiato negli appunti.');
+      return;
+    }
+    if (!window.electronAPI) {
+      copyPath();
+      alert('Apertura cartelle disponibile solo nell\'app desktop. Il percorso è stato copiato negli appunti.');
+      return;
+    }
+    // Una cartella non ha estensione: apertura diretta. Un file chiede conferma.
+    if (/\.[a-z0-9]{1,8}$/i.test(path) && !window.confirm(`Aprire questo file?\n\n${path}`)) return;
+
+    try {
+      await window.electronAPI.openPath(path);
+    } catch (err) {
+      copyPath();
+      alert('Errore: ' + err.message + '. Percorso copiato.');
+    }
   };
 
   // Make links clickable (open in new tab) and handle image resizing on click
@@ -1863,32 +2204,30 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       return;
     }
 
-    // Handle internal link clicks
-    if (target.tagName === 'A' && (target.classList.contains('internal-link') || target.classList.contains('folder-internal-link'))) {
-      e.preventDefault();
-      const id = target.getAttribute('data-internal-id');
-      const type = target.getAttribute('data-internal-type');
+    // Il click può cadere su un elemento dentro il link (es. <b> nel testo del link)
+    const link = target.closest ? target.closest('a') : null;
 
-      // If it's a folder-internal-link with an onclick, the onclick will handle it (copying the path)
+    // Handle internal link clicks
+    if (link && editorRef.current?.contains(link) && (link.classList.contains('internal-link') || link.classList.contains('folder-internal-link'))) {
+      e.preventDefault();
+      const id = link.getAttribute('data-internal-id');
+      const type = link.getAttribute('data-internal-type');
+
       // If it's an internal-link with data-internal-type="folder-nav", we call the handler
       if (onInternalLinkClick && (id || type)) {
         onInternalLinkClick(id, type);
-      } else if (target.classList.contains('folder-internal-link')) {
-        const path = target.getAttribute('data-path');
-        if (path && window.electronAPI) {
-          window.electronAPI.openPath(path).catch(err => {
-            navigator.clipboard.writeText(path);
-            alert('Errore: ' + err.message + '. Percorso copiato.');
-          });
-        }
+      } else if (link.classList.contains('folder-internal-link')) {
+        // Le note create in passato hanno i backslash raddoppiati nel data-path
+        const path = (link.getAttribute('data-path') || '').replace(/\\\\/g, '\\');
+        openFolderLink(path);
       }
       return;
     }
 
     // Handle link clicks - open in new tab
-    if (target.tagName === 'A' && target.href) {
+    if (link && editorRef.current?.contains(link) && link.href) {
       e.preventDefault();
-      window.open(target.href, '_blank', 'noopener,noreferrer');
+      window.open(link.href, '_blank', 'noopener,noreferrer');
       return;
     }
 
@@ -1906,7 +2245,15 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   };
 
   // Make sure all <a> tags created by createLink have target="_blank"
-  const handlePaste = useCallback((e) => {
+  const handlePaste = (e) => {
+    // Immagini incollate (es. screenshot): ridimensionate e inserite come dall'apposito pulsante
+    const imageFile = Array.from(e.clipboardData?.files || []).find(f => f.type.startsWith('image/'));
+    if (imageFile) {
+      e.preventDefault();
+      insertImageFile(imageFile);
+      return;
+    }
+
     // After paste, fix any links without target
     setTimeout(() => {
       if (!editorRef.current) return;
@@ -1919,7 +2266,24 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       });
       handleInput();
     }, 0);
-  }, []);
+  };
+
+  // Trascinare file sulla nota: le immagini si inseriscono, gli altri file vengono ignorati
+  // (altrimenti la finestra potrebbe navigare al file). Il resto passa dalla stessa pulizia dell'incolla.
+  const handleDrop = (e) => {
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length > 0) {
+      e.preventDefault();
+      const image = files.find(f => f.type.startsWith('image/'));
+      if (image) insertImageFile(image);
+      return;
+    }
+    setTimeout(() => {
+      if (!editorRef.current) return;
+      sanitizeChildrenInPlace(editorRef.current);
+      handleInput();
+    }, 0);
+  };
 
   const editorContent = (
     <div className={`rte-container ${isFullScreen ? 'rte-fullscreen' : ''}`} style={isFullScreen ? undefined : { position: 'relative', overflow: 'visible' }}>
@@ -1976,7 +2340,15 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         </div>
       )}
 
-      <div className="rte-toolbar">
+      <div
+        className="rte-toolbar"
+        role="toolbar"
+        aria-label="Formattazione nota"
+        onMouseDown={(e) => {
+          // Un clic sui pulsanti non deve togliere il focus (e la selezione) all'editor
+          if (e.target.closest('button')) e.preventDefault();
+        }}
+      >
         <button type="button" className="rte-btn" onClick={() => fileInputRef.current?.click()} title="Importa File (.txt, .md, .html, .csv)">
           <IconComponent name="import" /> Importa
         </button>
@@ -1987,42 +2359,42 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
           <IconComponent name="md" /> MD
         </button>
 
-        {/* AI Summary Button */}
+        {/* Riassunto AI dell'intera nota (per riscrivere/tradurre un testo: selezionalo) */}
         <button
           type="button"
           className="rte-btn"
           onClick={handleAISummary}
           disabled={isSummarizing}
-          title={isSummarizing ? 'Riassunto in corso...' : 'Riassunto AI'}
+          title={isSummarizing ? 'Riassunto in corso...' : "Riassumi l'intera nota con l'AI. Per riscrivere o tradurre un testo, selezionalo (Ctrl+Shift+A)"}
           style={{ color: isSummarizing ? 'var(--text-tertiary)' : 'var(--primary)' }}
         >
           <IconComponent name="brain" />
-          {isSummarizing ? '...' : 'AI'}
+          {isSummarizing ? <span className="rte-ai-spinner rte-ai-spinner-sm" /> : 'Riassumi'}
         </button>
 
-        <input ref={fileInputRef} type="file" accept=".txt,.md,.html,.csv" style={{ display: 'none' }} onChange={handleFileImport} />
+        <input ref={fileInputRef} type="file" accept=".txt,.md,.markdown,.html,.htm,.csv" style={{ display: 'none' }} onChange={handleFileImport} />
 
         <div className="rte-separator" />
 
-        <button type="button" className="rte-btn" onClick={() => exec('bold')} title="Grassetto">
+        <button type="button" className={`rte-btn${activeFormats.bold ? ' active' : ''}`} aria-pressed={!!activeFormats.bold} onClick={() => exec('bold')} title="Grassetto (Ctrl+B)">
           <IconComponent name="bold" />
         </button>
-        <button type="button" className="rte-btn" onClick={() => exec('italic')} title="Corsivo">
+        <button type="button" className={`rte-btn${activeFormats.italic ? ' active' : ''}`} aria-pressed={!!activeFormats.italic} onClick={() => exec('italic')} title="Corsivo (Ctrl+I)">
           <IconComponent name="italic" />
         </button>
-        <button type="button" className="rte-btn" onClick={() => exec('underline')} title="Sottolineato">
+        <button type="button" className={`rte-btn${activeFormats.underline ? ' active' : ''}`} aria-pressed={!!activeFormats.underline} onClick={() => exec('underline')} title="Sottolineato (Ctrl+U)">
           <IconComponent name="underline" />
         </button>
-        <button type="button" className="rte-btn" onClick={() => exec('strikeThrough')} title="Barrato">
+        <button type="button" className={`rte-btn${activeFormats.strikeThrough ? ' active' : ''}`} aria-pressed={!!activeFormats.strikeThrough} onClick={() => exec('strikeThrough')} title="Barrato">
           <s>S</s>
         </button>
-        <button type="button" className="rte-btn" onClick={() => changeBlockToList('ul')} title="Lista puntata">
+        <button type="button" className={`rte-btn${activeFormats.insertUnorderedList ? ' active' : ''}`} aria-pressed={!!activeFormats.insertUnorderedList} onClick={() => changeBlockToList('ul')} title="Lista puntata">
           <IconComponent name="listUnordered" />
         </button>
-        <button type="button" className="rte-btn" onClick={() => changeBlockToList('ol')} title="Lista numerata">
+        <button type="button" className={`rte-btn${activeFormats.insertOrderedList ? ' active' : ''}`} aria-pressed={!!activeFormats.insertOrderedList} onClick={() => changeBlockToList('ol')} title="Lista numerata">
           <IconComponent name="listOrdered" />
         </button>
-        <button type="button" className="rte-btn" onClick={insertChecklist} title="Checklist / Todo">
+        <button type="button" className="rte-btn" onClick={() => insertChecklist()} title="Checklist / Todo">
           <IconComponent name="checklist" />
         </button>
         <div className="rte-separator" />
@@ -2034,14 +2406,14 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         <button type="button" className="rte-btn" onClick={() => applySlashCommand('link')} title="Inserisci Link Esterno">
           <IconComponent name="link" />
         </button>
-        <button type="button" className="rte-btn" onClick={() => imageInputRef.current?.click()} title="Inserisci Immagine">
+        <button type="button" className="rte-btn" onClick={() => imageInputRef.current?.click()} title="Inserisci Immagine (si può anche incollare o trascinare)">
           <IconComponent name="image" />
         </button>
         <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
 
         {/* Headings */}
-        <div style={{ position: 'relative' }}>
-          <button type="button" className="rte-btn" onClick={() => setShowHeadings(!showHeadings)} title="Titolo">
+        <div className="rte-dropdown-wrap" style={{ position: 'relative' }}>
+          <button type="button" className="rte-btn" onClick={() => toggleDropdown('headings')} title="Titolo" aria-haspopup="true" aria-expanded={showHeadings}>
             T▾
           </button>
           {showHeadings && (
@@ -2055,8 +2427,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         </div>
 
         {/* Colors */}
-        <div style={{ position: 'relative' }}>
-          <button type="button" className="rte-btn" onClick={() => setShowColors(!showColors)} title="Colore Testo">
+        <div className="rte-dropdown-wrap" style={{ position: 'relative' }}>
+          <button type="button" className="rte-btn" onClick={() => toggleDropdown('colors')} title="Colore Testo" aria-haspopup="true" aria-expanded={showColors}>
             🎨▾
           </button>
           {showColors && (
@@ -2067,6 +2439,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
                   style={{ background: color, width: '24px', height: '24px', borderRadius: '4px', border: color === '#FFFFFF' ? '1px solid #ccc' : 'none' }}
                   onClick={() => exec('foreColor', color)}
                   title={color}
+                  aria-label={`Colore ${color}`}
                 />
               ))}
             </div>
@@ -2074,8 +2447,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         </div>
 
         {/* Alignment */}
-        <div style={{ position: 'relative' }}>
-          <button type="button" className="rte-btn" onClick={() => setShowAlignment(!showAlignment)} title="Allineamento">
+        <div className="rte-dropdown-wrap" style={{ position: 'relative' }}>
+          <button type="button" className="rte-btn" onClick={() => toggleDropdown('alignment')} title="Allineamento" aria-haspopup="true" aria-expanded={showAlignment}>
             ≡▾
           </button>
           {showAlignment && (
@@ -2095,341 +2468,130 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         <button
           type="button"
           className={`rte-btn ${showIndex ? 'active' : ''}`}
+          aria-pressed={showIndex}
           onClick={() => setShowIndex(!showIndex)}
-          title="Mostra/Nascondi Indice"
-          style={{ color: showIndex ? 'var(--primary)' : 'var(--text-secondary)', fontWeight: 'bold' }}
+          title={anchors.length === 0
+            ? 'Indice: compare quando la nota ha dei titoli (T▾) o delle ancore (#nome;)'
+            : 'Mostra/Nascondi Indice'}
+          style={{ fontWeight: 'bold' }}
         >
           📑 Indice
         </button>
 
-        <button type="button" className="rte-btn" onClick={() => setIsFullScreen(!isFullScreen)} title="Espandi a pieno schermo" style={{ fontWeight: 'bold' }}>
+        <button
+          type="button"
+          className="rte-btn"
+          onClick={() => setIsFullScreen(!isFullScreen)}
+          title={isFullScreen ? 'Torna alla vista normale (Esc)' : 'Espandi a pieno schermo'}
+          aria-pressed={isFullScreen}
+          style={{ fontWeight: 'bold' }}
+        >
           {isFullScreen ? '↙ Piccoli' : '⛶ Pieno Schermo'}
         </button>
       </div>
 
       {/* Menu contestuale per selezione testo */}
-      <ContextualMenu />
+      {renderContextualMenu()}
 
       {/* AI Writing Tools Modal */}
       {showAIMenu && createPortal(
         <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000
-          }}
-          onClick={(e) => e.stopPropagation()} // Previene chiusura al click fuori
+          className="rte-ai-overlay"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeAIMenu(); }}
         >
-          <div
-            style={{
-              backgroundColor: '#ffffff',
-              borderRadius: '12px',
-              padding: '24px',
-              minWidth: '520px',
-              maxWidth: '680px',
-              maxHeight: '85vh',
-              overflow: 'auto',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-              border: '1px solid #e5e7eb'
-            }}
-          >
-            {/* Header con X per chiudere */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '20px',
-              paddingBottom: '16px',
-              borderBottom: '1px solid var(--border-light)'
-            }}>
-              <h3 style={{ margin: 0, color: '#1f2937', fontSize: '1.25rem', fontWeight: 600 }}>
-                <IconComponent name="sparkles" /> Strumenti AI
-              </h3>
-              <button
-                onClick={closeAIMenu}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#6b7280',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  transition: 'background 0.2s'
-                }}
-                onMouseEnter={(e) => e.target.style.background = '#f3f4f6'}
-                onMouseLeave={(e) => e.target.style.background = 'transparent'}
-              >
-                ✕
-              </button>
+          <div className="rte-ai-modal" role="dialog" aria-modal="true" aria-label="Strumenti AI">
+            <div className="rte-ai-header">
+              <h3><IconComponent name="sparkles" /> Strumenti AI</h3>
+              <button type="button" className="rte-ai-close" onClick={closeAIMenu} aria-label="Chiudi">✕</button>
             </div>
 
             {/* Testo selezionato */}
-            <div style={{
-              backgroundColor: '#f9fafb',
-              padding: '12px 16px',
-              borderRadius: '8px',
-              marginBottom: '20px',
-              border: '1px solid #e5e7eb'
-            }}>
-              <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '6px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Testo selezionato
-              </div>
-              <div style={{ color: '#1f2937', fontSize: '0.875rem', lineHeight: 1.5 }}>
-                {selectedText.length > 200 ? selectedText.substring(0, 200) + '...' : selectedText}
+            <div className="rte-ai-selected">
+              <div className="rte-ai-label">Testo selezionato · {selectedText.length} caratteri</div>
+              <div>{selectedText.length > 200 ? selectedText.substring(0, 200) + '...' : selectedText}</div>
+            </div>
+
+            {/* Strumenti AI */}
+            <div className="rte-ai-grid">
+              {AI_TOOLS.map(tool => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  className={`rte-ai-tool${aiLastTool === tool.id ? ' active' : ''}`}
+                  onClick={() => handleAITool(tool.id)}
+                  disabled={aiLoading}
+                >
+                  {tool.label}
+                </button>
+              ))}
+              <div className={`rte-ai-tool rte-ai-translate${aiLastTool === 'translate' ? ' active' : ''}`}>
+                <button type="button" onClick={() => handleAITool('translate')} disabled={aiLoading}>
+                  🌍 Traduci in
+                </button>
+                <select
+                  value={aiTargetLang}
+                  onChange={(e) => setAiTargetLang(e.target.value)}
+                  disabled={aiLoading}
+                  aria-label="Lingua di destinazione"
+                >
+                  {AI_LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
+                </select>
               </div>
             </div>
 
-            {/* Strumenti AI - Griglia 2x4 */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '20px' }}>
-              <button
-                onClick={() => handleAITool('rewrite')}
-                disabled={aiLoading}
-                style={{
-                  padding: '14px 12px',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '10px',
-                  backgroundColor: '#ffffff',
-                  cursor: aiLoading ? 'not-allowed' : 'pointer',
-                  color: '#1f2937',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
-                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
-              >
-                📝 Riscrivi
-              </button>
-              <button
-                onClick={() => handleAITool('summarize')}
-                disabled={aiLoading}
-                style={{
-                  padding: '14px 12px',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '10px',
-                  backgroundColor: '#ffffff',
-                  cursor: aiLoading ? 'not-allowed' : 'pointer',
-                  color: '#1f2937',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
-                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
-              >
-                📊 Riassumi
-              </button>
-              <button
-                onClick={() => handleAITool('improve')}
-                disabled={aiLoading}
-                style={{
-                  padding: '14px 12px',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '10px',
-                  backgroundColor: '#ffffff',
-                  cursor: aiLoading ? 'not-allowed' : 'pointer',
-                  color: '#1f2937',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
-                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
-              >
-                🚀 Migliora
-              </button>
-              <button
-                onClick={() => handleAITool('expand')}
-                disabled={aiLoading}
-                style={{
-                  padding: '14px 12px',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '10px',
-                  backgroundColor: '#ffffff',
-                  cursor: aiLoading ? 'not-allowed' : 'pointer',
-                  color: '#1f2937',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
-                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
-              >
-                📈 Espandi
-              </button>
-              <button
-                onClick={() => handleAITool('translate')}
-                disabled={aiLoading}
-                style={{
-                  padding: '14px 12px',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '10px',
-                  backgroundColor: '#ffffff',
-                  cursor: aiLoading ? 'not-allowed' : 'pointer',
-                  color: '#1f2937',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
-                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
-              >
-                🌍 Traduci
-              </button>
-              <button
-                onClick={() => handleAITool('ideas')}
-                disabled={aiLoading}
-                style={{
-                  padding: '14px 12px',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '10px',
-                  backgroundColor: '#ffffff',
-                  cursor: aiLoading ? 'not-allowed' : 'pointer',
-                  color: '#1f2937',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
-                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
-              >
-                💡 Idee
-              </button>
-              <button
-                onClick={() => handleAITool('grammar')}
-                disabled={aiLoading}
-                style={{
-                  padding: '14px 12px',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '10px',
-                  backgroundColor: '#ffffff',
-                  cursor: aiLoading ? 'not-allowed' : 'pointer',
-                  color: '#1f2937',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  gridColumn: 'span 2'
-                }}
-                onMouseEnter={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
-                onMouseLeave={(e) => { if (!aiLoading) e.currentTarget.style.backgroundColor = '#ffffff'; }}
-              >
-                ✅ Correggi Grammatica
-              </button>
-            </div>
-
-            {/* Loading state */}
+            {/* Caricamento */}
             {aiLoading && (
-              <div style={{
-                textAlign: 'center',
-                padding: '24px',
-                color: '#6b7280'
-              }}>
-                <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🤖</div>
-                <div style={{ fontSize: '0.875rem' }}>Elaborazione in corso...</div>
+              <div className="rte-ai-loading" role="status">
+                <span className="rte-ai-spinner" />
+                <div>Elaborazione in corso...</div>
+                <button type="button" className="rte-ai-btn" onClick={cancelAIRequest}>Annulla richiesta</button>
+              </div>
+            )}
+
+            {/* Errore: mai applicabile alla nota */}
+            {aiError && !aiLoading && (
+              <div className="rte-ai-error" role="alert">
+                <div>{aiError}</div>
+                {aiLastTool && (
+                  <button type="button" className="rte-ai-btn" onClick={() => handleAITool(aiLastTool)}>Riprova</button>
+                )}
               </div>
             )}
 
             {/* Risultato AI */}
             {aiResult && !aiLoading && (
               <div>
-                <div style={{
-                  fontSize: '0.75rem',
-                  color: '#9ca3af',
-                  marginBottom: '8px',
-                  fontWeight: 500,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}>
-                  Risultato
-                </div>
-                <div style={{
-                  backgroundColor: '#f9fafb',
-                  padding: '16px',
-                  borderRadius: '8px',
-                  border: '1px solid #e5e7eb',
-                  marginBottom: '20px',
-                  color: '#1f2937',
-                  whiteSpace: 'pre-wrap',
-                  fontSize: '0.875rem',
-                  lineHeight: 1.6,
-                  maxHeight: '300px',
-                  overflow: 'auto'
-                }}>
-                  {aiResult}
-                </div>
-                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <div className="rte-ai-label">Risultato</div>
+                {aiTruncated && (
+                  <div className="rte-ai-warning" role="alert">
+                    La risposta è stata interrotta perché troppo lunga: potrebbe essere incompleta.
+                    Per questo non è possibile sostituire la selezione. Puoi inserirla sotto o copiarla.
+                  </div>
+                )}
+                <div
+                  className="rte-ai-preview"
+                  dangerouslySetInnerHTML={{ __html: renderAIMarkdown(aiResult) }}
+                />
+                <div className="rte-ai-actions">
                   <button
-                    onClick={applyAIResult}
-                    style={{
-                      padding: '12px 24px',
-                      backgroundColor: '#6366f1',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      fontSize: '0.875rem',
-                      fontWeight: 500,
-                      transition: 'opacity 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.target.style.opacity = '0.9'}
-                    onMouseLeave={(e) => e.target.style.opacity = '1'}
+                    type="button"
+                    className={`rte-ai-btn${aiPreferBelow ? '' : ' rte-ai-btn-primary'}`}
+                    onClick={() => applyAIResult('replace')}
+                    disabled={aiTruncated}
                   >
-                    ✅ Applica
+                    ✅ Sostituisci selezione
                   </button>
                   <button
-                    onClick={closeAIMenu}
-                    style={{
-                      padding: '12px 24px',
-                      backgroundColor: '#ef4444',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      fontSize: '0.875rem',
-                      fontWeight: 500,
-                      transition: 'opacity 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.target.style.opacity = '0.9'}
-                    onMouseLeave={(e) => e.target.style.opacity = '1'}
+                    type="button"
+                    className={`rte-ai-btn${aiPreferBelow ? ' rte-ai-btn-primary' : ''}`}
+                    onClick={() => applyAIResult('below')}
                   >
-                    ❌ Annulla
+                    ⤵ Inserisci sotto
                   </button>
+                  <button type="button" className="rte-ai-btn" onClick={() => copyAIText(aiResult)}>
+                    {aiCopied ? '✓ Copiato' : '📋 Copia'}
+                  </button>
+                  <button type="button" className="rte-ai-btn" onClick={closeAIMenu}>Annulla</button>
                 </div>
               </div>
             )}
@@ -2448,6 +2610,13 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
             zIndex: 11000, padding: '20px'
           }}
           onClick={(e) => { if (e.target === e.currentTarget) { cleanupCursorMarker(); setLinkModalParams(null); } }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              cleanupCursorMarker();
+              setLinkModalParams(null);
+            }
+          }}
         >
           <div className="animate-scale-in" style={{
             backgroundColor: 'var(--bg-card)', borderRadius: '24px', padding: '32px',
@@ -2507,102 +2676,54 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       {/* AI Summary Popup Modal */}
       {showSummaryPopup && createPortal(
         <div
-          className="ai-summary-modal"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000,
-            padding: '20px'
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowSummaryPopup(false);
-          }}
+          className="rte-ai-overlay ai-summary-modal"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeSummaryPopup(); }}
         >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '16px',
-            padding: '28px',
-            width: '100%',
-            maxWidth: '600px',
-            maxHeight: '80vh',
-            overflow: 'auto',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              marginBottom: '20px'
-            }}>
-              <IconComponent name="brain" />
-              <h3 style={{
-                margin: 0,
-                fontSize: '1.25rem',
-                fontWeight: 600,
-                color: '#1f2937'
-              }}>
-                Riassunto AI
-              </h3>
+          <div className="rte-ai-modal rte-ai-modal-summary" role="dialog" aria-modal="true" aria-label="Riassunto AI">
+            <div className="rte-ai-header">
+              <h3><IconComponent name="brain" /> Riassunto della nota</h3>
+              <button type="button" className="rte-ai-close" onClick={closeSummaryPopup} aria-label="Chiudi">✕</button>
             </div>
 
-            <div
-              style={{
-                backgroundColor: '#f9fafb',
-                padding: '20px',
-                borderRadius: '12px',
-                border: '1px solid #e5e7eb',
-                marginBottom: '24px',
-                color: '#1f2937',
-                fontSize: '0.9375rem',
-                lineHeight: 1.7,
-                maxHeight: '400px',
-                overflow: 'auto'
-              }}
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(summaryText) }}
-            />
+            {isSummarizing && (
+              <div className="rte-ai-loading" role="status">
+                <span className="rte-ai-spinner" />
+                <div>Sto riassumendo la nota...</div>
+                <button type="button" className="rte-ai-btn" onClick={closeSummaryPopup}>Annulla</button>
+              </div>
+            )}
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(summaryText);
-                  alert('Riassunto copiato negli appunti!');
-                }}
-                style={{
-                  padding: '12px 20px',
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: 500
-                }}
-              >
-                📋 Copia
-              </button>
-              <button
-                onClick={() => setShowSummaryPopup(false)}
-                style={{
-                  padding: '12px 20px',
-                  backgroundColor: '#6366f1',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: 500
-                }}
-              >
-                ✕ Chiudi
-              </button>
-            </div>
+            {!isSummarizing && summaryError && (
+              <div className="rte-ai-error" role="alert">
+                <div>{summaryError}</div>
+                {summaryText === '' && editorRef.current?.innerText.trim() && (
+                  <button type="button" className="rte-ai-btn" onClick={handleAISummary}>Riprova</button>
+                )}
+              </div>
+            )}
+
+            {!isSummarizing && summaryText && (
+              <>
+                {summaryTruncated && (
+                  <div className="rte-ai-warning" role="alert">
+                    Il riassunto è stato interrotto perché troppo lungo: potrebbe essere incompleto.
+                  </div>
+                )}
+                <div
+                  className="rte-ai-preview"
+                  dangerouslySetInnerHTML={{ __html: renderAIMarkdown(summaryText) }}
+                />
+                <div className="rte-ai-actions">
+                  <button type="button" className="rte-ai-btn" onClick={() => copyAIText(summaryText)}>
+                    {aiCopied ? '✓ Copiato' : '📋 Copia'}
+                  </button>
+                  <button type="button" className="rte-ai-btn rte-ai-btn-primary" onClick={appendSummaryToNote}>
+                    ⤵ Inserisci in fondo alla nota
+                  </button>
+                  <button type="button" className="rte-ai-btn" onClick={closeSummaryPopup}>Chiudi</button>
+                </div>
+              </>
+            )}
           </div>
         </div>,
         document.body
@@ -2797,18 +2918,27 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
             contentEditable
             onInput={handleInput}
             onKeyDown={handleKeyDown}
+            onKeyUp={(e) => {
+              // Il caret si è spostato senza digitare: il menu comandi va riallineato (o chiuso)
+              if (slashMenuParams && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) updateSlashMenu();
+            }}
             onBlur={() => {
               if (debounceTimerRef.current) {
                 clearTimeout(debounceTimerRef.current);
                 debounceTimerRef.current = null;
-                onChange(editorRef.current.innerHTML);
+                onChangeRef.current?.(getEditorHtml());
                 pendingHtmlRef.current = null;
               }
             }}
             onClick={(e) => {
               handleEditorClick(e);
+              if (slashMenuParams) updateSlashMenu();
             }}
             onPaste={handlePaste}
+            onDrop={handleDrop}
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Testo della nota"
             data-placeholder="Scrivi una nota... (premi '/' per comandi, #nome; per ancore)"
           />
 
@@ -2818,7 +2948,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
               {allFiles && allFiles.length > 0 ? allFiles.map(f => (
                 <button key={f.id} type="button" onClick={() => {
                   editorRef.current?.focus();
-                  insertHtml(`<a href="#" data-internal-id="${f.id}" data-internal-type="file" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📄 ${f.name}</a>&nbsp;`);
+                  insertHtml(`<a href="#" data-internal-id="${f.id}" data-internal-type="file" class="internal-link" contenteditable="false" style="color:var(--primary);font-weight:600;text-decoration:none;background:var(--bg-hover);padding:2px 6px;border-radius:4px;display:inline-block;margin:2px;">📄 ${escapeHtml(f.name)}</a>&nbsp;`);
                   setShowInternalLinkMenu(null);
                   setInternalLinkPosition(null);
                 }}>📄 {f.name}</button>
@@ -2903,6 +3033,282 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         .rte-btn:hover {
           background: var(--bg-hover);
           color: var(--text-primary);
+        }
+
+        .rte-ai-spinner-sm {
+          width: 14px;
+          height: 14px;
+          border-width: 2px;
+        }
+
+        .rte-btn.active {
+          background: var(--primary-ghost);
+          color: var(--primary);
+        }
+
+        .rte-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.6;
+        }
+
+        .rte-btn:disabled:hover {
+          background: transparent;
+        }
+
+        .rte-btn:focus-visible {
+          outline: 2px solid var(--primary-light);
+          outline-offset: 1px;
+        }
+
+        /* ── Pannelli AI (strumenti di scrittura e riassunto) ── */
+        .rte-ai-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10001;
+          padding: 20px;
+        }
+
+        .rte-ai-modal {
+          background: var(--bg-card);
+          color: var(--text-primary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          padding: 24px;
+          width: 100%;
+          max-width: 640px;
+          max-height: 85vh;
+          overflow: auto;
+          box-shadow: var(--shadow-xl);
+        }
+
+        .rte-ai-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid var(--border-light);
+        }
+
+        .rte-ai-header h3 {
+          margin: 0;
+          font-size: 1.1rem;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .rte-ai-close {
+          background: none;
+          border: none;
+          font-size: 1.25rem;
+          cursor: pointer;
+          color: var(--text-secondary);
+          padding: 4px 8px;
+          border-radius: var(--radius-sm);
+        }
+
+        .rte-ai-close:hover {
+          background: var(--bg-hover);
+        }
+
+        .rte-ai-label {
+          font-size: 0.72rem;
+          color: var(--text-tertiary);
+          margin-bottom: 6px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .rte-ai-selected {
+          background: var(--bg-input);
+          padding: 12px 14px;
+          border-radius: var(--radius-sm);
+          margin-bottom: 16px;
+          border: 1px solid var(--border-light);
+          font-size: 0.85rem;
+          line-height: 1.5;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .rte-ai-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
+          margin-bottom: 16px;
+        }
+
+        .rte-ai-tool {
+          padding: 12px;
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          background: var(--bg-card);
+          color: var(--text-primary);
+          font-family: var(--font);
+          font-size: 0.85rem;
+          font-weight: 500;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: background var(--duration-fast), border-color var(--duration-fast);
+        }
+
+        .rte-ai-tool:hover:not(:disabled) {
+          background: var(--bg-hover);
+        }
+
+        .rte-ai-tool:disabled {
+          cursor: not-allowed;
+          opacity: 0.6;
+        }
+
+        .rte-ai-tool.active {
+          border-color: var(--primary);
+          background: var(--primary-ghost);
+        }
+
+        .rte-ai-translate {
+          grid-column: span 2;
+          padding: 6px 8px;
+          cursor: default;
+          justify-content: flex-start;
+        }
+
+        .rte-ai-translate button {
+          border: none;
+          background: transparent;
+          font: inherit;
+          color: inherit;
+          cursor: pointer;
+          padding: 6px 8px;
+        }
+
+        .rte-ai-translate button:disabled {
+          cursor: not-allowed;
+        }
+
+        .rte-ai-translate select {
+          flex: 1;
+          padding: 6px 8px;
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          background: var(--bg-input);
+          color: var(--text-primary);
+          font: inherit;
+        }
+
+        .rte-ai-loading {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          padding: 20px;
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+        }
+
+        .rte-ai-spinner {
+          width: 28px;
+          height: 28px;
+          border: 3px solid var(--border);
+          border-top-color: var(--primary);
+          border-radius: 50%;
+          animation: rte-ai-spin 0.8s linear infinite;
+        }
+
+        @keyframes rte-ai-spin {
+          to { transform: rotate(360deg); }
+        }
+
+        .rte-ai-error,
+        .rte-ai-warning {
+          padding: 12px 14px;
+          border-radius: var(--radius-sm);
+          margin-bottom: 12px;
+          font-size: 0.85rem;
+          line-height: 1.5;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .rte-ai-error {
+          background: var(--danger-bg);
+          color: var(--danger);
+        }
+
+        .rte-ai-warning {
+          background: rgba(241, 196, 15, 0.15);
+          color: var(--text-primary);
+        }
+
+        .rte-ai-preview {
+          background: var(--bg-input);
+          padding: 14px 16px;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--border-light);
+          margin-bottom: 16px;
+          font-size: 0.9rem;
+          line-height: 1.6;
+          max-height: 320px;
+          overflow: auto;
+        }
+
+        .rte-ai-preview h1, .rte-ai-preview h2, .rte-ai-preview h3 {
+          margin: 0.6em 0 0.3em;
+          font-size: 1.05rem;
+        }
+
+        .rte-ai-preview p { margin: 0 0 0.6em; }
+        .rte-ai-preview ul, .rte-ai-preview ol { margin: 0 0 0.6em; padding-left: 1.4em; }
+
+        .rte-ai-actions {
+          display: flex;
+          gap: 8px;
+          justify-content: flex-end;
+          flex-wrap: wrap;
+        }
+
+        .rte-ai-btn {
+          padding: 9px 16px;
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          background: var(--bg-card);
+          color: var(--text-primary);
+          font-family: var(--font);
+          font-size: 0.85rem;
+          font-weight: 500;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .rte-ai-btn:hover:not(:disabled) {
+          background: var(--bg-hover);
+        }
+
+        .rte-ai-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.5;
+        }
+
+        .rte-ai-btn-primary {
+          background: var(--primary);
+          border-color: var(--primary);
+          color: var(--text-inverse);
+        }
+
+        .rte-ai-btn-primary:hover:not(:disabled) {
+          background: var(--primary-dark);
         }
 
         .rte-color-btn {

@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { getMasterPassword, verifyMasterPassword, setMasterPassword, exportData, importData, formatBytes, getStorageInfo } from '../utils/storage';
 import { reencryptCredentials } from '../utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
-import { getAvailableModels, getCurrentModel, setAIModel } from '../utils/aiTextService';
+import { getAvailableModels, getCurrentModel, getCurrentSummaryModel, setAIModel, setAISummaryModel } from '../utils/aiTextService';
 import CalculatorSettings from './CalculatorSettings';
 import RestoreModal from './RestoreModal';
 import ManualModal from './ManualModal';
@@ -405,8 +405,9 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                 <label className="input-label">Modello AI per Riassunti</label>
                                 <select
                                     className="input"
-                                    value={settings.aiSummaryModel || getCurrentModel().id}
+                                    value={getCurrentSummaryModel().id}
                                     onChange={e => {
+                                        setAISummaryModel(e.target.value);
                                         updateSettings({ aiSummaryModel: e.target.value });
                                     }}
                                     style={{ width: '100%' }}
@@ -418,7 +419,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                     ))}
                                 </select>
                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '8px', display: 'block' }}>
-                                    Modello specifico per il pulsante "Riassunto AI" nelle note.
+                                    Modello specifico per il pulsante "Riassumi" nelle note.
                                 </span>
                             </div>
                         </div>
