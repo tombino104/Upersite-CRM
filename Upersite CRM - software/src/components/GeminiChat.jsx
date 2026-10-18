@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { generateText, AI_MODELS, findModel, defaultModel } from '../utils/aiClient';
-import { htmlToText } from '../utils/htmlToText';
+import { generateText, normalizeAISettings, applyAISettings, describeChoice, findProvider, findGeminiModel } from '../utils/aiClient';
+import AIModelPicker from './AIModelPicker';
+import { buildCrmContext } from '../utils/chatContext';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
-
-const MODEL_STORAGE_KEY = 'upersite_ai_model';
 
 const WELCOME_MESSAGE = {
     role: 'model',
@@ -16,65 +15,6 @@ function generateChatId() {
 
 function formatChatTitle(date) {
     return new Date(date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
-
-// Stima dei token di un dato (circa 4 caratteri per token)
-const estimateTokens = (data) => Math.round(JSON.stringify(data).length / 4);
-
-// Dati del CRM mandati all'AI come contesto. Le note sono salvate in HTML: si inviano come testo semplice.
-// optimized: solo ciò che è ancora aperto (rate non pagate, task non completati, ticket aperti, eventi futuri).
-function buildCrmContext(customers, events, optimized) {
-    const noteText = (html) => htmlToText(html);
-
-    return {
-        clienti: customers.map(c => ({
-            id: c.id,
-            nome: c.name,
-            azienda: c.company,
-            sito: c.website,
-            stato: c.status,
-            tags: c.tags || [],
-            rate: (c.installments || []).filter(i => !optimized || !i.paid).map(i => ({
-                id: i.id,
-                scadenza: i.dueDate,
-                importo: i.amount,
-                pagata: i.paid,
-                descrizione: i.description || ''
-            })),
-            task: (c.todo || []).filter(t => !optimized || !t.completed).map(t => ({
-                testo: t.text,
-                scadenza: t.dueDate,
-                completato: t.completed
-            })),
-            tickets: (c.tickets || []).filter(t => !optimized || t.isOpen).map(t => ({
-                id: t.id,
-                link: t.link,
-                priorita: t.priority || 2,
-                stato: t.isOpen ? 'aperto' : 'chiuso',
-                note: noteText(t.description || ''),
-                noteCollegate: (t.linkedNotes || []).map(nid => {
-                    const note = (c.notes || []).find(n => n.id === nid);
-                    return note ? noteText(note.text).substring(0, 100) + '...' : '';
-                }).filter(Boolean),
-                creatoIl: t.createdAt
-            })),
-            links: (c.links || []).map(l => ({
-                id: l.id,
-                etichetta: l.label,
-                url: l.url,
-                note: noteText(l.note || ''),
-                creatoIl: l.createdAt
-            })),
-            // Esclude i report SmartReport
-            note: (c.notes || []).filter(n => n.type !== 'smartreport').map(n => noteText(n.text)).filter(Boolean)
-        })),
-        eventi: (events || []).filter(e => !optimized || new Date(e.date) >= new Date()).map(e => ({
-            id: e.id,
-            titolo: e.title,
-            data: e.date,
-            tipo: 'evento_globale'
-        }))
-    };
 }
 
 // Il testo dell'AI è formattato in HTML minimo: va sempre sanificato prima di mostrarlo
@@ -115,9 +55,6 @@ export default function GeminiChat({
     settings = {},
     updateSettings
 }) {
-    // Ripristina il modello salvato o usa il default
-    const savedModelId = localStorage.getItem(MODEL_STORAGE_KEY) || defaultModel().id;
-    const [selectedModelId, setSelectedModelId] = useState(savedModelId);
     const [showModelMenu, setShowModelMenu] = useState(false);
 
     const [isOpen, setIsOpen] = useState(false);
@@ -132,12 +69,17 @@ export default function GeminiChat({
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
 
-    const currentModel = findModel(selectedModelId) || defaultModel();
+    // IA della chat: scelta nelle Impostazioni → Intelligenza artificiale (o dal menu in alto)
+    const chatChoice = normalizeAISettings(settings).purposes.chat;
+    const chatProvider = findProvider(chatChoice.provider);
+    const chatLabel = describeChoice(chatChoice);
+    // Solo Gemini ha limiti giornalieri gratuiti (rpd): per gli altri servizi niente barra di utilizzo
+    const geminiModel = chatChoice.provider === 'gemini' ? findGeminiModel(chatChoice.model) : null;
 
-    const handleModelChange = (modelId) => {
-        setSelectedModelId(modelId);
-        localStorage.setItem(MODEL_STORAGE_KEY, modelId);
-        setShowModelMenu(false);
+    const handleChatChoiceChange = (choice) => {
+        if (!updateSettings) return;
+        const ai = normalizeAISettings(settings);
+        updateSettings({ ai: applyAISettings({ ...ai, purposes: { ...ai.purposes, chat: choice } }) });
     };
 
     useEffect(() => {
@@ -193,23 +135,24 @@ export default function GeminiChat({
     const errorMessage = (error) => {
         if (error?.code === 'aborted') return '⏹ Richiesta interrotta.';
 
-        if (error?.code === 'quota') {
+        // Messaggi dettagliati sui limiti giornalieri gratuiti: esistono solo per Gemini
+        if (error?.code === 'quota' && geminiModel) {
             if (error.zeroQuota) {
-                return `⚠️ **Quota 0 per "${currentModel.label}"**\n\n` +
+                return `⚠️ **Quota 0 per "${geminiModel.label}"**\n\n` +
                     `Questo modello non ha quota gratuita per la tua API key.\n` +
-                    `Modello chiamato: \`${currentModel.id}\` (endpoint: /${currentModel.apiVersion}/)\n\n` +
-                    `**Soluzione rapida:** cambia modello → seleziona **Gemini 2.5 Flash** dal menu in cima alla chat.\n` +
+                    `Modello chiamato: \`${geminiModel.id}\` (endpoint: /${geminiModel.apiVersion}/)\n\n` +
+                    `**Soluzione rapida:** cambia modello dal menu in cima alla chat (es. **Gemini 2.5 Flash** o un modello locale).\n` +
                     `Per sbloccare il modello: https://ai.dev/rate-limit`;
             }
-            return `⚠️ **Limite giornaliero raggiunto per "${currentModel.label}"** (${currentModel.rpd} RPD)\n\n` +
-                `Modello: \`${currentModel.id}\` | Endpoint: /${currentModel.apiVersion}/\n` +
+            return `⚠️ **Limite giornaliero raggiunto per "${geminiModel.label}"** (${geminiModel.rpd} RPD)\n\n` +
+                `Modello: \`${geminiModel.id}\` | Endpoint: /${geminiModel.apiVersion}/\n` +
                 (error.retryAfterSeconds ? `Riprova tra: **${error.retryAfterSeconds}s** (o domani dopo mezzanotte UTC)\n\n` : '\n') +
-                `Hai esaurito le ${currentModel.rpd} richieste giornaliere gratuite.\n` +
+                `Hai esaurito le ${geminiModel.rpd} richieste giornaliere gratuite.\n` +
                 `Questo è normale se hai fatto molti test oggi — il contatore si azzera a mezzanotte UTC.`;
         }
 
         if (error?.code === 'http') {
-            return `⚠️ Errore API (${currentModel.label} / ${currentModel.id}): ${error.message}`;
+            return `⚠️ Errore API (${chatLabel}): ${error.message}`;
         }
         return `⚠️ ${error?.message || 'Errore imprevisto del servizio AI.'}`;
     };
@@ -239,10 +182,8 @@ export default function GeminiChat({
         };
 
         try {
-            const optimized = !!settings.aiOptimization;
-            const dbSummary = buildCrmContext(customers, events, optimized);
-            const usedTokens = estimateTokens(dbSummary);
-            const savedTokens = optimized ? estimateTokens(buildCrmContext(customers, events, false)) - usedTokens : 0;
+            // Dati del CRM scelti in Impostazioni → Intelligenza artificiale → Dati inviati alla chat
+            const dbSummary = buildCrmContext(customers, events, normalizeAISettings(settings).chatData);
 
             const systemPrompt = `Sei Upersite AI Assistant, l'assistente IA intelligente di Upersite Studio. Hai accesso al Database in sola lettura. Non inventare dati.
             Fornisci SOLO le informazioni richieste, senza aggiungere dettagli non richiesti. Se ti chiedo i task, elenca solo i task senza includere note o altri contenuti.
@@ -280,20 +221,11 @@ ${JSON.stringify(dbSummary)}`;
             const result = await generateText({
                 system: systemPrompt,
                 messages: history,
-                modelId: currentModel.id,
+                provider: chatChoice.provider,
+                model: chatChoice.model,
+                purpose: 'chat',
                 signal: controller.signal
             });
-
-            // I token si contano solo se la richiesta è andata a buon fine
-            if (updateSettings) {
-                const currentStats = settings.tokenStats || { totalUsed: 0, totalSaved: 0 };
-                updateSettings({
-                    tokenStats: {
-                        totalUsed: currentStats.totalUsed + usedTokens,
-                        totalSaved: currentStats.totalSaved + savedTokens
-                    }
-                });
-            }
 
             const aiText = result.truncated
                 ? `${result.text}\n\n⚠️ Risposta interrotta perché troppo lunga: chiedimi di continuare.`
@@ -360,7 +292,7 @@ ${JSON.stringify(dbSummary)}`;
 
     const today = new Date().toISOString().slice(0, 10);
     const usageCount = aiUsageStats.date === today ? aiUsageStats.count : 0;
-    const usagePercent = Math.min((usageCount / currentModel.rpd) * 100, 100);
+    const usagePercent = geminiModel ? Math.min((usageCount / geminiModel.rpd) * 100, 100) : 0;
     const usageColor = usagePercent > 90 ? 'var(--danger)' : usagePercent > 60 ? 'var(--warning)' : 'var(--primary)';
 
     return (
@@ -389,42 +321,44 @@ ${JSON.stringify(dbSummary)}`;
                                 <button
                                     className="gemini-model-btn"
                                     onClick={() => setShowModelMenu(!showModelMenu)}
-                                    title="Cambia modello AI"
+                                    title={`IA della chat: ${chatLabel}. Clicca per cambiarla`}
                                 >
-                                    {currentModel.label}
-                                    <span className="gemini-model-badge">{currentModel.badge}</span>
+                                    {geminiModel?.label || chatChoice.model || chatProvider?.label}
+                                    <span className="gemini-model-badge">
+                                        {geminiModel ? geminiModel.badge : chatProvider?.kind === 'local' ? 'locale' : 'cloud'}
+                                    </span>
                                     <span style={{ fontSize: '0.55rem', opacity: 0.6, marginLeft: '2px' }}>▾</span>
                                 </button>
 
-                                {/* Model dropdown */}
+                                {/* Scelta del servizio e del modello della chat */}
                                 {showModelMenu && (
-                                    <div className="gemini-model-menu">
-                                        {AI_MODELS.map(m => (
-                                            <button
-                                                key={m.id}
-                                                className={`gemini-model-option ${m.id === selectedModelId ? 'selected' : ''}`}
-                                                onClick={() => handleModelChange(m.id)}
-                                            >
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ fontWeight: 700, fontSize: '0.78rem' }}>{m.label}</span>
-                                                    <span className="gemini-model-badge">{m.badge}</span>
-                                                </div>
-
-                                                <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>{m.description}</div>
-                                                {m.id === selectedModelId && <span className="gemini-model-check">✓</span>}
-                                            </button>
-                                        ))}
+                                    <div className="gemini-model-menu" style={{ minWidth: '330px', padding: '12px' }} onClick={e => e.stopPropagation()}>
+                                        <AIModelPicker value={chatChoice} onChange={handleChatChoiceChange} />
+                                        <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', marginTop: '8px' }}>
+                                            {chatProvider?.kind === 'local'
+                                                ? 'Servizio locale: i dati del CRM inviati alla chat restano sul PC.'
+                                                : 'Servizio cloud: la chat gli invia i dati del CRM, note comprese.'}
+                                            {' '}La scelta vale anche in Impostazioni → Intelligenza artificiale.
+                                        </div>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Usage bar */}
-                            <div className="gemini-usage-bar-wrap">
-                                <div className="gemini-usage-bar" style={{ width: `${usagePercent}%`, background: usageColor }} />
-                            </div>
-                            <div style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', marginTop: '1px' }}>
-                                {usageCount} / {currentModel.rpd} richieste oggi
-                            </div>
+                            {/* Barra di utilizzo: solo Gemini ha un limite giornaliero gratuito */}
+                            {geminiModel ? (
+                                <>
+                                    <div className="gemini-usage-bar-wrap">
+                                        <div className="gemini-usage-bar" style={{ width: `${usagePercent}%`, background: usageColor }} />
+                                    </div>
+                                    <div style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                                        {usageCount} / {geminiModel.rpd} richieste oggi
+                                    </div>
+                                </>
+                            ) : (
+                                <div style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                                    {chatProvider?.label}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -504,19 +438,24 @@ ${JSON.stringify(dbSummary)}`;
                             <div style={{ marginBottom: '16px' }}>
                                 <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: '700' }}>Modello Attuale</h4>
                                 <div style={{ background: 'var(--bg-hover)', padding: '8px 12px', borderRadius: '8px' }}>
-                                    <div style={{ fontWeight: '600' }}>{currentModel.label}</div>
+                                    <div style={{ fontWeight: '600' }}>{chatLabel}</div>
                                     <div style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem' }}>
-                                        Limite: {currentModel.badge} • Endpoint: /{currentModel.apiVersion}/
+                                        {geminiModel
+                                            ? `Limite: ${geminiModel.badge} • Endpoint: /${geminiModel.apiVersion}/`
+                                            : chatProvider?.kind === 'local'
+                                                ? 'Servizio locale: nessun limite giornaliero, i dati restano sul PC'
+                                                : 'Servizio cloud: i limiti dipendono dal tuo piano'}
                                     </div>
                                 </div>
                             </div>
 
+                            {geminiModel && (<>
                             <div style={{ marginBottom: '16px' }}>
                                 <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: '700' }}>Utilizzo Oggi</h4>
                                 <div style={{ background: 'var(--bg-hover)', padding: '8px 12px', borderRadius: '8px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                                         <span>Richieste:</span>
-                                        <span style={{ fontWeight: '600' }}>{usageCount} / {currentModel.rpd}</span>
+                                        <span style={{ fontWeight: '600' }}>{usageCount} / {geminiModel.rpd}</span>
                                     </div>
                                     <div className="gemini-usage-bar-wrap" style={{ width: '100%', height: '4px' }}>
                                         <div className="gemini-usage-bar" style={{ width: `${usagePercent}%`, background: usageColor }} />
@@ -564,6 +503,7 @@ ${JSON.stringify(dbSummary)}`;
                                     • Controlla il dashboard per limiti reali
                                 </div>
                             </div>
+                            </>)}
                         </div>
                     </div>
 
@@ -598,7 +538,7 @@ ${JSON.stringify(dbSummary)}`;
                         type="text"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        placeholder={`Chiedimi qualcosa... (${currentModel.label})`}
+                        placeholder={`Chiedimi qualcosa... (${geminiModel?.label || chatChoice.model || chatProvider?.label})`}
                         disabled={isLoading}
                     />
                     {isLoading ? (

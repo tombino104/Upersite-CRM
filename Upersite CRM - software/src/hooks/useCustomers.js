@@ -768,9 +768,10 @@ export function useCustomers() {
 
 
 
+    // Accetta un oggetto da unire o una funzione (impostazioni attuali) => oggetto da unire
     const updateSettings = useCallback((newSettings) => {
 
-        setSettings(prev => ({ ...prev, ...newSettings }));
+        setSettings(prev => ({ ...prev, ...(typeof newSettings === 'function' ? newSettings(prev) : newSettings) }));
 
     }, []);
 

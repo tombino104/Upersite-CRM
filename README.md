@@ -2,7 +2,7 @@
 
 CRM personale per gestire clienti, preventivi, pagamenti, task e note di progetto. Funziona in locale sul proprio PC: i dati restano in un file e non vengono inviati a nessun server (tranne il testo che invii alle funzioni AI).
 
-**Versione attuale:** 1.22.2-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
+**Versione attuale:** 1.23.0-stable · [Cronologia delle versioni](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
 ## Funzionalità
 
@@ -13,7 +13,7 @@ CRM personale per gestire clienti, preventivi, pagamenti, task e note di progett
 - **Ticket** per cliente con dashboard centralizzata
 - **Credenziali** dei clienti cifrate con la password master
 - **Automazioni**: editor a nodi per workflow (eventi, condizioni, azioni su task, note, tag, backup)
-- **AI (Gemini)**: chat, SmartReport sui clienti, riassunti delle note, strumenti di scrittura
+- **AI**: chat, SmartReport sui clienti, riassunti delle note, strumenti di scrittura. Per ogni funzione scegli il servizio: locale (LM Studio, Unsloth Studio) o cloud (Ollama Cloud, Google Gemini)
 - **Backup** manuale e automatico, import/export dei dati
 
 ## Requisiti
@@ -28,16 +28,34 @@ cd "Upersite CRM - software"
 npm install
 ```
 
-### Chiave Gemini (solo per le funzioni AI)
+### Funzioni AI (facoltative)
 
-1. Crea una chiave su <https://aistudio.google.com/apikey>
-2. Copia `.env.example` in `.env.local` e incolla la chiave:
+In **Impostazioni → Intelligenza artificiale** scegli quale IA usare per ogni funzione: strumenti dell'editor, riassunto della nota, chat Upersite AI e SmartReport. Ad esempio un modello locale per l'editor e Ollama Cloud per la chat.
 
-   ```
-   VITE_GEMINI_API_KEY=la_tua_chiave
-   ```
+| Servizio | Tipo | Cosa serve |
+|---|---|---|
+| LM Studio | locale | Scheda Developer → avvia il server (di solito `http://127.0.0.1:1234`) e carica un modello |
+| Unsloth Studio | locale | Carica un modello e crea la chiave in Settings → API (`UNSLOTH_API_KEY`) |
+| Ollama Cloud | cloud | Chiave da <https://ollama.com/settings/keys> (`OLLAMA_API_KEY`) |
+| Google Gemini | cloud | Chiave da <https://aistudio.google.com/apikey> (`GEMINI_API_KEY`) |
 
-Senza chiave il CRM funziona normalmente, solo le funzioni AI non rispondono. `.env.local` è escluso da git: non va mai condiviso né caricato.
+Gli indirizzi dei servizi locali si impostano in **Servizi e chiavi** (anche un altro PC della rete di casa), con il pulsante «Prova connessione».
+
+Le **chiavi** si incollano nella stessa pagina e si salvano con **Salva**. Le conserva il server del CRM nel file `.env.local` (vedi `.env.example`); valgono subito, senza riavviare. Si possono anche scrivere a mano nel file:
+
+```
+GEMINI_API_KEY=la_tua_chiave
+OLLAMA_API_KEY=la_tua_chiave
+```
+
+Le legge solo il server del CRM, che inoltra le richieste ai servizi: non finiscono nel codice dell'app, nel file dati o nei backup, e l'app non le mostra mai.
+
+Nelle altre sotto-sezioni della scheda IA:
+- **Modelli locali**: modelli di LM Studio (0.4+) caricati in memoria, Carica / Scarica, contesto per ogni modello e opzione «un solo modello alla volta».
+- **Dati inviati alla chat**: profili Completo / Essenziale / Minimo o scelta voce per voce, con la stima dei token.
+- **Consumo e costi**: token reali per modello e per funzione, per periodo, con il costo stimato dai prezzi per milione di token.
+
+Il manuale d'uso (Impostazioni → Generale) ha un capitolo per ogni servizio. Con un servizio locale i dati restano sul PC; con uno cloud il testo (e, per la chat, i dati del CRM) va al servizio. Senza nessun servizio configurato il CRM funziona normalmente, solo le funzioni AI non rispondono. `.env.local` è escluso da git: non va mai condiviso né caricato.
 
 ## Avvio
 
@@ -84,7 +102,8 @@ Upersite CRM - software/
 │   ├── hooks/useCustomers.js
 │   └── utils/               # storage, workflow, AI, sanificazione HTML, versione
 ├── electron/                # guscio desktop (main.js, preload.cjs)
-├── vite.config.js           # build + API locale di salvataggio dati
+├── server/aiProxy.js        # ponte verso i servizi AI (chiavi lette da .env.local)
+├── vite.config.js           # build + API locale di salvataggio dati e AI
 └── Guida_UpersiteCRM.md
 ```
 
@@ -98,6 +117,7 @@ Formato `Major.Minor.Patch-stato` (`alpha`, `beta`, `stable`). Quando cambi vers
 
 - Le richieste che modificano i dati richiedono un header interno: un sito esterno aperto nel browser non può sovrascrivere il file dati.
 - Le password delle credenziali clienti sono cifrate (AES-GCM, chiave ricavata dalla password master con PBKDF2): nel file dati e nei backup non sono leggibili.
-- L'HTML delle note viene ripulito con DOMPurify.
+- L'HTML delle note e le risposte AI vengono ripuliti con DOMPurify.
+- Le chiavi dei servizi AI restano nel server del CRM (`.env.local`): il browser parla solo con `/api/ai/*`. Per i servizi locali il server accetta solo indirizzi di questo PC o della rete locale.
 - In Electron sono attivi `contextIsolation` e `sandbox`, senza `nodeIntegration`.
 - Il server di salvataggio è pensato per uso **locale**: non esporlo su rete o internet.

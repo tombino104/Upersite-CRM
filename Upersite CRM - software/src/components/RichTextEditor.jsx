@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import IconComponent from './IconComponent';
 import { aiTextService } from '../utils/aiTextService';
+import { getAIChoice, describeChoice, isLocalChoice } from '../utils/aiClient';
 import { sanitizeHtml, sanitizeChildrenInPlace } from '../utils/sanitizeHtml';
 import { markdownToHtml, escapeHtml } from '../utils/markdownToHtml';
 
@@ -378,6 +379,8 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const [aiTargetLang, setAiTargetLang] = useState('inglese');
   const [aiCopied, setAiCopied] = useState(false);
   const aiAbortRef = useRef(null);
+  // Pannello laterale ridotto a icona (la richiesta continua)
+  const [aiPanelMinimized, setAiPanelMinimized] = useState(false);
   // Per riassunti e idee il gesto naturale è aggiungere sotto, non sostituire l'originale
   const aiPreferBelow = aiLastTool === 'summarize' || aiLastTool === 'ideas';
 
@@ -411,6 +414,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     aiSelectionRef.current = range.cloneRange();
     setSelectedText(text);
     setShowAIMenu(true);
+    setAiPanelMinimized(false);
     setTextSelection(null);
     return true;
   };
@@ -523,6 +527,14 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     });
   };
 
+  // 'ok' | 'changed' (testo modificato nel frattempo) | 'gone' (testo cancellato)
+  const aiSelectionState = (() => {
+    const range = aiSelectionRef.current;
+    if (!showAIMenu || !aiResult || !range) return 'ok';
+    if (range.collapsed || !editorRef.current?.contains(range.commonAncestorContainer)) return 'gone';
+    return range.toString().trim() === selectedText ? 'ok' : 'changed';
+  })();
+
   const closeAIMenu = () => {
     cancelAIRequest();
     setShowAIMenu(false);
@@ -546,6 +558,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
   const [summaryError, setSummaryError] = useState('');
   const [summaryTruncated, setSummaryTruncated] = useState(false);
   const summaryAbortRef = useRef(null);
+  const [summaryMinimized, setSummaryMinimized] = useState(false);
 
   const closeSummaryPopup = () => {
     summaryAbortRef.current?.abort();
@@ -568,6 +581,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     setSummaryError('');
     setSummaryTruncated(false);
     setShowSummaryPopup(true);
+    setSummaryMinimized(false);
 
     if (!fullText.trim()) {
       setIsSummarizing(false);
@@ -604,13 +618,21 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     closeSummaryPopup();
   };
 
-  // Esc chiude i pannelli AI (e annulla la richiesta in corso) senza chiudere la nota che li ospita
+  // Esc chiude il pannello AI in cui ci si trova (e annulla la sua richiesta), senza chiudere la nota.
+  // I pannelli non bloccano la pagina: se si sta scrivendo nella nota, Esc non li tocca.
   useEffect(() => {
     if (!showAIMenu && !showSummaryPopup) return;
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return;
+      const target = e.target;
+      const panel = target?.closest?.('.rte-ai-side');
+      // Si sta scrivendo nella nota o in un campo fuori dal pannello: Esc non riguarda il pannello
+      const typingElsewhere = !panel && (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName));
+      if (typingElsewhere) return;
+      // Focus dentro un pannello: si chiude quello; nessun focus (es. pulsante disattivato durante l'attesa): il più recente
+      if (!panel && target !== document.body && target !== document.documentElement) return;
       e.stopPropagation();
-      if (showSummaryPopup) closeSummaryPopup();
+      if (panel ? panel.classList.contains('ai-summary-modal') : (showSummaryPopup && !showAIMenu)) closeSummaryPopup();
       else closeAIMenu();
     };
     document.addEventListener('keydown', onKeyDown, true);
@@ -999,13 +1021,14 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
   // Esc esce dalla modalità a schermo intero
   const overlayOpenRef = useRef(false);
-  overlayOpenRef.current = !!(slashMenuParams || showInternalLinkMenu || linkModalParams || showAIMenu || showSummaryPopup);
+  // I pannelli AI laterali non contano: non bloccano la pagina (Esc dentro un pannello lo gestisce il pannello)
+  overlayOpenRef.current = !!(slashMenuParams || showInternalLinkMenu || linkModalParams);
   useEffect(() => {
     if (!isFullScreen) return undefined;
     const onKeyDown = (e) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       // Menu e pannelli aperti hanno la precedenza (gestiscono Esc da soli)
-      if (overlayOpenRef.current) return;
+      if (overlayOpenRef.current || e.target?.closest?.('.rte-ai-side')) return;
       e.stopPropagation();
       setIsFullScreen(false);
     };
@@ -2493,109 +2516,203 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       {/* Menu contestuale per selezione testo */}
       {renderContextualMenu()}
 
-      {/* AI Writing Tools Modal */}
-      {showAIMenu && createPortal(
-        <div
-          className="rte-ai-overlay"
-          onMouseDown={(e) => { if (e.target === e.currentTarget) closeAIMenu(); }}
-        >
-          <div className="rte-ai-modal" role="dialog" aria-modal="true" aria-label="Strumenti AI">
-            <div className="rte-ai-header">
-              <h3><IconComponent name="sparkles" /> Strumenti AI</h3>
-              <button type="button" className="rte-ai-close" onClick={closeAIMenu} aria-label="Chiudi">✕</button>
-            </div>
-
-            {/* Testo selezionato */}
-            <div className="rte-ai-selected">
-              <div className="rte-ai-label">Testo selezionato · {selectedText.length} caratteri</div>
-              <div>{selectedText.length > 200 ? selectedText.substring(0, 200) + '...' : selectedText}</div>
-            </div>
-
-            {/* Strumenti AI */}
-            <div className="rte-ai-grid">
-              {AI_TOOLS.map(tool => (
-                <button
-                  key={tool.id}
-                  type="button"
-                  className={`rte-ai-tool${aiLastTool === tool.id ? ' active' : ''}`}
-                  onClick={() => handleAITool(tool.id)}
-                  disabled={aiLoading}
-                >
-                  {tool.label}
-                </button>
-              ))}
-              <div className={`rte-ai-tool rte-ai-translate${aiLastTool === 'translate' ? ' active' : ''}`}>
-                <button type="button" onClick={() => handleAITool('translate')} disabled={aiLoading}>
-                  🌍 Traduci in
-                </button>
-                <select
-                  value={aiTargetLang}
-                  onChange={(e) => setAiTargetLang(e.target.value)}
-                  disabled={aiLoading}
-                  aria-label="Lingua di destinazione"
-                >
-                  {AI_LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Caricamento */}
-            {aiLoading && (
-              <div className="rte-ai-loading" role="status">
-                <span className="rte-ai-spinner" />
-                <div>Elaborazione in corso...</div>
-                <button type="button" className="rte-ai-btn" onClick={cancelAIRequest}>Annulla richiesta</button>
-              </div>
-            )}
-
-            {/* Errore: mai applicabile alla nota */}
-            {aiError && !aiLoading && (
-              <div className="rte-ai-error" role="alert">
-                <div>{aiError}</div>
-                {aiLastTool && (
-                  <button type="button" className="rte-ai-btn" onClick={() => handleAITool(aiLastTool)}>Riprova</button>
-                )}
-              </div>
-            )}
-
-            {/* Risultato AI */}
-            {aiResult && !aiLoading && (
-              <div>
-                <div className="rte-ai-label">Risultato</div>
-                {aiTruncated && (
-                  <div className="rte-ai-warning" role="alert">
-                    La risposta è stata interrotta perché troppo lunga: potrebbe essere incompleta.
-                    Per questo non è possibile sostituire la selezione. Puoi inserirla sotto o copiarla.
-                  </div>
-                )}
-                <div
-                  className="rte-ai-preview"
-                  dangerouslySetInnerHTML={{ __html: renderAIMarkdown(aiResult) }}
-                />
-                <div className="rte-ai-actions">
-                  <button
-                    type="button"
-                    className={`rte-ai-btn${aiPreferBelow ? '' : ' rte-ai-btn-primary'}`}
-                    onClick={() => applyAIResult('replace')}
-                    disabled={aiTruncated}
-                  >
-                    ✅ Sostituisci selezione
-                  </button>
-                  <button
-                    type="button"
-                    className={`rte-ai-btn${aiPreferBelow ? ' rte-ai-btn-primary' : ''}`}
-                    onClick={() => applyAIResult('below')}
-                  >
-                    ⤵ Inserisci sotto
-                  </button>
-                  <button type="button" className="rte-ai-btn" onClick={() => copyAIText(aiResult)}>
-                    {aiCopied ? '✓ Copiato' : '📋 Copia'}
-                  </button>
-                  <button type="button" className="rte-ai-btn" onClick={closeAIMenu}>Annulla</button>
+      {/* Pannelli AI laterali: non bloccano la pagina, si può continuare a lavorare mentre l'IA genera */}
+      {(showAIMenu || showSummaryPopup) && createPortal(
+        <div className="rte-ai-dock">
+          {showAIMenu && (aiPanelMinimized ? (
+            <button
+              type="button"
+              className={`rte-ai-pill${aiResult ? ' ready' : ''}${aiError ? ' failed' : ''}`}
+              onClick={() => setAiPanelMinimized(false)}
+              title="Apri il pannello Strumenti AI"
+            >
+              {aiLoading ? <span className="rte-ai-spinner rte-ai-spinner-sm" /> : <IconComponent name="sparkles" />}
+              <span>
+                Strumenti AI · {aiLoading ? 'in corso…' : aiResult ? 'risultato pronto' : aiError ? 'errore' : 'pronti'}
+              </span>
+            </button>
+          ) : (
+            <section className="rte-ai-side" role="complementary" aria-label="Strumenti AI">
+              <div className="rte-ai-header">
+                <h3><IconComponent name="sparkles" /> Strumenti AI</h3>
+                <div className="rte-ai-header-actions">
+                  <button type="button" className="rte-ai-close" onClick={() => setAiPanelMinimized(true)} aria-label="Riduci" title="Riduci (la richiesta continua)">–</button>
+                  <button type="button" className="rte-ai-close" onClick={closeAIMenu} aria-label="Chiudi" title="Chiudi e annulla">✕</button>
                 </div>
               </div>
-            )}
-          </div>
+
+              <div className="rte-ai-model">
+                IA: {describeChoice(getAIChoice('editor'))}{isLocalChoice(getAIChoice('editor')) ? ' (locale)' : ' (cloud)'}
+              </div>
+
+              {/* Testo selezionato */}
+              <div className="rte-ai-selected">
+                <div className="rte-ai-label">Testo selezionato · {selectedText.length} caratteri</div>
+                <div>{selectedText.length > 200 ? selectedText.substring(0, 200) + '...' : selectedText}</div>
+              </div>
+
+              {/* Strumenti AI */}
+              <div className="rte-ai-grid">
+                {AI_TOOLS.map(tool => (
+                  <button
+                    key={tool.id}
+                    type="button"
+                    className={`rte-ai-tool${aiLastTool === tool.id ? ' active' : ''}`}
+                    onClick={() => handleAITool(tool.id)}
+                    disabled={aiLoading}
+                  >
+                    {tool.label}
+                  </button>
+                ))}
+                <div className={`rte-ai-tool rte-ai-translate${aiLastTool === 'translate' ? ' active' : ''}`}>
+                  <button type="button" onClick={() => handleAITool('translate')} disabled={aiLoading}>
+                    🌍 Traduci in
+                  </button>
+                  <select
+                    value={aiTargetLang}
+                    onChange={(e) => setAiTargetLang(e.target.value)}
+                    disabled={aiLoading}
+                    aria-label="Lingua di destinazione"
+                  >
+                    {AI_LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Caricamento */}
+              {aiLoading && (
+                <div className="rte-ai-loading" role="status">
+                  <span className="rte-ai-spinner" />
+                  <div>Elaborazione in corso... puoi continuare a scrivere o ridurre il pannello.</div>
+                  <button type="button" className="rte-ai-btn" onClick={cancelAIRequest}>Annulla richiesta</button>
+                </div>
+              )}
+
+              {/* Errore: mai applicabile alla nota */}
+              {aiError && !aiLoading && (
+                <div className="rte-ai-error" role="alert">
+                  <div>{aiError}</div>
+                  {aiLastTool && (
+                    <button type="button" className="rte-ai-btn" onClick={() => handleAITool(aiLastTool)}>Riprova</button>
+                  )}
+                </div>
+              )}
+
+              {/* Risultato AI */}
+              {aiResult && !aiLoading && (
+                <div>
+                  <div className="rte-ai-label">Risultato</div>
+                  {aiTruncated && (
+                    <div className="rte-ai-warning" role="alert">
+                      La risposta è stata interrotta perché troppo lunga: potrebbe essere incompleta.
+                      Per questo non è possibile sostituire la selezione. Puoi inserirla sotto o copiarla.
+                    </div>
+                  )}
+                  {aiSelectionState === 'changed' && (
+                    <div className="rte-ai-warning" role="alert">
+                      Nel frattempo il testo selezionato è stato modificato: «Sostituisci» sostituirà il testo che ora si trova in quel punto.
+                    </div>
+                  )}
+                  {aiSelectionState === 'gone' && (
+                    <div className="rte-ai-warning" role="alert">
+                      Il testo selezionato non c'è più: puoi inserire il risultato sotto o copiarlo.
+                    </div>
+                  )}
+                  <div
+                    className="rte-ai-preview"
+                    dangerouslySetInnerHTML={{ __html: renderAIMarkdown(aiResult) }}
+                  />
+                  <div className="rte-ai-actions">
+                    <button
+                      type="button"
+                      className={`rte-ai-btn${aiPreferBelow ? '' : ' rte-ai-btn-primary'}`}
+                      onClick={() => applyAIResult('replace')}
+                      disabled={aiTruncated || aiSelectionState === 'gone'}
+                    >
+                      ✅ Sostituisci selezione
+                    </button>
+                    <button
+                      type="button"
+                      className={`rte-ai-btn${aiPreferBelow ? ' rte-ai-btn-primary' : ''}`}
+                      onClick={() => applyAIResult('below')}
+                    >
+                      ⤵ Inserisci sotto
+                    </button>
+                    <button type="button" className="rte-ai-btn" onClick={() => copyAIText(aiResult)}>
+                      {aiCopied ? '✓ Copiato' : '📋 Copia'}
+                    </button>
+                    <button type="button" className="rte-ai-btn" onClick={closeAIMenu}>Annulla</button>
+                  </div>
+                </div>
+              )}
+            </section>
+          ))}
+
+          {showSummaryPopup && (summaryMinimized ? (
+            <button
+              type="button"
+              className={`rte-ai-pill${summaryText ? ' ready' : ''}${summaryError ? ' failed' : ''}`}
+              onClick={() => setSummaryMinimized(false)}
+              title="Apri il pannello Riassunto"
+            >
+              {isSummarizing ? <span className="rte-ai-spinner rte-ai-spinner-sm" /> : <IconComponent name="brain" />}
+              <span>Riassunto · {isSummarizing ? 'in corso…' : summaryText ? 'pronto' : summaryError ? 'errore' : ''}</span>
+            </button>
+          ) : (
+            <section className="rte-ai-side ai-summary-modal" role="complementary" aria-label="Riassunto AI">
+              <div className="rte-ai-header">
+                <h3><IconComponent name="brain" /> Riassunto della nota</h3>
+                <div className="rte-ai-header-actions">
+                  <button type="button" className="rte-ai-close" onClick={() => setSummaryMinimized(true)} aria-label="Riduci" title="Riduci (la richiesta continua)">–</button>
+                  <button type="button" className="rte-ai-close" onClick={closeSummaryPopup} aria-label="Chiudi" title="Chiudi e annulla">✕</button>
+                </div>
+              </div>
+
+              <div className="rte-ai-model">
+                IA: {describeChoice(getAIChoice('summary'))}{isLocalChoice(getAIChoice('summary')) ? ' (locale)' : ' (cloud)'}
+              </div>
+
+              {isSummarizing && (
+                <div className="rte-ai-loading" role="status">
+                  <span className="rte-ai-spinner" />
+                  <div>Sto riassumendo la nota... puoi continuare a lavorare.</div>
+                  <button type="button" className="rte-ai-btn" onClick={closeSummaryPopup}>Annulla</button>
+                </div>
+              )}
+
+              {!isSummarizing && summaryError && (
+                <div className="rte-ai-error" role="alert">
+                  <div>{summaryError}</div>
+                  {summaryText === '' && editorRef.current?.innerText.trim() && (
+                    <button type="button" className="rte-ai-btn" onClick={handleAISummary}>Riprova</button>
+                  )}
+                </div>
+              )}
+
+              {!isSummarizing && summaryText && (
+                <>
+                  {summaryTruncated && (
+                    <div className="rte-ai-warning" role="alert">
+                      Il riassunto è stato interrotto perché troppo lungo: potrebbe essere incompleto.
+                    </div>
+                  )}
+                  <div
+                    className="rte-ai-preview"
+                    dangerouslySetInnerHTML={{ __html: renderAIMarkdown(summaryText) }}
+                  />
+                  <div className="rte-ai-actions">
+                    <button type="button" className="rte-ai-btn" onClick={() => copyAIText(summaryText)}>
+                      {aiCopied ? '✓ Copiato' : '📋 Copia'}
+                    </button>
+                    <button type="button" className="rte-ai-btn rte-ai-btn-primary" onClick={appendSummaryToNote}>
+                      ⤵ Inserisci in fondo alla nota
+                    </button>
+                    <button type="button" className="rte-ai-btn" onClick={closeSummaryPopup}>Chiudi</button>
+                  </div>
+                </>
+              )}
+            </section>
+          ))}
         </div>,
         document.body
       )}
@@ -2673,61 +2790,6 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         document.body
       )}
 
-      {/* AI Summary Popup Modal */}
-      {showSummaryPopup && createPortal(
-        <div
-          className="rte-ai-overlay ai-summary-modal"
-          onMouseDown={(e) => { if (e.target === e.currentTarget) closeSummaryPopup(); }}
-        >
-          <div className="rte-ai-modal rte-ai-modal-summary" role="dialog" aria-modal="true" aria-label="Riassunto AI">
-            <div className="rte-ai-header">
-              <h3><IconComponent name="brain" /> Riassunto della nota</h3>
-              <button type="button" className="rte-ai-close" onClick={closeSummaryPopup} aria-label="Chiudi">✕</button>
-            </div>
-
-            {isSummarizing && (
-              <div className="rte-ai-loading" role="status">
-                <span className="rte-ai-spinner" />
-                <div>Sto riassumendo la nota...</div>
-                <button type="button" className="rte-ai-btn" onClick={closeSummaryPopup}>Annulla</button>
-              </div>
-            )}
-
-            {!isSummarizing && summaryError && (
-              <div className="rte-ai-error" role="alert">
-                <div>{summaryError}</div>
-                {summaryText === '' && editorRef.current?.innerText.trim() && (
-                  <button type="button" className="rte-ai-btn" onClick={handleAISummary}>Riprova</button>
-                )}
-              </div>
-            )}
-
-            {!isSummarizing && summaryText && (
-              <>
-                {summaryTruncated && (
-                  <div className="rte-ai-warning" role="alert">
-                    Il riassunto è stato interrotto perché troppo lungo: potrebbe essere incompleto.
-                  </div>
-                )}
-                <div
-                  className="rte-ai-preview"
-                  dangerouslySetInnerHTML={{ __html: renderAIMarkdown(summaryText) }}
-                />
-                <div className="rte-ai-actions">
-                  <button type="button" className="rte-ai-btn" onClick={() => copyAIText(summaryText)}>
-                    {aiCopied ? '✓ Copiato' : '📋 Copia'}
-                  </button>
-                  <button type="button" className="rte-ai-btn rte-ai-btn-primary" onClick={appendSummaryToNote}>
-                    ⤵ Inserisci in fondo alla nota
-                  </button>
-                  <button type="button" className="rte-ai-btn" onClick={closeSummaryPopup}>Chiudi</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
 
       {/* ── Note Link Modal Portal ── */}
       {showInternalLinkMenu === 'note' && createPortal(
@@ -3061,28 +3123,87 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         }
 
         /* ── Pannelli AI (strumenti di scrittura e riassunto) ── */
-        .rte-ai-overlay {
+        /* Colonna a destra con i pannelli AI: niente sfondo scuro, il resto della pagina resta utilizzabile */
+        .rte-ai-dock {
           position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          top: 16px;
+          right: 16px;
+          /* sopra il pulsante tondo della chat (in basso a destra) */
+          bottom: 96px;
+          width: min(400px, calc(100vw - 32px));
           z-index: 10001;
-          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          gap: 10px;
+          pointer-events: none;
         }
 
-        .rte-ai-modal {
+        .rte-ai-side {
+          pointer-events: auto;
           background: var(--bg-card);
           color: var(--text-primary);
           border: 1px solid var(--border);
           border-radius: var(--radius-lg);
-          padding: 24px;
-          width: 100%;
-          max-width: 640px;
-          max-height: 85vh;
-          overflow: auto;
+          padding: 18px 18px 20px;
           box-shadow: var(--shadow-xl);
+          overflow: auto;
+          min-height: 0;
+          flex: 1 1 auto;
+          max-height: 100%;
+          animation: rte-ai-slide-in 0.2s ease-out;
+        }
+
+        @keyframes rte-ai-slide-in {
+          from { transform: translateX(24px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+
+        .rte-ai-header-actions {
+          display: flex;
+          gap: 2px;
+        }
+
+        .rte-ai-side .rte-ai-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .rte-ai-side .rte-ai-tool {
+          padding: 10px 8px;
+          font-size: 0.8rem;
+        }
+
+        .rte-ai-side .rte-ai-actions {
+          justify-content: flex-start;
+        }
+
+        /* Pannello ridotto: una pillola in basso a destra con lo stato della richiesta */
+        .rte-ai-pill {
+          pointer-events: auto;
+          align-self: flex-end;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 16px;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          background: var(--bg-card);
+          color: var(--text-primary);
+          font: inherit;
+          font-size: 0.82rem;
+          font-weight: 600;
+          box-shadow: var(--shadow-lg);
+          cursor: pointer;
+        }
+
+        .rte-ai-pill.ready {
+          border-color: var(--success);
+          color: var(--success);
+        }
+
+        .rte-ai-pill.failed {
+          border-color: var(--danger);
+          color: var(--danger);
         }
 
         .rte-ai-header {
@@ -3115,6 +3236,12 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
 
         .rte-ai-close:hover {
           background: var(--bg-hover);
+        }
+
+        .rte-ai-model {
+          font-size: 0.72rem;
+          color: var(--text-tertiary);
+          margin: -8px 0 12px;
         }
 
         .rte-ai-label {

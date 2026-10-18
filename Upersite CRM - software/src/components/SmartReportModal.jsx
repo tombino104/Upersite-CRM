@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { generateText, AI_MODELS, findModel, getCurrentModel } from '../utils/aiClient';
+import { generateText, getAIChoice, describeChoice } from '../utils/aiClient';
+import AIModelPicker from './AIModelPicker';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 
@@ -110,7 +111,8 @@ export default function SmartReportModal({ customers, onClose, onUpdateCustomer,
     const [isGenerating, setIsGenerating] = useState(false);
     const [reportData, setReportData] = useState(initialReport || null);
     const [error, setError] = useState('');
-    const [selectedModel, setSelectedModel] = useState(() => getCurrentModel().id);
+    // IA per il report: quella scelta nelle Impostazioni, cambiabile solo per questo report
+    const [reportChoice, setReportChoice] = useState(() => getAIChoice('report'));
     const abortRef = useRef(null);
 
     // Chiudendo la finestra la richiesta in corso viene annullata
@@ -388,11 +390,11 @@ IMPORTANTE:
 - Usa emoji per rendere il report più leggibile 📊📈⚠️
 - Analisi approfondita del singolo cliente, non confronti`;
 
-            const currentModel = findModel(selectedModel) || getCurrentModel();
-
             const result = await generateText({
                 prompt,
-                modelId: currentModel.id,
+                provider: reportChoice.provider,
+                model: reportChoice.model,
+                purpose: 'report',
                 signal: controller.signal,
                 temperature: 0.7,
                 maxOutputTokens: 4000
@@ -402,7 +404,7 @@ IMPORTANTE:
                 generatedAt: new Date().toISOString(),
                 stats: customerStats,
                 content: result.text,
-                model: currentModel.label,
+                model: describeChoice(reportChoice),
                 truncated: result.truncated
             });
 
@@ -486,20 +488,12 @@ IMPORTANTE:
                     <div style={{ marginBottom: '20px' }}>
                         <div style={{ marginBottom: '16px' }}>
                             <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
-                                Modello IA:
+                                IA per questo report:
                             </label>
-                            <select
-                                value={selectedModel}
-                                onChange={(e) => setSelectedModel(e.target.value)}
-                                className="input"
-                                style={{ width: '100%' }}
-                            >
-                                {AI_MODELS.map(model => (
-                                    <option key={model.id} value={model.id}>
-                                        {model.label} - {model.description}
-                                    </option>
-                                ))}
-                            </select>
+                            <AIModelPicker value={reportChoice} onChange={setReportChoice} disabled={isGenerating} />
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', display: 'block', marginTop: '4px' }}>
+                                Predefinita dalle Impostazioni → Intelligenza artificiale (SmartReport).
+                            </span>
                         </div>
 
                         <button

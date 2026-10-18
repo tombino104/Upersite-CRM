@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { createAiProxy } from './server/aiProxy.js'
 import fs from 'fs'
 import path from 'path'
 import { Buffer } from 'buffer'
@@ -487,13 +488,21 @@ function applyRestore({ folder, file, mode = 'all', parts = {}, customerIds = []
   return result
 }
 
+// File con le chiavi AI: lo legge e lo scrive solo il server. AI_ENV_FILE serve ai test per usare un file a parte.
+const AI_ENV_FILE = path.resolve(__dirname, process.env.AI_ENV_FILE || '.env.local')
+
 function storagePlugin() {
+  // Funzioni AI: il server inoltra le richieste ai servizi (LM Studio, Ollama, Gemini...) con le chiavi di .env.local
+  const aiProxy = createAiProxy({ envFile: AI_ENV_FILE, rejectForeignRequest })
+
   return {
     name: 'crm-storage-plugin',
     configureServer(server) {
       try { migrateLegacyFolders() } catch (e) { console.error('[CRM] Spostamento cartelle non riuscito:', e.message) }
       server.middlewares.use((req, res, next) => {
-        if (req.url === '/api/storage' && req.method === 'GET') {
+        if (req.url.startsWith('/api/ai/')) {
+          aiProxy.handle(req, res);
+        } else if (req.url === '/api/storage' && req.method === 'GET') {
           if (!fs.existsSync(STORAGE_FILE)) {
             res.end(JSON.stringify({}));
             return;
@@ -717,6 +726,8 @@ export default defineConfig({
   plugins: [react(), storagePlugin()],
   base: './',
   // Porta fissa: i collegamenti di avvio ed Electron aprono sempre http://localhost:5173
-  // Dati/ (preventivi, calcolatore) cambia mentre lavori: non deve far ricaricare la pagina
-  server: { port: 5173, strictPort: true, watch: { ignored: ['**/Dati/**'] } }
+  // Dati/ (preventivi, calcolatore) cambia mentre lavori: non deve far ricaricare la pagina.
+  // .env.local (chiavi AI) viene riscritto dalle Impostazioni: il server lo rilegge da solo, senza riavviarsi
+  // (un riavvio ricaricherebbe l'app e chiederebbe di nuovo la password).
+  server: { port: 5173, strictPort: true, watch: { ignored: ['**/Dati/**', '**/.env.local', '**/*.saving.local'] } }
 })

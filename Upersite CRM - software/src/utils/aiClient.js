@@ -1,106 +1,150 @@
-// Client AI unico del CRM: tutte le funzioni AI (strumenti dell'editor, chat, SmartReport) passano da qui.
-// Contiene l'elenco dei modelli, la scelta del modello e la chiamata al servizio, con timeout,
-// annullamento, nuovo tentativo e conteggio delle richieste.
+// Client AI unico del CRM: tutte le funzioni AI (strumenti dell'editor, riassunto, chat, SmartReport) passano da qui.
+// Le richieste vanno al server del CRM (/api/ai/*, vedi server/aiProxy.js), che le inoltra al servizio scelto
+// (LM Studio, Unsloth, Ollama, Ollama Cloud, Gemini) con le chiavi del file .env.local: nel browser non c'è nessuna chiave.
 //
-// Per aggiungere un altro servizio (es. un modello locale) basta una funzione in PROVIDERS e dei modelli
-// con il relativo `provider` in AI_MODELS: chi chiama generateText() non cambia.
-import { GEMINI_API_KEY } from './geminiConfig';
+// Per ogni funzione (AI_PURPOSES) le Impostazioni salvano servizio e modello in settings.ai:
+//   { purposes: { editor: { provider, model }, summary, chat, report }, urls: { lmstudio, unsloth } }
+import {
+  AI_PROVIDERS,
+  GEMINI_MODELS,
+  AI_PURPOSES,
+  findProvider,
+  findGeminiModel,
+  defaultGeminiModel
+} from './aiProviders';
+import { CRM_REQUEST_HEADERS } from './storage';
+import { normalizeChatDataOptions } from './chatContext';
 
-// === MODELLI DISPONIBILI ===
-// apiVersion: 'v1' endpoint stabile, 'v1beta' per i modelli più nuovi (preview, Gemma)
-export const AI_MODELS = [
-  {
-    id: 'gemma-4-31b-it',
-    provider: 'gemini',
-    apiVersion: 'v1beta',
-    label: 'Gemma 4 31B',
-    rpd: 1500,
-    badge: '1.5k/g',
-    description: 'Modello Gemma 4 da 31B (1.5k RPD)',
-    default: true
-  },
-  {
-    id: 'gemini-2.5-flash',
-    provider: 'gemini',
-    apiVersion: 'v1',
-    label: 'Gemini 2.5 Flash',
-    rpd: 20,
-    badge: '20/g',
-    description: 'Modello stabile (20 RPD)'
-  },
-  {
-    id: 'gemini-3.1-flash-lite-preview',
-    provider: 'gemini',
-    apiVersion: 'v1beta',
-    label: 'Gemini 3.1 Flash Lite',
-    rpd: 500,
-    badge: '500/g',
-    description: 'Alta capacità (500 RPD)'
-  }
-];
+export { AI_PROVIDERS, GEMINI_MODELS, AI_PURPOSES, findProvider, findGeminiModel, defaultGeminiModel };
 
-const WRITING_MODEL_STORAGE_KEY = 'upersite_ai_writing_model';
-const REQUEST_TIMEOUT_MS = 45000;
+const LOCAL_TIMEOUT_MS = 500000; // può includere il caricamento del modello in memoria (anche minuti) più la risposta
+const CLOUD_TIMEOUT_MS = 70000;
+const LIST_TIMEOUT_MS = 15000;
 const MAX_AUTO_RETRY_WAIT_S = 10;
 
-export function findModel(id) {
-  return id ? AI_MODELS.find(m => m.id === id) || null : null;
-}
+// Chiavi del localStorage usate dalle versioni precedenti (solo per la migrazione)
+const LEGACY_WRITING_KEY = 'upersite_ai_writing_model';
+const LEGACY_CHAT_KEY = 'upersite_ai_model';
 
-export function defaultModel() {
-  return AI_MODELS.find(m => m.default) || AI_MODELS[0];
-}
-
-export function getAvailableModels() {
-  return AI_MODELS;
-}
-
-// === MODELLI SCELTI NELLE IMPOSTAZIONI ===
-// Le impostazioni (salvate in crm_data.json) sono la fonte di verità, sincronizzate da App.jsx con
-// syncAISettings; il localStorage resta come ripiego per il modello di scrittura.
-let configuredWritingModelId = null;
-let configuredSummaryModelId = null;
-
-function readStoredWritingModelId() {
+function readLocal(key) {
   try {
-    return localStorage.getItem(WRITING_MODEL_STORAGE_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null; // localStorage non disponibile
   }
 }
 
-// Modello per gli strumenti di scrittura dell'editor
-export function getCurrentModel() {
-  return findModel(configuredWritingModelId) || findModel(readStoredWritingModelId()) || defaultModel();
+// === IMPOSTAZIONI: QUALE IA PER QUALE FUNZIONE ===
+
+function geminiChoice(modelId) {
+  return { provider: 'gemini', model: findGeminiModel(modelId) ? modelId : defaultGeminiModel().id };
 }
 
-// Modello per i riassunti: se l'ID salvato non esiste più si ricade sul modello di scrittura
-export function getCurrentSummaryModel() {
-  return findModel(configuredSummaryModelId) || getCurrentModel();
+function normalizeChoice(choice, fallback) {
+  const provider = findProvider(choice?.provider);
+  if (!provider) return fallback;
+  if (provider.id === 'gemini') return geminiChoice(choice.model);
+  return { provider: provider.id, model: String(choice.model || '') };
 }
 
-export function setAIModel(modelId) {
-  configuredWritingModelId = modelId;
-  try {
-    localStorage.setItem(WRITING_MODEL_STORAGE_KEY, modelId);
-  } catch {
-    // localStorage non disponibile
+// Impostazioni AI complete e valide. Se mancano (versioni precedenti) si ricavano dalle vecchie scelte Gemini,
+// così nulla cambia finché non si sceglie altro nelle Impostazioni.
+export function normalizeAISettings(settings) {
+  const ai = settings?.ai || {};
+  const purposes = ai.purposes || {};
+
+  const editor = normalizeChoice(purposes.editor, geminiChoice(settings?.aiWritingModel || readLocal(LEGACY_WRITING_KEY)));
+  const summary = normalizeChoice(purposes.summary, settings?.aiSummaryModel ? geminiChoice(settings.aiSummaryModel) : editor);
+  const chat = normalizeChoice(purposes.chat, geminiChoice(readLocal(LEGACY_CHAT_KEY)));
+  const report = normalizeChoice(purposes.report, editor);
+
+  const urls = {};
+  AI_PROVIDERS.filter(p => p.kind === 'local').forEach(p => {
+    urls[p.id] = String(ai.urls?.[p.id] || '').trim() || p.defaultUrl;
+  });
+
+  // Contesto scelto per ogni modello locale: { 'servizio::modello': { contextLength } }
+  const models = {};
+  for (const [key, cfg] of Object.entries(ai.models || {})) {
+    const contextLength = Math.round(Number(cfg?.contextLength));
+    if (contextLength > 0) models[key] = { contextLength };
   }
+
+  // Prezzi per milione di token (euro), per la stima dei costi: { 'servizio::modello': { input, output } }
+  const prices = {};
+  for (const [key, price] of Object.entries(ai.prices || {})) {
+    const input = Number(price?.input);
+    const output = Number(price?.output);
+    if (input > 0 || output > 0) prices[key] = { input: input > 0 ? input : 0, output: output > 0 ? output : 0 };
+  }
+
+  // Abbonamenti mensili dei servizi cloud a piano (es. Ollama Cloud), in euro: { servizio: importo }
+  const subscriptions = {};
+  for (const [providerId, amount] of Object.entries(ai.subscriptions || {})) {
+    const value = Number(amount);
+    if (findProvider(providerId)?.kind === 'cloud' && value > 0) subscriptions[providerId] = value;
+  }
+
+  return {
+    purposes: { editor, summary, chat, report },
+    urls,
+    models,
+    subscriptions,
+    // Un solo modello locale alla volta: caricandone uno si scaricano gli altri (di base sì)
+    exclusiveLocal: ai.exclusiveLocal !== false,
+    prices,
+    chatData: normalizeChatDataOptions(settings)
+  };
 }
 
-// Imposta subito il modello per i riassunti (la persistenza è nelle impostazioni dell'app)
-export function setAISummaryModel(modelId) {
-  configuredSummaryModelId = modelId;
+export function modelConfigKey(provider, model) {
+  return `${provider}::${model}`;
 }
 
-// Sincronizza i modelli dalle impostazioni dell'app
+// Contesto scelto per un modello locale (undefined = quello predefinito del servizio)
+export function getModelContextLength(provider, model) {
+  return aiSettings.models[modelConfigKey(provider, model)]?.contextLength;
+}
+
+let aiSettings = normalizeAISettings(null);
+
+// Sincronizza dalle impostazioni dell'app (App.jsx)
 export function syncAISettings(settings) {
-  configuredWritingModelId = settings?.aiWritingModel || null;
-  configuredSummaryModelId = settings?.aiSummaryModel || null;
+  aiSettings = normalizeAISettings(settings);
+}
+
+// Applica subito nuove impostazioni AI e le restituisce normalizzate, pronte per updateSettings({ ai })
+export function applyAISettings(ai) {
+  aiSettings = normalizeAISettings({ ai });
+  return aiSettings;
+}
+
+export function getAISettings() {
+  return aiSettings;
+}
+
+export function getAIChoice(purpose) {
+  return aiSettings.purposes[purpose] || aiSettings.purposes.editor;
+}
+
+export function getProviderUrl(providerId) {
+  return aiSettings.urls[providerId] || findProvider(providerId)?.defaultUrl || '';
+}
+
+// Etichetta leggibile, es. "Gemma 4 31B · Google Gemini" o "gpt-oss:120b · Ollama Cloud"
+export function describeChoice(choice) {
+  const provider = findProvider(choice?.provider);
+  if (!provider) return 'Nessun servizio';
+  const model = provider.id === 'gemini' ? (findGeminiModel(choice.model)?.label || choice.model) : (choice.model || 'nessun modello');
+  return `${model} · ${provider.label}`;
+}
+
+export function isLocalChoice(choice) {
+  return findProvider(choice?.provider)?.kind === 'local';
 }
 
 // === CONTEGGIO RICHIESTE ===
-// App.jsx registra qui chi deve contare le richieste: così contano tutte le funzioni AI, non solo la chat.
+// App.jsx registra qui chi deve contare le richieste (riceve { provider, model, usage }).
 let usageListener = null;
 
 export function setAIUsageListener(listener) {
@@ -108,12 +152,13 @@ export function setAIUsageListener(listener) {
 }
 
 // === ERRORI ===
-// Errore con le informazioni utili alla UI (tipo di problema, messaggio e tempi dati dal servizio)
+// Errore con le informazioni utili alla UI
 export class AIError extends Error {
   constructor(message, { code = 'error', status = null, apiMessage = '', apiStatus = '', retryAfterSeconds = null, zeroQuota = false } = {}) {
     super(message);
     this.name = 'AIError';
-    this.code = code; // 'quota' | 'timeout' | 'network' | 'aborted' | 'blocked' | 'empty' | 'no-key' | 'http' | 'error'
+    // 'quota' | 'timeout' | 'network' | 'unreachable' | 'auth' | 'model' | 'url' | 'aborted' | 'blocked' | 'empty' | 'http' | 'error'
+    this.code = code;
     this.status = status;
     this.apiMessage = apiMessage;
     this.apiStatus = apiStatus;
@@ -134,46 +179,40 @@ const sleep = (ms, signal) => new Promise((resolve, reject) => {
   }, { once: true });
 });
 
-// Una singola chiamata HTTP con timeout e annullamento esterno
-async function fetchOnce(apiUrl, init, externalSignal) {
+// Richiesta al server del CRM con timeout e annullamento esterno
+async function crmFetch(url, init, externalSignal, timeoutMs) {
   if (externalSignal?.aborted) throw new AIError('Richiesta annullata', { code: 'aborted' });
 
   const controller = new AbortController();
   let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
   const onExternalAbort = () => controller.abort();
   externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
 
   try {
-    return await fetch(apiUrl, { ...init, signal: controller.signal });
-  } catch {
+    const response = await fetch(url, { ...init, headers: CRM_REQUEST_HEADERS, signal: controller.signal });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const e = data.error && typeof data.error === 'object' ? data.error : { message: data.error };
+      throw new AIError(e.message || `Errore del server del CRM (HTTP ${response.status})`, {
+        code: e.code || 'http',
+        status: e.status ?? response.status,
+        apiMessage: e.apiMessage || '',
+        apiStatus: e.apiStatus || '',
+        retryAfterSeconds: e.retryAfterSeconds ?? null,
+        zeroQuota: !!e.zeroQuota
+      });
+    }
+    return await response.json();
+  } catch (error) {
+    if (error instanceof AIError) throw error;
     if (timedOut) throw new AIError('Il servizio AI non ha risposto in tempo. Riprova.', { code: 'timeout' });
     if (externalSignal?.aborted) throw new AIError('Richiesta annullata', { code: 'aborted' });
-    throw new AIError('Impossibile contattare il servizio AI. Controlla la connessione.', { code: 'network' });
+    throw new AIError('Il server del CRM non risponde: controlla che il CRM sia avviato.', { code: 'network' });
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener('abort', onExternalAbort);
   }
-}
-
-// Legge l'errore restituito dal servizio e lo trasforma in un AIError
-async function errorFromResponse(response) {
-  const errorData = await response.json().catch(() => ({}));
-  const apiMessage = errorData.error?.message || '';
-  const apiStatus = errorData.error?.status || '';
-  const retryMatch = apiMessage.match(/retry in ([\d.]+)s/i);
-  const retryAfterSeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
-
-  const isQuota = response.status === 429 || apiStatus === 'RESOURCE_EXHAUSTED' || /quota|exceeded|limit: 0/i.test(apiMessage);
-  if (isQuota) {
-    return new AIError(
-      'Limite di richieste AI raggiunto. Riprova tra poco o scegli un altro modello.',
-      { code: 'quota', status: response.status, apiMessage, apiStatus, retryAfterSeconds, zeroQuota: apiMessage.includes('limit: 0') }
-    );
-  }
-  return new AIError(apiMessage || `Errore del servizio AI (HTTP ${response.status})`, {
-    code: 'http', status: response.status, apiMessage, apiStatus
-  });
 }
 
 // Un nuovo tentativo ha senso solo per limiti "al minuto" o sovraccarichi passeggeri,
@@ -190,106 +229,93 @@ function retryDelayMs(error) {
   return null;
 }
 
-// === SERVIZIO GEMINI ===
-async function callGemini(model, request) {
-  const { messages, system, signal, temperature, topK, topP, maxOutputTokens, relaxSafety } = request;
+// === ELENCO MODELLI E STATO DELLE CHIAVI ===
 
-  // I modelli Gemma non accettano sempre systemInstruction: per loro l'istruzione va nel primo messaggio
-  const useSystemInstruction = !!system && !model.id.startsWith('gemma');
-  const contents = messages.map(m => ({
-    role: m.role === 'model' ? 'model' : 'user',
-    parts: [{ text: m.text }]
-  }));
-  if (system && !useSystemInstruction && contents.length > 0 && contents[0].role === 'user') {
-    contents[0] = { ...contents[0], parts: [{ text: `${system}\n\n${contents[0].parts[0].text}` }] };
-  } else if (system && !useSystemInstruction) {
-    contents.unshift({ role: 'user', parts: [{ text: system }] });
-  }
-
-  const generationConfig = {};
-  if (temperature !== undefined) generationConfig.temperature = temperature;
-  if (topK !== undefined) generationConfig.topK = topK;
-  if (topP !== undefined) generationConfig.topP = topP;
-  if (maxOutputTokens !== undefined) generationConfig.maxOutputTokens = maxOutputTokens;
-
-  const body = {
-    ...(useSystemInstruction && { systemInstruction: { parts: [{ text: system }] } }),
-    contents,
-    ...(Object.keys(generationConfig).length > 0 && { generationConfig }),
-    ...(relaxSafety && {
-      safetySettings: [
-        'HARM_CATEGORY_HARASSMENT',
-        'HARM_CATEGORY_HATE_SPEECH',
-        'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-        'HARM_CATEGORY_DANGEROUS_CONTENT'
-      ].map(category => ({ category, threshold: 'BLOCK_NONE' }))
-    })
-  };
-
-  const apiUrl = `https://generativelanguage.googleapis.com/${model.apiVersion}/models/${model.id}:generateContent?key=${GEMINI_API_KEY}`;
-  const init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
-
-  let response = await fetchOnce(apiUrl, init, signal);
-  if (!response.ok) {
-    let error = await errorFromResponse(response);
-    const delay = retryDelayMs(error);
-    if (delay !== null) {
-      await sleep(delay, signal);
-      response = await fetchOnce(apiUrl, init, signal);
-      if (!response.ok) error = await errorFromResponse(response);
-    }
-    if (!response.ok) throw error;
-  }
-
-  const data = await response.json();
-
-  if (data.promptFeedback?.blockReason) {
-    throw new AIError('Il testo è stato bloccato dai filtri del servizio AI.', { code: 'blocked' });
-  }
-
-  const candidate = data.candidates?.[0];
-  const text = candidate?.content?.parts?.map(p => p.text || '').join('').trim();
-  if (!text) {
-    throw new AIError('Nessuna risposta valida dal servizio AI.', { code: 'empty' });
-  }
-
-  return {
-    text,
-    truncated: candidate.finishReason === 'MAX_TOKENS',
-    usage: {
-      promptTokens: data.usageMetadata?.promptTokenCount ?? null,
-      outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
-      totalTokens: data.usageMetadata?.totalTokenCount ?? null
-    }
-  };
+export async function listModels(providerId, { baseUrl, signal } = {}) {
+  const params = new URLSearchParams({ provider: providerId });
+  const url = baseUrl ?? getProviderUrl(providerId);
+  if (url && findProvider(providerId)?.kind === 'local') params.set('baseUrl', url);
+  const data = await crmFetch(`/api/ai/models?${params}`, { method: 'GET' }, signal, LIST_TIMEOUT_MS);
+  return data.models || [];
 }
 
-// Un'entrata per ogni servizio: riceve (modello, richiesta) e restituisce { text, truncated, usage }
-const PROVIDERS = {
-  gemini: callGemini
-};
+let statusPromise = null;
+
+// Quali chiavi sono presenti in .env.local: { providers: { gemini: { hasKey, keyRequired, keyEnv }, ... } }
+export function getAIStatus({ refresh = false } = {}) {
+  if (!statusPromise || refresh) {
+    statusPromise = crmFetch('/api/ai/status', { method: 'GET' }, null, LIST_TIMEOUT_MS).catch(error => {
+      statusPromise = null;
+      throw error;
+    });
+  }
+  return statusPromise;
+}
+
+// Salva (o cancella, con key vuota) la chiave di un servizio: la scrive il server in .env.local.
+// L'app non la rilegge mai: lo stato dice solo se c'è.
+export async function setAIKey(providerId, key) {
+  const result = await crmFetch('/api/ai/keys', { method: 'POST', body: JSON.stringify({ provider: providerId, key }) }, null, LIST_TIMEOUT_MS);
+  statusPromise = null;
+  // I selettori dei modelli già aperti (Impostazioni, chat) ricaricano stato ed elenco dei modelli
+  window.dispatchEvent(new CustomEvent(AI_KEYS_CHANGED_EVENT, { detail: { provider: providerId } }));
+  return result;
+}
+
+export const AI_KEYS_CHANGED_EVENT = 'upersite-ai-keys-changed';
+
+// === MODELLI LOCALI: STATO, CARICA, SCARICA ===
+
+const LOAD_TIMEOUT_MS = 310000;
+
+// { supported, reason?, models: [{ id, label, sizeBytes, maxContextLength, instances: [{ id, contextLength }] }] }
+export function listLocalModels(providerId, { baseUrl, signal } = {}) {
+  const params = new URLSearchParams({ provider: providerId, baseUrl: baseUrl ?? getProviderUrl(providerId) });
+  return crmFetch(`/api/ai/local/models?${params}`, { method: 'GET' }, signal, LIST_TIMEOUT_MS);
+}
+
+export function loadLocalModel(providerId, model, { contextLength, exclusive = aiSettings.exclusiveLocal, signal } = {}) {
+  const body = JSON.stringify({
+    provider: providerId,
+    baseUrl: getProviderUrl(providerId),
+    model,
+    contextLength: contextLength ?? getModelContextLength(providerId, model),
+    exclusive
+  });
+  return crmFetch('/api/ai/local/load', { method: 'POST', body }, signal, LOAD_TIMEOUT_MS);
+}
+
+export function unloadLocalModel(providerId, model, { signal } = {}) {
+  const body = JSON.stringify({ provider: providerId, baseUrl: getProviderUrl(providerId), model });
+  return crmFetch('/api/ai/local/unload', { method: 'POST', body }, signal, LIST_TIMEOUT_MS * 4);
+}
+
+// === GENERAZIONE ===
 
 /**
- * Genera testo con il modello indicato (o con quello predefinito).
+ * Genera testo con l'IA scelta per una funzione (purpose) o con un servizio/modello indicato.
  * @param {object} request
+ * @param {'editor'|'summary'|'chat'|'report'} [request.purpose]  funzione: usa la scelta delle Impostazioni
+ * @param {string} [request.provider]      in alternativa: servizio (con request.model)
+ * @param {string} [request.model]
  * @param {string} [request.prompt]        testo singolo (alternativa a messages)
  * @param {{role:'user'|'model', text:string}[]} [request.messages]  conversazione
  * @param {string} [request.system]        istruzioni di sistema
- * @param {string} [request.modelId]
  * @param {AbortSignal} [request.signal]   per annullare
  * @param {number} [request.temperature]
  * @param {number} [request.maxOutputTokens]
  * @param {number} [request.inputLength]   se manca maxOutputTokens, lo si stima da questa lunghezza (caratteri)
- * @returns {Promise<{ text: string, truncated: boolean, usage: object, model: object }>}
+ * @returns {Promise<{ text: string, truncated: boolean, usage: object, provider: string, model: string }>}
  */
 export async function generateText(request) {
-  if (!GEMINI_API_KEY) {
-    throw new AIError('Chiave API Gemini non configurata (VITE_GEMINI_API_KEY nel file .env.local).', { code: 'no-key' });
+  const choice = request.provider
+    ? normalizeChoice({ provider: request.provider, model: request.model }, null)
+    : getAIChoice(request.purpose || 'editor');
+  const provider = findProvider(choice?.provider);
+  if (!provider) throw new AIError('Servizio AI non valido: controlla le Impostazioni → Intelligenza artificiale.', { code: 'error' });
+  if (!choice.model) {
+    throw new AIError(`Nessun modello scelto per ${provider.label}: sceglilo nelle Impostazioni → Intelligenza artificiale.`, { code: 'model' });
   }
-
-  const model = findModel(request.modelId) || getCurrentModel();
-  const provider = PROVIDERS[model.provider];
-  if (!provider) throw new AIError(`Servizio AI "${model.provider}" non disponibile.`, { code: 'error' });
 
   const messages = request.messages || [{ role: 'user', text: request.prompt || '' }];
 
@@ -299,13 +325,51 @@ export async function generateText(request) {
     maxOutputTokens = Math.min(8192, Math.max(2048, Math.ceil(request.inputLength / 3) * 2));
   }
 
-  const result = await provider(model, { ...request, messages, maxOutputTokens });
+  const isLocal = provider.kind === 'local';
+  const body = JSON.stringify({
+    provider: provider.id,
+    baseUrl: isLocal ? getProviderUrl(provider.id) : undefined,
+    model: choice.model,
+    system: request.system,
+    messages,
+    temperature: request.temperature,
+    topK: request.topK,
+    topP: request.topP,
+    maxOutputTokens,
+    relaxSafety: request.relaxSafety,
+    // Modelli locali: contesto scelto per il modello e "un solo modello alla volta"
+    ...(isLocal && {
+      contextLength: getModelContextLength(provider.id, choice.model),
+      exclusive: aiSettings.exclusiveLocal
+    })
+  });
+  const timeoutMs = provider.kind === 'local' ? LOCAL_TIMEOUT_MS : CLOUD_TIMEOUT_MS;
+  const send = () => crmFetch('/api/ai/chat', { method: 'POST', body }, request.signal, timeoutMs);
+
+  let result;
+  try {
+    result = await send();
+  } catch (error) {
+    const delay = error instanceof AIError ? retryDelayMs(error) : null;
+    if (delay === null) throw error;
+    await sleep(delay, request.signal);
+    result = await send();
+  }
+
+  // Token: quelli veri restituiti dal servizio, altrimenti una stima dal testo (circa 4 caratteri per token)
+  const inputChars = (request.system || '').length + messages.reduce((n, m) => n + (m.text || '').length, 0);
+  const estimated = result.usage?.promptTokens == null || result.usage?.outputTokens == null;
+  const usage = {
+    input: result.usage?.promptTokens ?? Math.round(inputChars / 4),
+    output: result.usage?.outputTokens ?? Math.round((result.text || '').length / 4),
+    estimated
+  };
 
   try {
-    usageListener?.({ model, usage: result.usage });
+    usageListener?.({ provider: provider.id, model: choice.model, purpose: request.purpose || 'altro', usage });
   } catch (error) {
     console.error('[AI] Errore nel conteggio delle richieste:', error);
   }
 
-  return { ...result, model };
+  return { ...result, provider: provider.id, model: choice.model };
 }

@@ -1,6 +1,6 @@
 // Strumenti di scrittura AI dell'editor note (riscrivi, riassumi, traduci...).
 // Qui ci sono solo i prompt; la chiamata al servizio, i modelli e gli errori sono in aiClient.js.
-import { generateText, getCurrentModel, getCurrentSummaryModel, getAvailableModels, setAIModel } from './aiClient';
+import { generateText } from './aiClient';
 
 // Istruzione di sistema comune: il testo dell'utente è solo materiale da elaborare,
 // non contiene comandi da eseguire.
@@ -40,9 +40,10 @@ const TOOL_TEMPERATURE = {
   ideas: 0.9
 };
 
-// Esegue uno strumento. options: { signal, modelId, targetLang }. Restituisce { text, truncated, ... }
+// Esegue uno strumento con l'IA scelta per la funzione (purpose: 'editor' o 'summary').
+// options: { signal, targetLang, purpose }. Restituisce { text, truncated, ... }
 function runTool(tool, text, options = {}) {
-  const { signal = null, modelId = null, targetLang } = options;
+  const { signal = null, targetLang, purpose = 'editor' } = options;
   const prompt = tool === 'translate'
     ? AI_PROMPTS.translate(text, targetLang || 'inglese')
     : AI_PROMPTS[tool](text);
@@ -50,7 +51,7 @@ function runTool(tool, text, options = {}) {
   return generateText({
     prompt,
     system: SYSTEM_INSTRUCTION,
-    modelId,
+    purpose,
     signal,
     temperature: TOOL_TEMPERATURE[tool],
     topK: 40,
@@ -62,18 +63,13 @@ function runTool(tool, text, options = {}) {
 
 export const aiTextService = {
   rewrite: (text, options) => runTool('rewrite', text, options),
-  // Il riassunto usa il modello dedicato, se non indicato diversamente
-  summarize: (text, options = {}) => runTool('summarize', text, { modelId: getCurrentSummaryModel().id, ...options }),
+  // Il riassunto usa l'IA scelta per i riassunti
+  summarize: (text, options = {}) => runTool('summarize', text, { purpose: 'summary', ...options }),
   improve: (text, options) => runTool('improve', text, options),
   expand: (text, options) => runTool('expand', text, options),
   translate: (text, targetLang, options = {}) => runTool('translate', text, { ...options, targetLang }),
   generateIdeas: (text, options) => runTool('ideas', text, options),
-  fixGrammar: (text, options) => runTool('grammar', text, options),
-
-  // Funzioni di configurazione
-  setModel: setAIModel,
-  getModels: getAvailableModels,
-  getCurrentModel
+  fixGrammar: (text, options) => runTool('grammar', text, options)
 };
 
 export default aiTextService;

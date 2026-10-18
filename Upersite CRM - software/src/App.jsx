@@ -23,7 +23,8 @@ import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustom
 import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
-import { syncAISettings, setAIUsageListener } from './utils/aiClient';
+import { syncAISettings, setAIUsageListener, normalizeAISettings } from './utils/aiClient';
+import { recordUsage } from './utils/aiUsage';
 
 /* ── Notification Component (Hoisted/Top-level) ── */
 const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggleRead, customers, setSelectedCustomer }) => {
@@ -316,14 +317,26 @@ export default function App() {
     }));
   }, [setCustomers]);
 
-  // I modelli AI scelti nelle impostazioni (crm_data.json) sono la fonte di verità per l'editor note
+  // Quale IA usare per ogni funzione: le Impostazioni (crm_data.json, settings.ai) sono la fonte di verità
   useEffect(() => {
     syncAISettings(settings);
-  }, [settings?.aiWritingModel, settings?.aiSummaryModel]);
+  }, [settings?.ai, settings?.aiWritingModel, settings?.aiSummaryModel]);
 
-  // Ogni risposta AI riuscita (editor, chat, SmartReport) conta nelle richieste del giorno
+  // Prima apertura dopo l'aggiornamento: le vecchie scelte (solo Gemini) diventano settings.ai
   useEffect(() => {
-    setAIUsageListener(() => {
+    if (hasSynced && settings && !settings.ai) {
+      updateSettings({ ai: normalizeAISettings(settings) });
+    }
+  }, [hasSynced, settings, updateSettings]);
+
+  // Ogni risposta AI riuscita: token nel registro dei consumi (tutti i servizi) e,
+  // solo per Gemini, nel contatore delle richieste del giorno (i limiti giornalieri esistono solo lì)
+  useEffect(() => {
+    setAIUsageListener(({ provider, model, purpose, usage }) => {
+      updateSettings(prev => ({
+        aiUsageLog: recordUsage(prev.aiUsageLog, { provider, model, purpose, ...usage })
+      }));
+      if (provider !== 'gemini') return;
       const today = new Date().toISOString().slice(0, 10);
       updateAiUsageStats(prev => ({
         date: today,
@@ -331,7 +344,7 @@ export default function App() {
       }));
     });
     return () => setAIUsageListener(null);
-  }, [updateAiUsageStats]);
+  }, [updateAiUsageStats, updateSettings]);
 
   // Toggle custom cursor class on body based on settings
   useEffect(() => {
