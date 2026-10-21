@@ -33,7 +33,8 @@ function getSlashMatch(textBeforeCaret) {
 const TRACKED_FORMATS = ['bold', 'italic', 'underline', 'strikeThrough', 'insertUnorderedList', 'insertOrderedList'];
 
 // File che non devono mai essere lanciati partendo dal contenuto di una nota
-const BLOCKED_OPEN_EXTENSIONS = /\.(exe|com|bat|cmd|scr|msi|msp|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|hta|lnk|reg|jar|cpl|dll)$/i;
+// Stesso elenco di electron/main.js, che fa comunque il controllo definitivo
+const BLOCKED_OPEN_EXTENSIONS = /\.(exe|com|bat|cmd|scr|msi|msp|pif|cpl|dll|sys|drv|ps1|psm1|psd1|vbs|vbe|js|jse|wsf|wsh|ws|hta|py|pyw|lnk|url|website|appref-ms|application|settingcontent-ms|search-ms|library-ms|scf|jar|msc|chm|reg|inf|iso|img|vhd|vhdx|xll|xlam|xlsm|docm|pptm|one|diagcab|theme|gadget|msix|appx)$/i;
 
 // CSV → righe di celle. Riconosce il separatore (virgola o punto e virgola, come negli export italiani di Excel)
 // e le celle tra virgolette con separatori e a capo al loro interno.
@@ -2181,7 +2182,10 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
     if (!path) return;
     const copyPath = () => navigator.clipboard?.writeText(path).catch(() => {});
 
-    if (BLOCKED_OPEN_EXTENSIONS.test(path)) {
+    // Windows ignora punti e spazi finali: "programma.exe." aprirebbe programma.exe
+    const cleanPath = path.replace(/[. ]+$/, '');
+
+    if (BLOCKED_OPEN_EXTENSIONS.test(cleanPath)) {
       copyPath();
       alert('Per sicurezza i file eseguibili non si aprono da una nota. Il percorso è stato copiato negli appunti.');
       return;
@@ -2192,7 +2196,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
       return;
     }
     // Una cartella non ha estensione: apertura diretta. Un file chiede conferma.
-    if (/\.[a-z0-9]{1,8}$/i.test(path) && !window.confirm(`Aprire questo file?\n\n${path}`)) return;
+    if (/\.[a-z0-9-]{1,20}$/i.test(cleanPath) && !window.confirm(`Aprire questo file?\n\n${path}`)) return;
 
     try {
       await window.electronAPI.openPath(path);

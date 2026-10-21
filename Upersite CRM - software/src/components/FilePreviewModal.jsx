@@ -1,6 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import mammoth from 'mammoth/mammoth.browser';
 import * as XLSX from 'xlsx';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
+
+// Link nell'anteprima di un documento: i rimandi interni (#nota) restano nella pagina, gli altri
+// si aprono in una nuova finestra (mai nella finestra del CRM)
+function handlePreviewLinkClick(e) {
+    const link = e.target.closest?.('a[href]');
+    if (!link || link.getAttribute('href').startsWith('#')) return;
+    e.preventDefault();
+    if (/^https?:\/\//i.test(link.href)) window.open(link.href, '_blank', 'noopener,noreferrer');
+}
 
 export default function FilePreviewModal({ file, onClose }) {
     if (!file) return null;
@@ -68,7 +78,8 @@ export default function FilePreviewModal({ file, onClose }) {
                 if (isDocx) {
                     const res = await mammoth.convertToHtml({ arrayBuffer: buffer });
                     if (cancelled) return;
-                    setDocxHtml(res.value || '');
+                    // mammoth non ripulisce il documento (link javascript: ecc.): il file può arrivare da un cliente
+                    setDocxHtml(sanitizeHtml(res.value || ''));
                 } else if (isXlsx) {
                     const wb = XLSX.read(buffer, { type: 'array' });
                     const nextSheets = (wb.SheetNames || []).slice(0, 5).map(name => {
@@ -149,7 +160,7 @@ export default function FilePreviewModal({ file, onClose }) {
                             {officeLoading && <div style={{ color: 'var(--text-secondary)' }}>Caricamento anteprima…</div>}
                             {!officeLoading && officeError && <div style={{ color: 'var(--danger)', fontWeight: 600 }}>{officeError}</div>}
                             {!officeLoading && !officeError && (
-                                <div style={{ fontSize: '0.95rem', lineHeight: 1.55 }} dangerouslySetInnerHTML={{ __html: docxHtml || '<div style="color:#777">Documento vuoto</div>' }} />
+                                <div style={{ fontSize: '0.95rem', lineHeight: 1.55 }} onClick={handlePreviewLinkClick} dangerouslySetInnerHTML={{ __html: docxHtml || '<div style="color:#777">Documento vuoto</div>' }} />
                             )}
                         </div>
                     )}

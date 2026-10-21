@@ -14,6 +14,7 @@
 // Le chiavi si leggono da .env.local a ogni richiesta (con cache sulla data del file): valgono subito,
 // sia scritte dall'app sia a mano, senza riavviare il CRM.
 import fs from 'fs';
+import net from 'net';
 import process from 'process';
 import { Buffer } from 'buffer';
 import { AI_PROVIDERS, GEMINI_MODELS, findProvider, findGeminiModel } from '../src/utils/aiProviders.js';
@@ -105,15 +106,17 @@ function readJsonBody(req) {
 
 // Indirizzi ammessi per i servizi locali: questo PC o la rete di casa/ufficio (es. un server Umbrel).
 // Il server del CRM non deve poter essere usato per contattare indirizzi qualsiasi su internet.
+// Gli intervalli si controllano solo sugli indirizzi IP veri: un nome come "127.esempio.com" punta a internet.
 function isAllowedLocalHost(hostname) {
   const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  return host === 'localhost'
-    || host === '::1'
-    || host.endsWith('.local')
-    || /^127\./.test(host)
-    || /^10\./.test(host)
-    || /^192\.168\./.test(host)
-    || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  if (net.isIPv4(host)) {
+    return /^127\./.test(host)
+      || /^10\./.test(host)
+      || /^192\.168\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  }
+  if (net.isIPv6(host)) return host === '::1';
+  return host === 'localhost' || host.endsWith('.local');
 }
 
 // Risposte dei modelli che "ragionano" (Qwen, DeepSeek...): il ragionamento non va mostrato

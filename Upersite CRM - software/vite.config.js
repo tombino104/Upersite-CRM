@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { createAiProxy } from './server/aiProxy.js'
 import fs from 'fs'
 import path from 'path'
+import process from 'process'
 import { Buffer } from 'buffer'
 
 const STORAGE_FILE = path.resolve(__dirname, 'crm_data.json')
@@ -28,6 +29,22 @@ function getRevision() {
 
 function rejectForeignRequest(req, res) {
   if (req.headers[CRM_HEADER] === '1') return false
+  res.statusCode = 403
+  res.end(JSON.stringify({ error: 'Richiesta non autorizzata' }))
+  return true
+}
+
+// Le /api rispondono solo alle pagine del CRM: nessun altro sito, nemmeno un altro server su localhost
+// (stesso "site" per il browser), può leggere o modificare i dati. Le richieste senza questi header
+// (es. gli script di avvio .vbs) passano.
+function rejectCrossSite(req, res) {
+  const site = req.headers['sec-fetch-site']
+  const origin = req.headers.origin
+  let foreign = site === 'cross-site' || site === 'same-site'
+  if (!foreign && origin) {
+    try { foreign = new URL(origin).host !== req.headers.host } catch { foreign = true }
+  }
+  if (!foreign) return false
   res.statusCode = 403
   res.end(JSON.stringify({ error: 'Richiesta non autorizzata' }))
   return true
@@ -104,12 +121,27 @@ function readSettings() {
   return data.settings || {}
 }
 
+// Cartelle di sistema (e radici dei dischi) che non possono fare da cartella del calcolatore:
+// lì un file scritto dal CRM potrebbe essere eseguito da Windows
+function isSystemFolder(dir) {
+  const full = path.resolve(dir).toLowerCase().replace(/[\\/]+$/, '')
+  if (full === path.parse(full).root.toLowerCase().replace(/[\\/]+$/, '')) return true
+  const env = process.env
+  const forbidden = [env.SystemRoot || env.windir, env.ProgramFiles, env['ProgramFiles(x86)'], env.ProgramData,
+    env.APPDATA && path.join(env.APPDATA, 'Microsoft', 'Windows', 'Start Menu')]
+    .filter(Boolean).map(p => path.resolve(p).toLowerCase())
+  return forbidden.some(p => full === p || full.startsWith(p + path.sep))
+}
+
 function getCalcRoot() {
   const calc = readSettings().calcStorage || {}
   if (calc.mode === 'custom') {
     const custom = calc.customPath
     if (typeof custom !== 'string' || !path.isAbsolute(custom) || !fs.existsSync(custom)) {
       throw Object.assign(new Error('La cartella del calcolatore scelta nelle Impostazioni non esiste (o il disco non è collegato)'), { status: 400 })
+    }
+    if (isSystemFolder(custom)) {
+      throw Object.assign(new Error('La cartella del calcolatore non può essere una cartella di sistema o la radice di un disco'), { status: 400 })
     }
     return custom
   }
@@ -216,6 +248,8 @@ function handleCalcFs(req, res) {
     res.end(JSON.stringify({ success: true }))
   } else if (req.method === 'POST' && op === 'write') {
     if (target === path.resolve(root)) throw Object.assign(new Error('Percorso non valido'), { status: 400 })
+    // Il calcolatore salva solo configurazioni e documenti: nessun altro tipo di file (es. programmi)
+    if (!CALC_TYPES[path.extname(target).toLowerCase()]) throw Object.assign(new Error('Tipo di file non ammesso'), { status: 400 })
     const chunks = []
     let size = 0
     req.on('data', chunk => { size += chunk.length; if (size <= MAX_CALC_BYTES) chunks.push(chunk) })
@@ -500,6 +534,7 @@ function storagePlugin() {
     configureServer(server) {
       try { migrateLegacyFolders() } catch (e) { console.error('[CRM] Spostamento cartelle non riuscito:', e.message) }
       server.middlewares.use((req, res, next) => {
+        if (req.url.startsWith('/api/') && rejectCrossSite(req, res)) return;
         if (req.url.startsWith('/api/ai/')) {
           aiProxy.handle(req, res);
         } else if (req.url === '/api/storage' && req.method === 'GET') {
@@ -543,7 +578,15 @@ function storagePlugin() {
               // Validazione minima: deve essere un oggetto JSON valido
               const parsed = JSON.parse(body);
               if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
-              writeFileAtomic(STORAGE_FILE, body);
+              // Come nel ripristino: la cartella dei backup e quella del calcolatore restano quelle attuali
+              // (un file importato non può spostarle altrove)
+              const current = fs.existsSync(STORAGE_FILE) ? readJsonFile(STORAGE_FILE) : {};
+              const settings = { ...(parsed.settings || {}) };
+              settings.backupPath = current.settings?.backupPath ?? settings.backupPath;
+              if (current.settings?.calcStorage) settings.calcStorage = current.settings.calcStorage;
+              const changed = JSON.stringify(settings.backupPath) !== JSON.stringify(parsed.settings?.backupPath)
+                || JSON.stringify(settings.calcStorage) !== JSON.stringify(parsed.settings?.calcStorage);
+              writeFileAtomic(STORAGE_FILE, changed ? JSON.stringify({ ...parsed, settings }) : body);
               res.end(JSON.stringify({ success: true }));
             } catch (e) {
               res.statusCode = 400;
@@ -561,6 +604,11 @@ function storagePlugin() {
                 res.statusCode = 400;
                 res.end(JSON.stringify({ error: 'Percorso non specificato' }));
                 return;
+              }
+              // Si salva solo nella cartella scelta nelle Impostazioni (letta dal file dati), mai altrove
+              const configured = readSettings().backupPath;
+              if (typeof configured !== 'string' || typeof backupPath !== 'string' || path.resolve(configured) !== path.resolve(backupPath)) {
+                throw Object.assign(new Error('Il percorso non è la cartella dei salvataggi scelta nelle Impostazioni'), { status: 400 });
               }
               res.end(JSON.stringify(createBackup(backupPath, { includeFiles, prefs })));
             } catch (e) {
@@ -683,6 +731,9 @@ function storagePlugin() {
               if (typeof dir !== 'string' || !path.isAbsolute(dir) || statKind(dir) !== 'directory') {
                 throw Object.assign(new Error('La cartella non esiste (serve un percorso assoluto, es. D:\\Lavoro\\Calcolatore)'), { status: 400 });
               }
+              if (isSystemFolder(dir)) {
+                throw Object.assign(new Error('Scegli una cartella tua: non una cartella di sistema o la radice di un disco'), { status: 400 });
+              }
               fs.accessSync(dir, fs.constants.W_OK);
               res.end(JSON.stringify({ success: true }));
             } catch (e) {
@@ -729,5 +780,13 @@ export default defineConfig({
   // Dati/ (preventivi, calcolatore) cambia mentre lavori: non deve far ricaricare la pagina.
   // .env.local (chiavi AI) viene riscritto dalle Impostazioni: il server lo rilegge da solo, senza riavviarsi
   // (un riavvio ricaricherebbe l'app e chiederebbe di nuovo la password).
-  server: { port: 5173, strictPort: true, watch: { ignored: ['**/Dati/**', '**/.env.local', '**/*.saving.local'] } }
+  // Sicurezza: niente CORS (l'app, il calcolatore ed Electron sono sulla stessa origine) e il file dati,
+  // la cartella Dati e i file .env non si scaricano come file statici (si leggono solo tramite /api)
+  server: {
+    port: 5173,
+    strictPort: true,
+    cors: false,
+    fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', 'crm_data.json*', '**/Dati/**'] },
+    watch: { ignored: ['**/Dati/**', '**/.env.local', '**/*.saving.local'] }
+  }
 })
