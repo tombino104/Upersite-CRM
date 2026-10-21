@@ -10,6 +10,12 @@ export const WorkflowEventTypes = {
   CUSTOMER_DELETED: 'customer.deleted',
   CUSTOMER_STATUS_CHANGED: 'customer.status_changed',
 
+  // Lead
+  LEAD_CREATED: 'lead.created',
+  LEAD_STAGE_CHANGED: 'lead.stage_changed',
+  LEAD_WON: 'lead.won',
+  LEAD_LOST: 'lead.lost',
+
   // Pagamenti
   PAYMENT_REGISTERED: 'payment.registered',
   PAYMENT_UPDATED: 'payment.updated',
@@ -51,6 +57,10 @@ export const EventLabels = {
   [WorkflowEventTypes.CUSTOMER_UPDATED]: 'Cliente aggiornato',
   [WorkflowEventTypes.CUSTOMER_DELETED]: 'Cliente eliminato / archiviato',
   [WorkflowEventTypes.CUSTOMER_STATUS_CHANGED]: 'Stato cliente modificato',
+  [WorkflowEventTypes.LEAD_CREATED]: 'Lead creato',
+  [WorkflowEventTypes.LEAD_STAGE_CHANGED]: 'Fase lead modificata',
+  [WorkflowEventTypes.LEAD_WON]: 'Lead vinto',
+  [WorkflowEventTypes.LEAD_LOST]: 'Lead perso',
   [WorkflowEventTypes.PAYMENT_REGISTERED]: 'Pagamento registrato',
   [WorkflowEventTypes.PAYMENT_UPDATED]: 'Pagamento aggiornato',
   [WorkflowEventTypes.PAYMENT_DUE_SOON]: 'Pagamento in scadenza',
@@ -82,6 +92,12 @@ export const EventCategories = {
     WorkflowEventTypes.CUSTOMER_UPDATED,
     WorkflowEventTypes.CUSTOMER_DELETED,
     WorkflowEventTypes.CUSTOMER_STATUS_CHANGED,
+  ],
+  'Lead': [
+    WorkflowEventTypes.LEAD_CREATED,
+    WorkflowEventTypes.LEAD_STAGE_CHANGED,
+    WorkflowEventTypes.LEAD_WON,
+    WorkflowEventTypes.LEAD_LOST,
   ],
   'Pagamenti': [
     WorkflowEventTypes.PAYMENT_REGISTERED,

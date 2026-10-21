@@ -1,4 +1,5 @@
 import React, { useMemo, useEffect, useRef, useState } from 'react';
+import { computeLeadStats } from '../utils/leads';
 
 /* ─── SVG Radar animato ─── */
 function polarXY(cx, cy, r, angleDeg) {
@@ -119,7 +120,8 @@ function RadarChart({ data, size = 460 }) {
 }
 
 /* ─── Calcoli ─── */
-function computeRadarData(customers) {
+// Le rate contano anche per i clienti archiviati (allCustomers): incassi e crediti sono soldi reali
+function computeRadarData(customers, allCustomers = customers) {
   const total = customers.length;
   if (total === 0) return [
     { label: 'Sviluppo', value: 0, color: '#6C5CE7' },
@@ -135,7 +137,7 @@ function computeRadarData(customers) {
   const completed = customers.filter(c => c.status === 'completed').length;
 
   let paid = 0, unpaid = 0;
-  customers.forEach(c => (c.installments || []).forEach(i => { i.paid ? paid++ : unpaid++; }));
+  allCustomers.forEach(c => (c.installments || []).forEach(i => { i.paid ? paid++ : unpaid++; }));
   const tot = paid + unpaid;
   const liquidita = tot > 0 ? Math.round((paid / tot) * 100) : 0;
   const crediti = tot > 0 ? Math.round((unpaid / tot) * 100) : 0;
@@ -282,7 +284,7 @@ function StatusRow({ label, count, total, color }) {
 }
 
 /* ─── Componente principale ─── */
-export default function CRMAnalyticsModal({ customers = [], onClose }) {
+export default function CRMAnalyticsModal({ customers = [], allCustomers = customers, onClose }) {
   const overlayRef = useRef(null);
   const [openExp, setOpenExp] = useState(null);
 
@@ -292,8 +294,9 @@ export default function CRMAnalyticsModal({ customers = [], onClose }) {
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
 
-  const radarData = useMemo(() => computeRadarData(customers), [customers]);
-  const { inc, da } = useMemo(() => computeFinancials(customers), [customers]);
+  const radarData = useMemo(() => computeRadarData(customers, allCustomers), [customers, allCustomers]);
+  const { inc, da } = useMemo(() => computeFinancials(allCustomers), [allCustomers]);
+  const leadStats = useMemo(() => computeLeadStats(allCustomers), [allCustomers]);
   const total = customers.length;
 
   const statuses = [
@@ -409,6 +412,39 @@ export default function CRMAnalyticsModal({ customers = [], onClose }) {
               )}
             </div>
           </div>
+
+          {/* Pipeline commerciale (lead) */}
+          {leadStats.total > 0 && (
+            <div style={{ background: 'var(--bg-secondary, #f8f8fc)', borderRadius: 18, padding: '20px 22px', marginBottom: 32 }}>
+              <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 16 }}>
+                Pipeline Prospect
+              </div>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
+                <KpiCard label="Lead aperti" value={leadStats.openCount} color="#14B8A6" bg="rgba(20,184,166,0.08)"
+                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>} />
+                <KpiCard label="Valore pesato" value={fmt(leadStats.weightedPipeline)} color="#0984E3" bg="rgba(9,132,227,0.07)"
+                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>} />
+                <KpiCard label="Tasso di chiusura" value={leadStats.closeRate === null ? '—' : `${leadStats.closeRate}%`} color="#00B894" bg="rgba(0,184,148,0.07)"
+                  icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>} />
+              </div>
+              <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Lead per fonte (vinti / totali)</div>
+                  {Object.entries(leadStats.bySource).sort((a, b) => b[1].total - a[1].total).map(([src, v]) => (
+                    <StatusRow key={src} label={`${src} · ${v.won} vinti`} count={v.total} total={leadStats.total} color="#14B8A6" />
+                  ))}
+                </div>
+                {leadStats.lostCount > 0 && (
+                  <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Motivi di perdita</div>
+                    {Object.entries(leadStats.lostReasons).sort((a, b) => b[1] - a[1]).map(([r, n]) => (
+                      <StatusRow key={r} label={r} count={n} total={leadStats.lostCount} color="#E17055" />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Sezione spiegazioni espandibili */}
           <div>

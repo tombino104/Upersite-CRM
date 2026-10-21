@@ -86,6 +86,12 @@
   --kanban-working: #0984E3;
   --kanban-completed: #00B894;
   --kanban-paused: #FDCB6E;
+  --lead-new: #74B9FF;
+  --lead-call: #A29BFE;
+  --lead-quote: #FDCB6E;
+  --lead-negotiation: #FD9644;
+  --lead-won: #00B894;
+  --lead-lost: #B2BEC3;
 }
 
 /* ── Reset & Base ── */

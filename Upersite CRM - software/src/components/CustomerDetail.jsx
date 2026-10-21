@@ -20,6 +20,7 @@ import NotesGraphView from './NotesGraphView';
 
 import { generateId, sanitizePositiveNumber, formatBytes, saveFile, verifyMasterPassword, PACKAGES, ADDONS, uploadQuote, fetchQuoteDataUrl, deleteQuote } from '../utils/storage';
 import { encryptSecret, decryptSecret } from '../utils/credentialVault';
+import { OPEN_STAGES, ARCHIVE_KINDS, DEFAULT_LEAD_SOURCES, DEFAULT_LOST_REASONS, stageOf, stageProbability, archiveKindLabel } from '../utils/leads';
 
 const STATUSES = [
 
@@ -1975,6 +1976,12 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
     const [showAdvancedFinance, setShowAdvancedFinance] = useState(false);
 
+    const [showArchive, setShowArchive] = useState(false);
+
+    const [archiveKind, setArchiveKind] = useState('closed');
+
+    const [archiveReason, setArchiveReason] = useState('');
+
     const [activeTab, setActiveTab] = useState('general');
 
     const [showTimesheet, setShowTimesheet] = useState(false);
@@ -2135,6 +2142,27 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
     }, [form.id]);
 
     const hasChanges = JSON.stringify({ ...form, newNote, newTag }) !== snapshot.current;
+
+    // Archivia / ripristina: il cliente resta nei dati, sparisce solo dalle viste attive
+    const archiveNow = () => {
+        const now = new Date().toISOString();
+        const reason = archiveReason.trim();
+        onSave({
+            ...form,
+            archivedAt: now, archiveKind, archiveReason: reason,
+            ...(archiveKind === 'lost' ? { leadStage: 'lost', leadProbability: 0, lostReason: reason } : {}),
+            leadUpdatedAt: now,
+        });
+    };
+
+    const restoreNow = () => {
+        onSave({
+            ...form,
+            archivedAt: null, archiveKind: null, archiveReason: '',
+            // un prospect perso riparte dall'inizio della pipeline
+            ...(form.archiveKind === 'lost' ? { leadStage: 'new', leadProbability: stageProbability('new'), lostReason: '', leadUpdatedAt: new Date().toISOString() } : {}),
+        });
+    };
 
     const handleClose = () => {
 
@@ -2703,7 +2731,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                     <>
 
-                        {activeTab === 'general' && <GeneralSection form={form} update={update} updateWith={updateWith} formatPhone={formatPhone} onCompleteWithUnpaid={() => { setPendingStatus('completed'); setShowPaymentWarning(true); }} allTags={allTags} newTag={newTag} setNewTag={setNewTag} />}
+                        {activeTab === 'general' && <GeneralSection form={form} update={update} updateWith={updateWith} formatPhone={formatPhone} onCompleteWithUnpaid={() => { setPendingStatus('completed'); setShowPaymentWarning(true); }} allTags={allTags} newTag={newTag} setNewTag={setNewTag} settings={settings} />}
 
                         {activeTab === 'config' && <ConfigSection form={form} onOpenInCalculator={onOpenInCalculator ? () => onOpenInCalculator(form) : null} />}
 
@@ -3050,9 +3078,69 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                 })()}
 
+                {showArchive && (
+
+                    <div className="modal-overlay animate-fade-in" style={{ zIndex: 2300 }} onClick={() => setShowArchive(false)}>
+
+                        <div className="modal-content animate-scale-in" style={{ maxWidth: 420, padding: 28 }} onClick={e => e.stopPropagation()}>
+
+                            <h3 style={{ margin: '0 0 8px' }}>📦 Archivia {form.name || 'cliente'}</h3>
+
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5, margin: '0 0 12px' }}>
+                                Sparisce da Kanban, elenchi e attività, ma non viene cancellato: lo ritrovi in 📦 Archivio e puoi ripristinarlo. Le rate non pagate restano tra quelle scadute.
+                            </p>
+
+                            <label className="input-label">Motivo dell'archiviazione</label>
+
+                            <select className="input select" value={archiveKind} onChange={e => { setArchiveKind(e.target.value); setArchiveReason(''); }} style={{ marginBottom: 10 }}>
+
+                                {ARCHIVE_KINDS.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
+
+                            </select>
+
+                            {archiveKind === 'lost' ? (
+
+                                <select className="input select" value={archiveReason} onChange={e => setArchiveReason(e.target.value)}>
+
+                                    <option value="">Perché è andato perso…</option>
+
+                                    {(settings?.leadLostReasons?.length ? settings.leadLostReasons : DEFAULT_LOST_REASONS).map(r => <option key={r} value={r}>{r}</option>)}
+
+                                </select>
+
+                            ) : (
+
+                                <input className="input" value={archiveReason} onChange={e => setArchiveReason(e.target.value)} placeholder="Nota (facoltativa)" />
+
+                            )}
+
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+
+                                <button className="btn btn-secondary" onClick={() => setShowArchive(false)}>Annulla</button>
+
+                                <button className="btn btn-primary" disabled={archiveKind === 'lost' && !archiveReason} onClick={archiveNow}>Archivia</button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                )}
+
                 {/* Footer */}
 
                 <div className="modal-footer">
+
+                    {!isNew && (form.archivedAt ? (
+
+                        <button className="btn btn-secondary" onClick={restoreNow}>♻️ Ripristina</button>
+
+                    ) : (
+
+                        <button className="btn btn-ghost" onClick={() => { setArchiveKind(form.status === 'prospect' ? 'lost' : 'closed'); setArchiveReason(''); setShowArchive(true); }}>📦 Archivia</button>
+
+                    ))}
 
                     {!isNew && (
 
@@ -3204,7 +3292,7 @@ function LogoAvatar({ logo, name, onLogoChange }) {
 
 /* ── GENERAL ── */
 
-const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCompleteWithUnpaid, allTags, newTag, setNewTag }) => {
+const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCompleteWithUnpaid, allTags, newTag, setNewTag, settings }) => {
 
     const addTag = (tag) => {
 
@@ -3225,6 +3313,15 @@ const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCo
     return (
 
         <div className="detail-section">
+
+            {form.archivedAt && (
+
+                <div style={{ background: 'var(--warning-bg)', color: 'var(--warning)', borderRadius: 10, padding: '10px 14px', fontSize: '0.82rem', marginBottom: 14 }}>
+                    📦 Archiviato il {new Date(form.archivedAt).toLocaleDateString('it-IT')} · {archiveKindLabel(form.archiveKind)}{form.archiveReason ? ` · ${form.archiveReason}` : ''}. Usa «Ripristina» in basso per riportarlo tra i clienti attivi.
+                </div>
+
+            )}
+
 
             <div className="detail-row">
 
@@ -3370,6 +3467,88 @@ const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCo
                 </div>
 
             </div>
+
+            {/* Pipeline commerciale: solo finché è Prospect */}
+
+            {form.status === 'prospect' && !form.archivedAt && (
+
+                <div style={{ background: 'var(--bg-input)', borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
+
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>🧲 Trattativa</div>
+
+                    <div className="detail-row">
+
+                        <div className="detail-group">
+
+                            <label className="input-label">Fase</label>
+
+                            <select className="input select" value={stageOf(form)} onChange={e => { update('leadStage', e.target.value); update('leadProbability', stageProbability(e.target.value)); update('leadUpdatedAt', new Date().toISOString()); }}>
+
+                                {OPEN_STAGES.map(st => <option key={st.id} value={st.id}>{st.label}</option>)}
+
+                            </select>
+
+                        </div>
+
+                        <div className="detail-group">
+
+                            <label className="input-label">Fonte</label>
+
+                            <select className="input select" value={form.leadSource || ''} onChange={e => update('leadSource', e.target.value)}>
+
+                                <option value="">—</option>
+
+                                {(settings?.leadSources?.length ? settings.leadSources : DEFAULT_LEAD_SOURCES).map(src => <option key={src} value={src}>{src}</option>)}
+
+                            </select>
+
+                        </div>
+
+                    </div>
+
+                    <div className="detail-row">
+
+                        <div className="detail-group">
+
+                            <label className="input-label">Valore stimato (€)</label>
+
+                            <input className="input" type="number" min="0" value={form.leadValue ?? 0} onChange={e => update('leadValue', e.target.value)} />
+
+                        </div>
+
+                        <div className="detail-group">
+
+                            <label className="input-label">Probabilità (%)</label>
+
+                            <input className="input" type="number" min="0" max="100" value={form.leadProbability ?? stageProbability(stageOf(form))} onChange={e => update('leadProbability', e.target.value)} />
+
+                        </div>
+
+                    </div>
+
+                    <div className="detail-row">
+
+                        <div className="detail-group">
+
+                            <label className="input-label">Prossima azione</label>
+
+                            <DebouncedInput className="input" value={form.nextAction || ''} onChange={val => update('nextAction', val)} placeholder="Es. richiamare per il preventivo" />
+
+                        </div>
+
+                        <div className="detail-group">
+
+                            <label className="input-label">Entro il</label>
+
+                            <input className="input" type="date" value={form.nextActionDate || ''} onChange={e => update('nextActionDate', e.target.value)} />
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            )}
 
             {/* Tags Management */}
 

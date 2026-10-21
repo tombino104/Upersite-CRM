@@ -6,6 +6,8 @@ import { emit, WorkflowEventTypes } from '../utils/workflowEvents';
 
 import { runWorkflow } from '../utils/workflowRunner';
 
+import { customerToLead } from '../utils/leads';
+
 
 
 export function useCustomers() {
@@ -514,6 +516,12 @@ export function useCustomers() {
 
         triggerWorkflows(WorkflowEventTypes.CUSTOMER_CREATED, { customer: finalCustomer, cliente: finalCustomer });
 
+        if (finalCustomer.status === 'prospect' && finalCustomer.leadStage) {
+
+            triggerWorkflows(WorkflowEventTypes.LEAD_CREATED, { customer: finalCustomer, cliente: finalCustomer, lead: customerToLead(finalCustomer) });
+
+        }
+
     }, [triggerWorkflows]);
 
 
@@ -541,6 +549,24 @@ export function useCustomers() {
                         previousStatus: c.status, newStatus: updates.status,
 
                     });
+
+                }
+
+                // Pipeline commerciale: cambio di fase, vinto, perso
+
+                if (updates.leadStage && updates.leadStage !== c.leadStage) {
+
+                    const payload = { customer: updated, cliente: updated, lead: customerToLead(updated), previousStage: c.leadStage, newStage: updates.leadStage };
+
+                    triggerWorkflows(WorkflowEventTypes.LEAD_STAGE_CHANGED, payload);
+
+                    if (updates.leadStage === 'won') triggerWorkflows(WorkflowEventTypes.LEAD_WON, payload);
+
+                }
+
+                if (updates.archiveKind === 'lost' && c.archiveKind !== 'lost') {
+
+                    triggerWorkflows(WorkflowEventTypes.LEAD_LOST, { customer: updated, cliente: updated, lead: customerToLead(updated) });
 
                 }
 

@@ -64,9 +64,23 @@ export function buildContext(event, appState = {}) {
     text: nota.text || nota.testo || '',
   } : null;
 
+  const lead = event.lead || null;
+  const leadNorm = lead ? {
+    ...lead,
+    nome: lead.name || '',
+    azienda: lead.company || '',
+    fase: lead.stage || '',
+    fonte: lead.source || '',
+    valore: lead.value || 0,
+    probabilita: lead.probability || 0,
+    motivo_perdita: lead.lostReason || '',
+    prossima_azione: lead.nextAction || '',
+  } : null;
+
   return {
     // accesso italiano
     cliente: clienteNorm,
+    lead: leadNorm,
     task: taskNorm,
     nota: notaNorm,
     pagamento: event.payment || event.pagamento || null,

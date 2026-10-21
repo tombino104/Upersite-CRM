@@ -19,6 +19,8 @@ import RecentTransactionsModal from './components/RecentTransactionsModal';
 import CRMAnalyticsModal from './components/CRMAnalyticsModal';
 import MonitorModal from './components/MonitorModal';
 import CalculatorModal from './components/CalculatorModal';
+import LeadsModal from './components/LeadsModal';
+import ArchiveModal from './components/ArchiveModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
@@ -276,6 +278,8 @@ export default function App() {
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showMonitor, setShowMonitor] = useState(false);
   const [showCalculator, setShowCalculator] = useState(false);
+  const [showLeads, setShowLeads] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   // Configurazione da aprire nel calcolatore ("Apri nel calcolatore" dalla scheda cliente)
   const [calcRequest, setCalcRequest] = useState(null);
   const [showRecentTransactions, setShowRecentTransactions] = useState(false);
@@ -292,7 +296,7 @@ export default function App() {
   }, []);
 
   const {
-    customers, tags, settings, events, hasSynced,
+    customers: allCustomers, tags, settings, events, hasSynced,
     chatHistory, aiUsageStats, userProfile,
     workflows, workflowLogs,
     addCustomer, updateCustomer, deleteCustomer, setCustomers,
@@ -301,6 +305,9 @@ export default function App() {
     saveWorkflow, deleteWorkflow,
     notifyLogin, notifyLogout,
   } = useCustomers();
+
+  // I clienti archiviati restano nei dati ma spariscono da viste, todo e statistiche attive
+  const customers = useMemo(() => allCustomers.filter(c => !c.archivedAt), [allCustomers]);
 
   // Un monitor UptimeRobot appartiene a un solo cliente (customerId null = scollega).
   // Aggiornamento funzionale: più collegamenti di fila ("Collega tutti") si sommano.
@@ -523,27 +530,27 @@ export default function App() {
     const password = pendingVaultPassword.current;
     if (!isLoggedIn || !hasSynced || !password) return;
     pendingVaultPassword.current = null;
-    encryptPlainCredentials(customers, password).then(changes => {
+    encryptPlainCredentials(allCustomers, password).then(changes => {
       const ids = Object.keys(changes);
       if (ids.length === 0) return;
       // Sostituisce solo le credenziali non modificate nel frattempo
-      const original = Object.fromEntries(customers.map(c => [c.id, c.credentials]));
+      const original = Object.fromEntries(allCustomers.map(c => [c.id, c.credentials]));
       setCustomers(prev => prev.map(c =>
         changes[c.id] && c.credentials === original[c.id] ? { ...c, credentials: changes[c.id] } : c
       ));
       console.log(`[Sicurezza] Credenziali cifrate per ${ids.length} clienti`);
     }).catch(err => console.error('Cifratura credenziali non riuscita:', err));
-  }, [isLoggedIn, hasSynced, customers, setCustomers]);
+  }, [isLoggedIn, hasSynced, allCustomers, setCustomers]);
 
   // Sposta una volta per sessione i preventivi ancora dentro crm_data.json nella cartella Preventivi
   const quotesMigrationStarted = useRef(false);
 
   useEffect(() => {
     if (!isLoggedIn || !hasSynced || !settings.backupPath || quotesMigrationStarted.current) return;
-    if (!customers.some(c => (c.files || []).some(f => f.isQuote && f.data && !f.storedPath))) return;
+    if (!allCustomers.some(c => (c.files || []).some(f => f.isQuote && f.data && !f.storedPath))) return;
     quotesMigrationStarted.current = true;
-    const original = Object.fromEntries(customers.map(c => [c.id, c.files]));
-    migrateQuotesToFolder(customers).then(changes => {
+    const original = Object.fromEntries(allCustomers.map(c => [c.id, c.files]));
+    migrateQuotesToFolder(allCustomers).then(changes => {
       const ids = Object.keys(changes);
       if (ids.length === 0) return;
       // Sostituisce solo i file non modificati nel frattempo
@@ -552,7 +559,7 @@ export default function App() {
       ));
       console.log(`[Preventivi] Spostati nella cartella i preventivi di ${ids.length} clienti`);
     }).catch(err => console.error('Spostamento preventivi non riuscito (riprovo al prossimo accesso):', err));
-  }, [isLoggedIn, hasSynced, settings.backupPath, customers, setCustomers]);
+  }, [isLoggedIn, hasSynced, settings.backupPath, allCustomers, setCustomers]);
 
   // Avviso visibile se un salvataggio non va a buon fine
   const [saveIssue, setSaveIssue] = useState(null);
@@ -590,7 +597,7 @@ export default function App() {
       updateTags([...allTags, ...newTags]);
     }
 
-    const exists = customers.find(c => c.id === customer.id);
+    const exists = allCustomers.find(c => c.id === customer.id);
     if (exists) {
       updateCustomer(customer.id, customer);
     } else {
@@ -598,6 +605,15 @@ export default function App() {
     }
     setSelectedCustomer(null);
     setShowNew(false);
+  };
+
+  const restoreArchived = (c) => {
+    const now = new Date().toISOString();
+    updateCustomer(c.id, {
+      archivedAt: null, archiveKind: null, archiveReason: '',
+      // un prospect perso torna in pipeline dall'inizio
+      ...(c.archiveKind === 'lost' ? { leadStage: 'new', leadProbability: 10, lostReason: '', leadUpdatedAt: now } : {}),
+    });
   };
 
   const handleDelete = (id) => {
@@ -975,7 +991,7 @@ export default function App() {
       )}
 
       {showOverdue && (
-        <OverdueModal customers={customers} onSelectCustomer={setSelectedCustomer} onClose={() => setShowOverdue(false)} />
+        <OverdueModal customers={allCustomers} onSelectCustomer={setSelectedCustomer} onClose={() => setShowOverdue(false)} />
       )}
 
       {showRecentTransactions && (
@@ -1078,9 +1094,33 @@ export default function App() {
       )}
 
       {/* CRM Analytics Modal */}
+      {showLeads && (
+        <LeadsModal
+          customers={customers}
+          allCustomers={allCustomers}
+          settings={settings}
+          updateSettings={updateSettings}
+          onAddCustomer={addCustomer}
+          onUpdateCustomer={updateCustomer}
+          onOpenCustomer={c => { setShowLeads(false); setSelectedCustomer(c); }}
+          onOpenArchive={() => { setShowLeads(false); setShowArchive(true); }}
+          onClose={() => setShowLeads(false)}
+        />
+      )}
+
+      {showArchive && (
+        <ArchiveModal
+          customers={allCustomers}
+          onRestore={restoreArchived}
+          onOpenCustomer={c => { setShowArchive(false); setSelectedCustomer(c); }}
+          onClose={() => setShowArchive(false)}
+        />
+      )}
+
       {showAnalytics && (
         <CRMAnalyticsModal
           customers={customers}
+          allCustomers={allCustomers}
           onClose={() => setShowAnalytics(false)}
         />
       )}
@@ -1153,6 +1193,80 @@ export default function App() {
           <line x1="12" y1="15" x2="12" y2="15.01" />
           <line x1="16" y1="15" x2="16" y2="18" />
           <line x1="8" y1="18" x2="12" y2="18" />
+        </svg>
+      </button>
+
+      {/* Lead Button */}
+      <button
+        onClick={() => setShowLeads(true)}
+        title="Pipeline prospect"
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          left: '380px',
+          width: 60,
+          height: 60,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'linear-gradient(135deg, #14B8A6, #0F766E)',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          boxShadow: '0 10px 40px rgba(20, 184, 166, 0.4)',
+          transition: 'all 0.4s cubic-bezier(0.175,0.885,0.32,1.275)',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'scale(1.1) rotate(5deg)';
+          e.currentTarget.style.boxShadow = '0 15px 50px rgba(20, 184, 166, 0.6)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+          e.currentTarget.style.boxShadow = '0 10px 40px rgba(20, 184, 166, 0.4)';
+        }}
+      >
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+      </button>
+
+      {/* Archive Button */}
+      <button
+        onClick={() => setShowArchive(true)}
+        title="Archivio clienti"
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          left: '450px',
+          width: 60,
+          height: 60,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'linear-gradient(135deg, #94A3B8, #64748B)',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          boxShadow: '0 10px 40px rgba(100, 116, 139, 0.4)',
+          transition: 'all 0.4s cubic-bezier(0.175,0.885,0.32,1.275)',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'scale(1.1) rotate(5deg)';
+          e.currentTarget.style.boxShadow = '0 15px 50px rgba(100, 116, 139, 0.6)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+          e.currentTarget.style.boxShadow = '0 10px 40px rgba(100, 116, 139, 0.4)';
+        }}
+      >
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="21 8 21 21 3 21 3 8" />
+          <rect x="1" y="3" width="22" height="5" />
+          <line x1="10" y1="12" x2="14" y2="12" />
         </svg>
       </button>
 

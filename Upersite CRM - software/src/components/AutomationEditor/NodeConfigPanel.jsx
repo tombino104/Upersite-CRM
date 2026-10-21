@@ -42,6 +42,7 @@ const FIELD_SUGGESTIONS = [
   'cliente.stato', 'cliente.nome', 'cliente.email', 'cliente.azienda', 'cliente.tipo_pacchetto',
   'cliente.status', 'cliente.name', 'cliente.company',
   'cliente.tag',
+  'lead.nome', 'lead.fase', 'lead.fonte', 'lead.valore', 'lead.probabilita', 'lead.motivo_perdita',
   'task.nome', 'task.stato', 'task.priorita', 'task.scadenza',
   'task.text', 'task.completed', 'task.priority', 'task.dueDate',
   'nota.testo', 'nota.text',

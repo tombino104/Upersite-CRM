@@ -42,6 +42,8 @@ Clic su **Clienti** apre la tabella dati (filtrabile); su **Incassato / Da incas
 - 🟩 verde: **Monitoraggio** dei siti (UptimeRobot)
 - 📊 blu: **Panoramica business** (liquidità, crediti aperti, produzione, qualità dei dati)
 - 🧮 arancione: **Calcolatore preventivi**
+- 🧲 verde acqua: **Pipeline prospect** (trattative in corso)
+- 📦 grigio: **Archivio clienti**
 - ✨ in basso a destra: **Assistente AI**, che conosce i tuoi clienti e risponde alle domande
 `,
     },
@@ -89,6 +91,33 @@ La scheda **Configurazione** del cliente mostra voci, totale, ore stimate e redd
 `,
     },
     {
+        id: 'lead', group: 'lavoro', icon: '🧲', title: 'Pipeline prospect e archivio',
+        text: `
+Il pulsante verde acqua apre la **pipeline dei prospect**: i contatti che non sono ancora clienti attivi. Un prospect è un normale cliente con stato *Prospect* (lo stesso del Kanban): non c'è un secondo elenco, quindi niente doppioni.
+
+### Le fasi
+Nuovo contatto → Call fatta → Preventivo inviato → Trattativa, poi **Vinto** o **Perso**. Trascina le schede da una colonna all'altra, oppure aprile con un clic per modificarle. «Elenco» mostra gli stessi prospect in tabella. Gli stessi campi si trovano nella scheda cliente, scheda *Generale*, finché lo stato è Prospect.
+
+### Cosa si annota
+- **Fonte** (passaparola, sito, social…), **valore stimato** e **probabilità di chiusura**: il *valore pesato* è il valore moltiplicato per la probabilità.
+- **Prossima azione** con data: se scade, o se il prospect non si muove da 7 giorni, la scheda si evidenzia.
+
+### Vinto e Perso
+- **Vinto**: il cliente passa da Prospect a *In lavorazione*, con la stessa scheda e tutto quello che c'è già dentro.
+- **Perso**: viene chiesto il motivo e il cliente va in **Archivio**.
+
+### Archivio 📦
+Il pulsante grigio apre i clienti archiviati, divisi in *Persi*, *Lavoro concluso* e *Altro*, con ricerca, motivo e data. Si archivia dalla scheda cliente con «📦 Archivia» (anche un cliente Completato). Un cliente archiviato non compare più in Kanban, elenchi, calendario e attività, ma **non viene cancellato**: «Ripristina» lo riporta com'era (un prospect perso riparte dalla pipeline).
+- Gli **incassi** restano nelle statistiche e le **rate non pagate** restano tra quelle scadute.
+- Per eliminare un cliente per sempre apri la sua scheda (serve la password master).
+
+### Da sapere
+- «⚙️ Fonti e motivi» cambia gli elenchi di fonti e di motivi di perdita (separati da virgola).
+- Le statistiche (valore pesato, tasso di chiusura, prospect per fonte, motivi di perdita) sono in **Panoramica business**.
+- Le automazioni hanno gli eventi *Lead creato / cambio fase / vinto / perso*.
+`,
+    },
+    {
         id: 'ore', group: 'lavoro', icon: '⏱️', title: 'Fogli ore',
         text: `
 Dal pulsante ⏱️ della scheda cliente. È una tabella stile foglio di calcolo:
@@ -106,6 +135,7 @@ Le automazioni fanno cose da sole quando succede qualcosa. Si costruiscono a blo
 
 ### Eventi disponibili
 - Clienti: creato, modificato, eliminato, cambio di stato, tag aggiunto o tolto.
+- Lead: creato, cambio di fase, vinto, perso.
 - Note e attività: nota creata o modificata, todo creato, modificato, completato o scaduto.
 - Pagamenti: pagamento registrato o modificato, rata in scadenza, rata scaduta.
 - Pianificazioni: ogni giorno, settimana, mese, a intervalli o in una data.
