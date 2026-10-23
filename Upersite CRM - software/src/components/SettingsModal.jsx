@@ -4,6 +4,7 @@ import { reencryptCredentials } from '../utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
 import AISettingsSection from './AISettingsSection';
 import CalculatorSettings from './CalculatorSettings';
+import DockSettings from './DockSettings';
 import RestoreModal from './RestoreModal';
 import ManualModal from './ManualModal';
 
@@ -13,6 +14,7 @@ const SETTINGS_TABS = [
     { id: 'security', icon: '🔐', label: 'Sicurezza', description: 'Password master' },
     { id: 'backup', icon: '💾', label: 'Backup e dati', description: 'Backup, ripristino, import/export' },
     { id: 'calculator', icon: '🧮', label: 'Calcolatore', description: 'Listino e salvataggi' },
+    { id: 'dock', icon: '🔘', label: 'Pulsanti', description: 'Ordine e menu ⋯' },
     { id: 'ai', icon: '🤖', label: 'Intelligenza artificiale', description: 'Servizi, modelli, token e costi' }
 ];
 
@@ -574,6 +576,10 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                 <>
                             <CalculatorSettings settings={settings} updateSettings={updateSettings} />
                                 </>
+                            )}
+
+                            {tab === 'dock' && (
+                                <DockSettings settings={settings} updateSettings={updateSettings} />
                             )}
 
                             {tab === 'ai' && (

@@ -12,7 +12,9 @@ const fmtDate = d => (d ? new Date(d).toLocaleDateString('it-IT') : '');
 const css = `
 .lead-board { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 12px; align-items: stretch; flex: 1 1 auto; min-height: 0; }
 .lead-col { flex: 1 0 240px; background: var(--bg-input); border-radius: 14px; padding: 10px; min-height: 160px; overflow-y: auto; transition: background .2s; }
-.lead-col.end { flex: 0 0 150px; min-height: 90px; text-align: center; }
+.lead-col.end { min-height: 90px; }
+.lead-card.closed { cursor: pointer; }
+.lead-card.closed .lead-card-name { display: flex; justify-content: space-between; gap: 6px; }
 .lead-col.over { background: var(--bg-hover); outline: 2px dashed var(--border); }
 .lead-col-head { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: .8rem; color: var(--text-primary); margin-bottom: 2px; }
 .lead-col-sub { font-size: .7rem; color: var(--text-tertiary); margin-bottom: 8px; }
@@ -111,6 +113,9 @@ export default function LeadsModal({
 
   const prospects = useMemo(() => customers.filter(isInPipeline), [customers]);
   const stats = useMemo(() => computeLeadStats(allCustomers), [allCustomers]);
+  const byRecent = (a, b) => (b.leadUpdatedAt || b.wonAt || b.archivedAt || '').localeCompare(a.leadUpdatedAt || a.wonAt || a.archivedAt || '');
+  const wonList = useMemo(() => allCustomers.filter(c => c.leadStage === 'won').sort(byRecent), [allCustomers]);
+  const lostList = useMemo(() => allCustomers.filter(c => c.archiveKind === 'lost' || c.leadStage === 'lost').sort(byRecent), [allCustomers]);
   const toFollow = useMemo(() => prospects.filter(c => isActionOverdue(c) || isStale(c)).length, [prospects]);
 
   const touch = () => ({ leadUpdatedAt: new Date().toISOString() });
@@ -174,6 +179,17 @@ export default function LeadsModal({
     },
     onDrop: e => dropOn(e, stage),
   });
+
+  const renderClosedCard = (c, kind) => (
+    <div key={c.id} className="lead-card closed" onClick={() => onOpenCustomer(c)} title="Apri la scheda del cliente">
+      <div className="lead-card-name"><span>{c.name}</span></div>
+      {c.company && <div className="lead-card-meta">{c.company}</div>}
+      <div className="lead-card-meta">
+        {eur(c.leadValue)} · {kind === 'won' ? `vinto il ${fmtDate(c.wonAt || c.leadUpdatedAt)}` : `perso il ${fmtDate(c.archivedAt || c.leadUpdatedAt)}`}
+      </div>
+      {kind === 'lost' && (c.lostReason || c.archiveReason) && <div className="lead-card-meta">Motivo: {c.lostReason || c.archiveReason}</div>}
+    </div>
+  );
 
   // Funzione (non componente): altrimenti il drag si interrompe al primo re-render
   const renderCard = (c) => {
@@ -256,12 +272,16 @@ export default function LeadsModal({
               );
             })}
             <div className={`lead-col end ${overCol === 'won' ? 'over' : ''}`} {...dropProps('won')}>
-              <div className="lead-col-head" style={{ justifyContent: 'center' }}><span className="lead-dot" style={{ background: 'var(--lead-won)' }} />🏆 Vinto</div>
-              <div className="lead-col-sub">{stats.wonCount} finora<br />Diventa cliente</div>
+              <div className="lead-col-head"><span className="lead-dot" style={{ background: 'var(--lead-won)' }} />🏆 Vinto<span style={{ marginLeft: 'auto', color: 'var(--text-tertiary)' }}>{stats.wonCount}</span></div>
+              <div className="lead-col-sub">Diventa cliente</div>
+              {wonList.length === 0 && <div style={{ fontSize: '.72rem', color: 'var(--text-tertiary)', textAlign: 'center', padding: 14 }}>{draggedId ? 'Rilascia qui' : 'Nessun prospect'}</div>}
+              {wonList.map(c => renderClosedCard(c, 'won'))}
             </div>
             <div className={`lead-col end ${overCol === 'lost' ? 'over' : ''}`} {...dropProps('lost')}>
-              <div className="lead-col-head" style={{ justifyContent: 'center' }}><span className="lead-dot" style={{ background: 'var(--lead-lost)' }} />✖️ Perso</div>
-              <div className="lead-col-sub">{stats.lostCount} finora<br />Va in archivio</div>
+              <div className="lead-col-head"><span className="lead-dot" style={{ background: 'var(--lead-lost)' }} />✖️ Perso<span style={{ marginLeft: 'auto', color: 'var(--text-tertiary)' }}>{stats.lostCount}</span></div>
+              <div className="lead-col-sub">Va in archivio</div>
+              {lostList.length === 0 && <div style={{ fontSize: '.72rem', color: 'var(--text-tertiary)', textAlign: 'center', padding: 14 }}>{draggedId ? 'Rilascia qui' : 'Nessun prospect'}</div>}
+              {lostList.map(c => renderClosedCard(c, 'lost'))}
             </div>
           </div>
         ) : (
