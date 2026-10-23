@@ -170,6 +170,8 @@ export default function RestoreModal({ onClose }) {
                                         <div><strong>{info.quotes}</strong><span>file preventivi</span></div>
                                         <div><strong>{info.calc}</strong><span>file calcolatore</span></div>
                                         <div><strong>{info.counts.workflows}</strong><span>automazioni</span></div>
+                                        <div><strong>{info.counts.tools}</strong><span>attrezzi</span></div>
+                                        <div><strong>{info.counts.docs}</strong><span>documenti</span></div>
                                     </div>
                                     {info.light && <div className="rs-note warn">Backup «leggero»: non contiene i file allegati ai clienti.</div>}
                                     {!info.samePassword && <div className="rs-note warn">Questo backup ha una password master diversa da quella attuale: dopo un ripristino completo accedi con la password di allora.</div>}
@@ -277,7 +279,7 @@ const RS_CSS = `
 .rs-detail { overflow-y: auto; padding: 16px 20px; min-width: 0; }
 .rs-detail-title { font-weight: 800; font-size: 1.02rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rs-size { font-size: 0.72rem; font-weight: 600; color: var(--text-tertiary); background: var(--bg-input); padding: 2px 8px; border-radius: 999px; }
-.rs-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.rs-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
 .rs-stats div { background: var(--bg-input); border-radius: 12px; padding: 8px 12px; display: flex; flex-direction: column; }
 .rs-stats strong { font-size: 1.1rem; }
 .rs-stats span { font-size: 0.72rem; color: var(--text-tertiary); }

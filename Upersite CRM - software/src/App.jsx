@@ -21,6 +21,7 @@ import MonitorModal from './components/MonitorModal';
 import CalculatorModal from './components/CalculatorModal';
 import LeadsModal from './components/LeadsModal';
 import ArchiveModal from './components/ArchiveModal';
+import ToolboxModal from './components/ToolboxModal';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
 import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
@@ -280,6 +281,7 @@ export default function App() {
   const [showCalculator, setShowCalculator] = useState(false);
   const [showLeads, setShowLeads] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
+  const [showToolbox, setShowToolbox] = useState(false);
   // Configurazione da aprire nel calcolatore ("Apri nel calcolatore" dalla scheda cliente)
   const [calcRequest, setCalcRequest] = useState(null);
   const [showRecentTransactions, setShowRecentTransactions] = useState(false);
@@ -1117,6 +1119,16 @@ export default function App() {
         />
       )}
 
+      {showToolbox && (
+        <ToolboxModal
+          tools={settings.toolbox || []}
+          docs={settings.toolboxDocs || []}
+          onChangeTools={toolbox => updateSettings({ toolbox })}
+          onChangeDocs={toolboxDocs => updateSettings({ toolboxDocs })}
+          onClose={() => setShowToolbox(false)}
+        />
+      )}
+
       {showAnalytics && (
         <CRMAnalyticsModal
           customers={customers}
@@ -1267,6 +1279,42 @@ export default function App() {
           <polyline points="21 8 21 21 3 21 3 8" />
           <rect x="1" y="3" width="22" height="5" />
           <line x1="10" y1="12" x2="14" y2="12" />
+        </svg>
+      </button>
+
+      {/* Toolbox Button */}
+      <button
+        onClick={() => setShowToolbox(true)}
+        title="Cassetta degli attrezzi"
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          left: '520px',
+          width: 60,
+          height: 60,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'linear-gradient(135deg, #F97316, #C2410C)',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          boxShadow: '0 10px 40px rgba(249, 115, 22, 0.4)',
+          transition: 'all 0.4s cubic-bezier(0.175,0.885,0.32,1.275)',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'scale(1.1) rotate(5deg)';
+          e.currentTarget.style.boxShadow = '0 15px 50px rgba(249, 115, 22, 0.6)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+          e.currentTarget.style.boxShadow = '0 10px 40px rgba(249, 115, 22, 0.4)';
+        }}
+      >
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
         </svg>
       </button>
 

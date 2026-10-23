@@ -451,6 +451,8 @@ function inspectBackup(folder, file) {
       events: (data.events || []).length,
       workflows: (data.workflows || []).length,
       tags: (data.tags || []).length,
+      tools: (data.settings?.toolbox || []).length,
+      docs: (data.settings?.toolboxDocs || []).length,
     },
     samePassword: (data.masterPassword || null) === (current.masterPassword || null),
     hasPrefs: !!data.browserPrefs,

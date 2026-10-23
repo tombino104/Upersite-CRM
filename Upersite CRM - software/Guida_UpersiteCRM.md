@@ -75,6 +75,8 @@ Clicca su un Cliente per veder comparire l'elegantissima modale a sbalzo in cui 
 
 > **Calcolatore preventivi:** il pulsante arancione 🧮 in basso a sinistra apre il calcolatore prezzi completo dentro il CRM. Chiudendolo il lavoro resta lì finché non riapri. Con **➕ Aggiungi al cliente CRM** scegli il cliente dal menu a tendina: la configurazione va nella tab Configurazione, l'importo del preventivo si aggiorna (te lo chiede) e alla fine puoi allegare il preventivo PDF (e Word) tra i preventivi del cliente, con stato «In attesa». Le configurazioni e i pacchetti completi si salvano nella cartella **Dati\Calcolatore** del CRM (o in quella che scegli nelle Impostazioni) e finiscono in ogni backup con data; i prezzi del listino si cambiano in Impostazioni → Calcolatore preventivi.
 
+> **Cassetta degli attrezzi:** il pulsante arancione 🔧 in basso a sinistra (dopo l'Archivio) apre due schede. **🧰 Attrezzi** raccoglie i link ai tool online che usi per lavorare sui siti, **📚 Documenti** i link a guide, modelli e risorse che non sono strumenti. Con **+ Aggiungi** inserisci l'indirizzo: il nome si compila da solo e l'icona viene presa dal sito. Puoi dare una categoria (che diventa un filtro), una nota e la ⭐ per tenerlo sempre in alto; cerchi per nome, categoria o nota. Un click apre il link in una nuova scheda. Attrezzi e documenti sono nel file dati, quindi finiscono in ogni backup e tornano con «Ripristina tutto» (la schermata di ripristino ne mostra il numero).
+
 > **Todo dei progetti completati:** se un cliente passa a "Completato", i suoi todo spariscono dall'elenco e dalla matrice di Eisenhower.
 
 ---
