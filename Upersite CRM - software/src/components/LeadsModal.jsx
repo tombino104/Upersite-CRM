@@ -10,8 +10,8 @@ const eur = n => '€ ' + (Number(n) || 0).toLocaleString('it-IT', { maximumFrac
 const fmtDate = d => (d ? new Date(d).toLocaleDateString('it-IT') : '');
 
 const css = `
-.lead-board { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 12px; align-items: flex-start; }
-.lead-col { flex: 0 0 230px; background: var(--bg-input); border-radius: 14px; padding: 10px; min-height: 160px; transition: background .2s; }
+.lead-board { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 12px; align-items: stretch; flex: 1 1 auto; min-height: 0; }
+.lead-col { flex: 1 0 240px; background: var(--bg-input); border-radius: 14px; padding: 10px; min-height: 160px; overflow-y: auto; transition: background .2s; }
 .lead-col.end { flex: 0 0 150px; min-height: 90px; text-align: center; }
 .lead-col.over { background: var(--bg-hover); outline: 2px dashed var(--border); }
 .lead-col-head { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: .8rem; color: var(--text-primary); margin-bottom: 2px; }
@@ -203,7 +203,7 @@ export default function LeadsModal({
   return (
     <div className="modal-overlay animate-fade-in" onClick={onClose}>
       <style>{css}</style>
-      <div className="modal-content animate-scale-in" style={{ maxWidth: 1200, width: '96vw', maxHeight: '92vh', overflow: 'auto', padding: 24 }} onClick={e => e.stopPropagation()}>
+      <div className="modal-content animate-scale-in" style={{ maxWidth: 'none', width: '98vw', height: '94vh', maxHeight: '94vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 24 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: '1.2rem' }}>🧲 Pipeline prospect</h2>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -265,6 +265,7 @@ export default function LeadsModal({
             </div>
           </div>
         ) : (
+          <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto' }}>
           <table className="lead-table">
             <thead>
               <tr><th>Nome</th><th>Fase</th><th>Fonte</th><th>Valore</th><th>Prob.</th><th>Prossima azione</th></tr>
@@ -285,6 +286,7 @@ export default function LeadsModal({
               {prospects.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 24 }}>Nessun prospect in pipeline. Aggiungi il primo con “+ Nuovo prospect”.</td></tr>}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
