@@ -9,8 +9,8 @@ const SECTIONS = [
         id: 'avvio', group: 'inizio', icon: '🚀', title: 'Avvio, accesso e sicurezza',
         text: `
 Il CRM gira sul tuo PC: i dati non vanno su internet. Si apre in due modi:
-- **Browser**: doppio clic su «Avvia CRM» (o «Upersite CRM Browser») nella cartella del programma; si apre \`http://localhost:5173\`.
-- **App desktop**: collegamento «Upersite CRM» sul Desktop. Stessi dati, finestra dedicata.
+- **Browser**: doppio clic su «Upersite CRM Browser» nella cartella del programma; si apre \`http://localhost:5173\`.
+- **App desktop**: doppio clic su «Avvia CRM» nella cartella del programma. Stessi dati, finestra dedicata.
 
 ### Password master
 Al primo avvio crei la **password master**. È l'unica chiave del CRM e cifra anche le password della sezione Accessi dei clienti. Non è salvata da nessuna parte in chiaro.
@@ -392,7 +392,7 @@ Questi file restano solo sul tuo PC e non vanno mai su GitHub. La copia di sicur
 - **«I dati sono stati modificati da un'altra finestra»**: il CRM è aperto in due schede o finestre. Chiudine una e ricarica: le modifiche dell'altra non sono state salvate.
 - **«Imposta una cartella dei salvataggi valida»**: la cartella dei backup non esiste o il disco esterno non è collegato. Collegalo o cambia cartella nelle Impostazioni.
 - **Export PDF/Word del calcolatore non parte**: serve la connessione internet la prima volta che lo usi in una sessione.
-- **La pagina non si apre**: il CRM non è avviato. Usa «Avvia CRM» o il collegamento sul Desktop.
+- **La pagina non si apre**: il CRM non è avviato. Usa «Upersite CRM Browser» o «Avvia CRM» nella cartella del programma. Se ancora non parte (succede dopo aver spostato la cartella), riavvia il PC o chiudi i processi Node.js dal Task Manager e riprova.
 - **Ho cancellato qualcosa per sbaglio**: Impostazioni → Ripristina da un backup → Solo alcuni clienti.
 `,
     },
