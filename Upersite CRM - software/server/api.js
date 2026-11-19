@@ -6,6 +6,7 @@
 //   AI_ENV_FILE   file con le chiavi AI                                         (default: <CRM_DATA_DIR>/.env.local)
 import { createAiProxy } from './aiProxy.js'
 import { createAuth } from './auth.js'
+import { isEnabled as encryptionEnabled, isEncrypted, encrypt, decryptIfNeeded, protect } from './vault.js'
 import fs from 'fs'
 import path from 'path'
 import process from 'process'
@@ -26,6 +27,18 @@ function writeFileAtomic(filePath, content) {
   const tmp = `${filePath}.tmp`
   fs.writeFileSync(tmp, content, 'utf-8')
   fs.renameSync(tmp, filePath)
+}
+
+// Lettura e scrittura dei file protetti (dati, copie nei backup, preventivi): cifrati su disco se è
+// impostata la chiave, in chiaro altrimenti. La lettura riconosce da sola i file in chiaro o cifrati.
+function readStoredBuffer(file) {
+  return decryptIfNeeded(fs.readFileSync(file))
+}
+function readStoredText(file) {
+  return readStoredBuffer(file).toString('utf-8')
+}
+function writeStored(file, data) {
+  writeFileAtomic(file, protect(Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf-8')))
 }
 
 // Revisione del file dati: cambia a ogni scrittura (anche se il file viene modificato a mano)
@@ -77,7 +90,7 @@ function getQuotesRoot() {
 
 // Cartella dei salvataggi scelta nelle Impostazioni, letta dal file dati (non dal browser)
 function getBackupRoot() {
-  const data = fs.existsSync(STORAGE_FILE) ? JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8')) : {}
+  const data = fs.existsSync(STORAGE_FILE) ? JSON.parse(readStoredText(STORAGE_FILE)) : {}
   const backupPath = data.settings?.backupPath
   if (typeof backupPath !== 'string' || !path.isAbsolute(backupPath) || !fs.existsSync(backupPath)) {
     throw Object.assign(new Error('Imposta una cartella dei salvataggi valida nelle Impostazioni (e controlla che il disco sia collegato)'), { status: 400 })
@@ -126,7 +139,7 @@ const CALC_DIR = 'Calcolatore'
 const MAX_CALC_BYTES = 100 * 1024 * 1024
 
 function readSettings() {
-  const data = fs.existsSync(STORAGE_FILE) ? JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8')) : {}
+  const data = fs.existsSync(STORAGE_FILE) ? JSON.parse(readStoredText(STORAGE_FILE)) : {}
   return data.settings || {}
 }
 
@@ -345,7 +358,7 @@ function createBackup(backupPath, { includeFiles = true, suffix = '', prefs = nu
   if (!fs.existsSync(STORAGE_FILE)) throw Object.assign(new Error('Nessun dato da salvare'), { status: 404 })
   migrateLegacyFolders()
 
-  const originalData = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8'))
+  const originalData = JSON.parse(readStoredText(STORAGE_FILE))
   const backupData = { ...originalData }
   if (!includeFiles && backupData.customers) {
     backupData.customers = backupData.customers.map(c => { const copy = { ...c }; delete copy.files; return copy })
@@ -361,7 +374,7 @@ function createBackup(backupPath, { includeFiles = true, suffix = '', prefs = nu
   const time = `${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}`
   let file = `backup_ore_${time}${includeFiles ? '' : '_LIGHT'}${suffix}.json`
   for (let i = 2; fs.existsSync(path.join(targetDir, file)); i++) file = file.replace(/(_\d+)?\.json$/, `_${i}.json`)
-  fs.writeFileSync(path.join(targetDir, file), JSON.stringify(backupData, null, 2))
+  writeStored(path.join(targetDir, file), JSON.stringify(backupData, null, 2))
 
   let dataFiles = 0, calcCopied = false, quotesCopied = 0, quotesMissing = 0
   if (includeFiles) {
@@ -436,7 +449,7 @@ function backupLocation(folder, file) {
 }
 
 function readJsonFile(file) {
-  return JSON.parse(fs.readFileSync(file, 'utf-8'))
+  return JSON.parse(readStoredText(file))
 }
 
 function inspectBackup(folder, file) {
@@ -490,7 +503,7 @@ function applyRestore({ folder, file, mode = 'all', parts = {}, customerIds = []
     const customers = (current.customers || []).map(c => byId.has(String(c.id)) ? byId.get(String(c.id)) : c)
     const existing = new Set(customers.map(c => String(c.id)))
     chosen.forEach(c => { if (!existing.has(String(c.id))) customers.push(c) })
-    writeFileAtomic(STORAGE_FILE, JSON.stringify({ ...current, customers }, null, 2))
+    writeStored(STORAGE_FILE, JSON.stringify({ ...current, customers }, null, 2))
     // Preventivi di quei clienti (le loro cartelle in Preventivi)
     const folders = new Set()
     chosen.forEach(c => (c.files || []).forEach(f => {
@@ -511,7 +524,7 @@ function applyRestore({ folder, file, mode = 'all', parts = {}, customerIds = []
     const settings = { ...(data.settings || {}) }
     settings.backupPath = current.settings?.backupPath ?? settings.backupPath
     if (current.settings?.calcStorage) settings.calcStorage = current.settings.calcStorage
-    writeFileAtomic(STORAGE_FILE, JSON.stringify({ ...data, settings }, null, 2))
+    writeStored(STORAGE_FILE, JSON.stringify({ ...data, settings }, null, 2))
     result.restored.push(`dati del CRM (${(data.customers || []).length} clienti, impostazioni, eventi, automazioni)`)
     if (browserPrefs) result.prefs = browserPrefs
   }
@@ -543,7 +556,7 @@ function readMasterPassword() {
   const key = `${st.mtimeMs}-${st.size}`
   if (masterPasswordCache.key !== key) {
     let value
-    try { value = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8')).masterPassword || null } catch { value = UNREADABLE }
+    try { value = JSON.parse(readStoredText(STORAGE_FILE)).masterPassword || null } catch { value = UNREADABLE }
     masterPasswordCache = { key, value }
   }
   return masterPasswordCache.value
@@ -551,7 +564,7 @@ function readMasterPassword() {
 
 function writeMasterPassword(hashed) {
   const data = readJsonFile(STORAGE_FILE)
-  writeFileAtomic(STORAGE_FILE, JSON.stringify({ ...data, masterPassword: hashed }, null, 2))
+  writeStored(STORAGE_FILE, JSON.stringify({ ...data, masterPassword: hashed }, null, 2))
 }
 
 // File con le chiavi AI: lo legge e lo scrive solo il server. AI_ENV_FILE serve ai test per usare un file a parte.
@@ -559,8 +572,38 @@ const AI_ENV_FILE = process.env.AI_ENV_FILE ? path.resolve(process.env.AI_ENV_FI
 
 export { DATA_ROOT, STORAGE_FILE }
 
+// Cifra i file ancora in chiaro (crm_data.json e preventivi). Ogni file viene riscritto in modo atomico
+// e prima di sostituire l'originale si controlla che il risultato, decifrato, sia identico.
+function encryptExistingFiles() {
+  const files = []
+  if (fs.existsSync(STORAGE_FILE)) files.push(STORAGE_FILE)
+  const walk = (dir) => {
+    if (!fs.existsSync(dir)) return
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (e.isFile() && !e.name.endsWith('.tmp') && QUOTE_TYPES[path.extname(e.name).toLowerCase()]) files.push(p)
+    }
+  }
+  walk(path.join(DATA_DIR, QUOTES_DIR))
+  let done = 0
+  for (const file of files) {
+    const plain = fs.readFileSync(file)
+    if (isEncrypted(plain)) continue
+    const sealed = encrypt(plain)
+    if (Buffer.compare(decryptIfNeeded(sealed), plain) !== 0) throw new Error(`Verifica della cifratura non riuscita per ${file}`)
+    writeFileAtomic(file, sealed)
+    done++
+  }
+  if (done) console.log(`[CRM] Cifrati ${done} file che erano in chiaro`)
+}
+
 // Prepara le cartelle all'avvio (sposta le vecchie cartelle dei backup in Dati/)
 export function initApi() {
+  // Se i dati sono cifrati ma la chiave manca o è sbagliata ci si ferma subito, con un messaggio chiaro
+  if (fs.existsSync(STORAGE_FILE)) readStoredBuffer(STORAGE_FILE)
+  if (encryptionEnabled()) encryptExistingFiles()
+  else console.warn('[CRM] ATTENZIONE: CRM_ENCRYPTION_KEY non impostata, i dati restano in chiaro sul disco')
   try { migrateLegacyFolders() } catch (e) { console.error('[CRM] Spostamento cartelle non riuscito:', e.message) }
 }
 
@@ -595,7 +638,7 @@ export function createApiMiddleware() {
             return;
           }
           const revision = getRevision();
-          const data = fs.readFileSync(STORAGE_FILE, 'utf-8');
+          const data = readStoredText(STORAGE_FILE);
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('X-CRM-Revision', revision);
           res.end(data);
@@ -619,8 +662,8 @@ export function createApiMiddleware() {
           const fileName = `upersite-crm-backup-${new Date().toISOString().split('T')[0]}.json`;
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-          const fileStream = fs.createReadStream(STORAGE_FILE);
-          fileStream.pipe(res);
+          // Il file scaricato è sempre in chiaro, così si può reimportare anche altrove
+          res.end(readStoredBuffer(STORAGE_FILE));
         } else if (req.url === '/api/backup/import' && req.method === 'POST') {
           if (rejectForeignRequest(req, res)) return;
           let body = '';
@@ -638,7 +681,7 @@ export function createApiMiddleware() {
               if (current.settings?.calcStorage) settings.calcStorage = current.settings.calcStorage;
               const changed = JSON.stringify(settings.backupPath) !== JSON.stringify(parsed.settings?.backupPath)
                 || JSON.stringify(settings.calcStorage) !== JSON.stringify(parsed.settings?.calcStorage);
-              writeFileAtomic(STORAGE_FILE, changed ? JSON.stringify({ ...parsed, settings }) : body);
+              writeStored(STORAGE_FILE, changed ? JSON.stringify({ ...parsed, settings }) : body);
               res.end(JSON.stringify({ success: true }));
             } catch {
               res.statusCode = 400;
@@ -683,7 +726,7 @@ export function createApiMiddleware() {
               const dir = resolveInside(getQuotesRoot(), customerFolder);
               fs.mkdirSync(dir, { recursive: true });
               const finalName = freeFileName(dir, fileName);
-              fs.writeFileSync(path.join(dir, finalName), Buffer.concat(chunks));
+              writeStored(path.join(dir, finalName), Buffer.concat(chunks));
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ storedPath: `${QUOTES_DIR}/${customerFolder}/${finalName}` }));
             } catch (e) {
@@ -720,7 +763,7 @@ export function createApiMiddleware() {
               throw Object.assign(new Error('Preventivo non trovato nella cartella dei salvataggi'), { status: 404 });
             }
             res.setHeader('Content-Type', QUOTE_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream');
-            fs.createReadStream(file).pipe(res);
+            res.end(readStoredBuffer(file));
           } catch (e) {
             sendError(res, e);
           }
@@ -809,7 +852,7 @@ export function createApiMiddleware() {
                 res.end(JSON.stringify({ error: "Il file dati è stato modificato da un'altra finestra" }));
                 return;
               }
-              writeFileAtomic(STORAGE_FILE, body);
+              writeStored(STORAGE_FILE, body);
               res.end(JSON.stringify({ success: true, revision: getRevision() }));
             } catch (e) {
               res.statusCode = 400;

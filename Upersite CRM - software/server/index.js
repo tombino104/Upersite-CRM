@@ -59,7 +59,12 @@ if (!fs.existsSync(path.join(DIST, 'index.html'))) {
   process.exit(1)
 }
 
-initApi()
+try {
+  initApi()
+} catch (e) {
+  console.error(`[CRM] Impossibile avviare: ${e.message}`)
+  process.exit(1)
+}
 const api = createApiMiddleware()
 
 const server = http.createServer((req, res) => {
