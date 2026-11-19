@@ -238,7 +238,7 @@ export default function Login({ onLogin }) {
           display: inline-block;
           border-radius: 15px;
           margin-bottom: 16px;
-          box-shadow: 0 8px 24px rgba(14, 21, 18, 0.3);
+          box-shadow: 0 8px 24px rgba(10, 10, 10, 0.3);
         }
 
         .login-title { font-size: 1.5rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px; }

@@ -1247,7 +1247,7 @@ export default function App() {
           width: 36px; height: 36px;
           display: block;
           border-radius: 9px;
-          box-shadow: 0 4px 12px rgba(14, 21, 18, 0.25);
+          box-shadow: 0 4px 12px rgba(10, 10, 10, 0.25);
         }
 
         .app-logo-text {
