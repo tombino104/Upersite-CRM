@@ -296,7 +296,7 @@ ${JSON.stringify(dbSummary)}`;
     const usageColor = usagePercent > 90 ? 'var(--danger)' : usagePercent > 60 ? 'var(--warning)' : 'var(--primary)';
 
     return (
-        <div className={`gemini-chat-root ${isFullscreen ? 'fullscreen-active' : ''}`}>
+        <div className={`gemini-chat-root ${isFullscreen ? 'fullscreen-active' : ''} ${isOpen ? 'chat-open' : ''}`}>
             {/* FAB */}
             <button
                 className={`gemini-fab ${isOpen ? 'active' : ''}`}
@@ -556,6 +556,8 @@ ${JSON.stringify(dbSummary)}`;
                     position: fixed; bottom: 30px; right: 30px; z-index: 9999;
                     font-family: var(--font);
                 }
+                /* Chat chiusa: il pulsante resta sotto le finestre aperte (z-index 1000), così non copre i loro pulsanti */
+                .gemini-chat-root:not(.chat-open):not(.fullscreen-active) { z-index: 950; }
                 .gemini-window {
                     z-index: 9998;
                 }
@@ -565,14 +567,21 @@ ${JSON.stringify(dbSummary)}`;
 
                 /* FAB */
                 .gemini-fab {
-                    width: 60px; height: 60px; border-radius: 50%; background: var(--primary);
-                    color: white; border: none; font-size: 1.8rem; cursor: pointer;
-                    box-shadow: 0 10px 40px rgba(31, 107, 79,0.4);
+                    width: 54px; height: 54px; border-radius: 50%; background: var(--primary);
+                    color: white; border: none; font-size: 1.5rem; cursor: pointer;
+                    box-shadow: 0 4px 14px rgba(23, 32, 28, 0.25);
                     display: flex; align-items: center; justify-content: center;
-                    transition: all 0.4s cubic-bezier(0.175,0.885,0.32,1.275);
+                    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
                 }
-                .gemini-fab:hover { transform: scale(1.1) rotate(5deg); box-shadow: 0 15px 50px rgba(31, 107, 79,0.6); }
-                .gemini-fab.active { background: var(--danger); transform: rotate(90deg); }
+                .gemini-fab:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(23, 32, 28, 0.3); }
+                .gemini-fab.active { background: var(--text-primary); }
+
+                /* Telefono: pulsante più piccolo, sopra la barra dei pulsanti; finestra larga quanto lo schermo */
+                @media (max-width: 768px) {
+                    .gemini-chat-root { bottom: 72px; right: 12px; }
+                    .gemini-fab { width: 46px; height: 46px; font-size: 1.25rem; }
+                    .gemini-window { width: calc(100vw - 24px); height: min(600px, calc(100vh - 150px)); bottom: 58px; }
+                }
 
                 /* Window */
                 .gemini-window {

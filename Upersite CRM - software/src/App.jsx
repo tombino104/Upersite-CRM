@@ -891,7 +891,7 @@ export default function App() {
           </div>
 
           <button className="btn btn-primary" onClick={() => setShowNew(true)}>
-            <span>+</span> Nuovo Cliente
+            <span>+</span> <span className="app-new-label">Nuovo Cliente</span>
           </button>
 
           <div className="app-menu-wrapper">
@@ -1392,6 +1392,34 @@ export default function App() {
 
           .app-logo-text {
             display: none;
+          }
+
+          /* Il blocco dei pulsanti va a capo invece di allargare la pagina oltre lo schermo */
+          .app-header-right {
+            flex: 1 1 auto;
+            flex-shrink: 1;
+            min-width: 0;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 8px;
+          }
+
+          .app-header-right .app-menu-wrapper,
+          .app-header-right > .btn {
+            margin-right: 0 !important;
+          }
+
+          .app-header-left .btn-icon-sm {
+            margin-left: 4px !important;
+          }
+
+          .app-new-label {
+            display: none;
+          }
+
+          /* Spazio in fondo per non finire sotto i pulsanti in basso */
+          .app-main {
+            padding-bottom: 96px;
           }
 
           .app-main {

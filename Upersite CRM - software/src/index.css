@@ -1543,3 +1543,19 @@ body.custom-cursor-enabled .rte-editor * {
 .notes-graph-modal-content {
   animation: graphModalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
+/* ── Telefono: finestre e moduli su una colonna, pulsanti che vanno a capo ── */
+@media (max-width: 600px) {
+  .detail-row {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .modal-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 14px 16px;
+  }
+}

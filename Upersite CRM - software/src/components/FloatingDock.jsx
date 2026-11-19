@@ -41,6 +41,12 @@ const css = `
   transition: opacity 0.2s ease, transform 0.25s ease;
 }
 .dock-more.open .dock-label { opacity: 1; transform: translateY(-50%); transition-delay: calc(var(--open-delay) + 0.12s); }
+@media (max-width: 768px) {
+  .dock { left: 12px; bottom: 14px; gap: 4px; }
+  .dock-btn, .dock-fan-item { width: 40px; height: 40px; }
+  .dock-btn svg { width: 20px; height: 20px; }
+  .dock-label { left: 50px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .dock-btn, .dock-more-icon, .dock-fan-item, .dock-label { transition-duration: 0.01s !important; transition-delay: 0s !important; }
 }
