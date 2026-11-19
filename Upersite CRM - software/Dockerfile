@@ -10,6 +10,9 @@ RUN npm run build
 
 # ── 2. Immagine finale: solo il server (usa solo moduli di Node, nessuna dipendenza npm) ──
 FROM node:22-alpine
+LABEL org.opencontainers.image.title="Upersite CRM" \
+      org.opencontainers.image.description="CRM di Upersite Studio: app web e server in un unico container" \
+      org.opencontainers.image.source="https://github.com/tombino104/Upersite-CRM"
 ENV NODE_ENV=production \
     PORT=3000 \
     HOST=0.0.0.0 \
