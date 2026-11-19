@@ -1,5 +1,5 @@
 // Upersite CRM — Editor Automazioni Full-Screen
-// Design System: #6C5CE7 primary, light theme, Inter, radii 8/12/16px
+// Design System: #1F6B4F primary, light theme, Inter, radii 8/12/16px
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   ReactFlow,
@@ -57,10 +57,10 @@ const BLOCK_LIBRARY = [
 ];
 
 const statusInfo = {
-  active:   { icon: CheckCircle,  color: '#00B894', label: 'Attivo' },
-  warning:  { icon: AlertTriangle, color: '#FDCB6E', label: 'Warning' },
-  broken:   { icon: XCircle,      color: '#E17055', label: 'Errore' },
-  disabled: { icon: ToggleLeft,   color: '#B2BEC3', label: 'Off' },
+  active:   { icon: CheckCircle,  color: '#3A9A6B', label: 'Attivo' },
+  warning:  { icon: AlertTriangle, color: '#E3A93C', label: 'Warning' },
+  broken:   { icon: XCircle,      color: '#C24E36', label: 'Errore' },
+  disabled: { icon: ToggleLeft,   color: '#98A09A', label: 'Off' },
 };
 
 // ─── Stili condivisi ───
@@ -121,8 +121,8 @@ export default function AutomationEditor({
       ...params,
       type: 'smoothstep',
       animated: true,
-      markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: '#B2BEC3' },
-      style: { stroke: '#B2BEC3', strokeWidth: 1.8 },
+      markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: '#98A09A' },
+      style: { stroke: '#98A09A', strokeWidth: 1.8 },
     }, eds));
     markChanged();
   }, []);
@@ -271,7 +271,7 @@ export default function AutomationEditor({
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
-      background: '#F8F9FC',
+      background: '#F6F5F1',
       display: 'flex', flexDirection: 'column',
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
     }}>
@@ -279,7 +279,7 @@ export default function AutomationEditor({
       {/* ── Top Bar ─────────────────────────────── */}
       <div style={{
         height: 54, background: '#fff',
-        borderBottom: '1.5px solid #E8ECF1',
+        borderBottom: '1.5px solid #E2E0D8',
         display: 'flex', alignItems: 'center',
         padding: '0 16px', gap: 12, flexShrink: 0,
         boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
@@ -288,16 +288,16 @@ export default function AutomationEditor({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 160 }}>
           <div style={{
             width: 32, height: 32, borderRadius: 10,
-            background: 'linear-gradient(135deg, #6C5CE7, #A29BFE)',
+            background: '#1F6B4F',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <Zap size={16} color="#fff" />
           </div>
-          <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#2D3436' }}>Automazioni</span>
+          <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#17201C' }}>Automazioni</span>
         </div>
 
         {/* Separatore verticale */}
-        <div style={{ width: 1, height: 28, background: '#E8ECF1', margin: '0 4px' }} />
+        <div style={{ width: 1, height: 28, background: '#E2E0D8', margin: '0 4px' }} />
 
         {/* Nome workflow (solo se canvas attivo) */}
         {showCanvas && (
@@ -305,13 +305,13 @@ export default function AutomationEditor({
             value={workflowName}
             onChange={e => { setWorkflowName(e.target.value); markChanged(); }}
             style={{
-              background: '#F4F5F9', border: '1.5px solid #E8ECF1', borderRadius: 8,
-              padding: '6px 12px', color: '#2D3436', fontSize: '0.82rem',
+              background: '#F1F0EA', border: '1.5px solid #E2E0D8', borderRadius: 8,
+              padding: '6px 12px', color: '#17201C', fontSize: '0.82rem',
               fontWeight: 600, width: 220, outline: 'none',
               fontFamily: "'Inter', sans-serif", transition: 'border 0.15s',
             }}
-            onFocus={e => e.target.style.borderColor = '#6C5CE7'}
-            onBlur={e => e.target.style.borderColor = '#E8ECF1'}
+            onFocus={e => e.target.style.borderColor = '#1F6B4F'}
+            onBlur={e => e.target.style.borderColor = '#E2E0D8'}
             placeholder="Nome workflow..."
           />
         )}
@@ -320,13 +320,13 @@ export default function AutomationEditor({
 
         {/* Tabs */}
         {showCanvas && (
-          <div style={{ display: 'flex', background: '#F4F5F9', borderRadius: 10, padding: 3 }}>
+          <div style={{ display: 'flex', background: '#F1F0EA', borderRadius: 10, padding: 3 }}>
             {['editor', 'logs'].map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)} style={{
                 padding: '5px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 fontSize: '0.74rem', fontWeight: 600, fontFamily: "'Inter', sans-serif",
                 background: activeTab === tab ? '#fff' : 'transparent',
-                color: activeTab === tab ? '#6C5CE7' : '#636E72',
+                color: activeTab === tab ? '#1F6B4F' : '#5E665F',
                 boxShadow: activeTab === tab ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
                 transition: 'all 0.15s',
               }}>
@@ -340,10 +340,10 @@ export default function AutomationEditor({
         {showCanvas && (
           <button onClick={() => { setWorkflowEnabled(v => !v); markChanged(); }} style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            background: workflowEnabled ? 'rgba(0,184,148,0.08)' : 'rgba(225,112,85,0.08)',
-            border: `1.5px solid ${workflowEnabled ? '#00B894' : '#E17055'}`,
+            background: workflowEnabled ? 'rgba(58, 154, 107,0.08)' : 'rgba(194, 78, 54,0.08)',
+            border: `1.5px solid ${workflowEnabled ? '#3A9A6B' : '#C24E36'}`,
             borderRadius: 8, padding: '5px 12px', cursor: 'pointer',
-            color: workflowEnabled ? '#00B894' : '#E17055',
+            color: workflowEnabled ? '#3A9A6B' : '#C24E36',
             fontSize: '0.72rem', fontWeight: 600, fontFamily: "'Inter', sans-serif", transition: 'all 0.15s',
           }}>
             {workflowEnabled ? <ToggleRight size={15} /> : <ToggleLeft size={15} />}
@@ -362,9 +362,9 @@ export default function AutomationEditor({
                 title={c.label}
                 style={{
                   padding: '5px 10px', borderRadius: 8, border: '1.5px solid',
-                  borderColor: executionConditions[c.key] ? '#FDCB6E' : '#E8ECF1',
-                  background: executionConditions[c.key] ? 'rgba(253,203,110,0.1)' : '#F4F5F9',
-                  color: executionConditions[c.key] ? '#b7860a' : '#B2BEC3',
+                  borderColor: executionConditions[c.key] ? '#E3A93C' : '#E2E0D8',
+                  background: executionConditions[c.key] ? 'rgba(227, 169, 60,0.1)' : '#F1F0EA',
+                  color: executionConditions[c.key] ? '#b7860a' : '#98A09A',
                   cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600,
                   fontFamily: "'Inter', sans-serif", transition: 'all 0.15s',
                 }}>
@@ -379,11 +379,11 @@ export default function AutomationEditor({
           <button onClick={handleSave} style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '7px 18px',
             borderRadius: 10, border: 'none', cursor: 'pointer',
-            background: savedFlash ? '#00B894' : hasChanges ? '#6C5CE7' : '#F4F5F9',
-            color: (savedFlash || hasChanges) ? '#fff' : '#B2BEC3',
+            background: savedFlash ? '#3A9A6B' : hasChanges ? '#1F6B4F' : '#F1F0EA',
+            color: (savedFlash || hasChanges) ? '#fff' : '#98A09A',
             fontWeight: 600, fontSize: '0.78rem', fontFamily: "'Inter', sans-serif",
             transition: 'all 0.2s',
-            boxShadow: hasChanges ? '0 2px 10px rgba(108,92,231,0.25)' : 'none',
+            boxShadow: hasChanges ? '0 2px 10px rgba(31, 107, 79,0.25)' : 'none',
           }}>
             {savedFlash ? <><Check size={14} /> Salvato</> : <><Save size={14} /> Salva</>}
           </button>
@@ -391,8 +391,8 @@ export default function AutomationEditor({
 
         {/* Chiudi */}
         <button onClick={onClose} style={{
-          border: '1.5px solid #E8ECF1', background: '#F4F5F9', borderRadius: 8,
-          padding: 6, cursor: 'pointer', display: 'flex', color: '#636E72',
+          border: '1.5px solid #E2E0D8', background: '#F1F0EA', borderRadius: 8,
+          padding: 6, cursor: 'pointer', display: 'flex', color: '#5E665F',
           transition: 'all 0.15s', marginLeft: 4,
         }}>
           <X size={16} />
@@ -405,31 +405,31 @@ export default function AutomationEditor({
         {/* ── Left: Lista Workflow ─────────────── */}
         <div style={{
           width: SIDEBAR_W, background: '#fff',
-          borderRight: '1.5px solid #E8ECF1',
+          borderRight: '1.5px solid #E2E0D8',
           display: 'flex', flexDirection: 'column', flexShrink: 0,
         }}>
           <div style={{ padding: '12px' }}>
             <button onClick={handleNew} style={{
               width: '100%', padding: '9px', borderRadius: 10,
-              border: '2px dashed rgba(108,92,231,0.3)',
-              background: 'rgba(108,92,231,0.04)', cursor: 'pointer',
-              color: '#6C5CE7', fontWeight: 600, fontSize: '0.76rem',
+              border: '2px dashed rgba(31, 107, 79,0.3)',
+              background: 'rgba(31, 107, 79,0.04)', cursor: 'pointer',
+              color: '#1F6B4F', fontWeight: 600, fontSize: '0.76rem',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               marginBottom: 10, fontFamily: "'Inter', sans-serif",
               transition: 'all 0.15s',
             }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(108,92,231,0.08)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(108,92,231,0.04)'}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(31, 107, 79,0.08)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(31, 107, 79,0.04)'}
             >
               <Plus size={15} /> Nuovo Workflow
             </button>
             <div style={{ position: 'relative' }}>
-              <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#B2BEC3' }} />
+              <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#98A09A' }} />
               <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                 style={{
                   width: '100%', padding: '7px 10px 7px 28px',
-                  borderRadius: 8, border: '1.5px solid #E8ECF1',
-                  background: '#F4F5F9', color: '#2D3436', fontSize: '0.74rem',
+                  borderRadius: 8, border: '1.5px solid #E2E0D8',
+                  background: '#F1F0EA', color: '#17201C', fontSize: '0.74rem',
                   outline: 'none', fontFamily: "'Inter', sans-serif", boxSizing: 'border-box',
                 }}
                 placeholder="Cerca..."
@@ -439,7 +439,7 @@ export default function AutomationEditor({
 
           <div style={{ flex: 1, overflow: 'auto', padding: '0 8px 12px' }}>
             {filteredWorkflows.length === 0 && (
-              <div style={{ padding: '20px 12px', textAlign: 'center', color: '#B2BEC3', fontSize: '0.74rem' }}>
+              <div style={{ padding: '20px 12px', textAlign: 'center', color: '#98A09A', fontSize: '0.74rem' }}>
                 Nessun workflow trovato
               </div>
             )}
@@ -452,24 +452,24 @@ export default function AutomationEditor({
                   onClick={() => { setSelectedWorkflowId(wf.id); setActiveTab('editor'); }}
                   style={{
                     padding: '9px 10px', borderRadius: 10, cursor: 'pointer', marginBottom: 3,
-                    background: isSelected ? 'rgba(108,92,231,0.07)' : 'transparent',
-                    border: isSelected ? '1.5px solid rgba(108,92,231,0.2)' : '1.5px solid transparent',
+                    background: isSelected ? 'rgba(31, 107, 79,0.07)' : 'transparent',
+                    border: isSelected ? '1.5px solid rgba(31, 107, 79,0.2)' : '1.5px solid transparent',
                     transition: 'all 0.12s',
                   }}
-                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#F8F9FC'; }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#F6F5F1'; }}
                   onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <StIcon size={13} color={wf.enabled === false ? '#B2BEC3' : st.color} />
+                    <StIcon size={13} color={wf.enabled === false ? '#98A09A' : st.color} />
                     <span style={{
                       flex: 1, fontSize: '0.78rem', fontWeight: isSelected ? 600 : 400,
-                      color: isSelected ? '#2D3436' : '#636E72',
+                      color: isSelected ? '#17201C' : '#5E665F',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
                       {wf.name || 'Senza nome'}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.62rem', color: '#B2BEC3', marginTop: 3, paddingLeft: 20 }}>
+                  <div style={{ fontSize: '0.62rem', color: '#98A09A', marginTop: 3, paddingLeft: 20 }}>
                     {(wf.nodes || []).length} blocchi
                     {wf.enabled === false && ' · Disattivato'}
                   </div>
@@ -498,17 +498,17 @@ export default function AutomationEditor({
                   fitView
                   deleteKeyCode="Delete"
                   proOptions={{ hideAttribution: true }}
-                  style={{ background: '#F8F9FC' }}
+                  style={{ background: '#F6F5F1' }}
                 >
                   <Background color="#D0D3D9" gap={24} size={1.2} variant="dots" />
                   <Controls style={{
-                    background: '#fff', border: '1.5px solid #E8ECF1',
+                    background: '#fff', border: '1.5px solid #E2E0D8',
                     borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                   }} />
                   <MiniMap
-                    nodeColor={n => nodeColors[n.type?.replace('Node', '')]?.bg || '#B2BEC3'}
-                    style={{ background: '#fff', border: '1.5px solid #E8ECF1', borderRadius: 10 }}
-                    maskColor="rgba(248,249,252,0.7)"
+                    nodeColor={n => nodeColors[n.type?.replace('Node', '')]?.bg || '#98A09A'}
+                    style={{ background: '#fff', border: '1.5px solid #E2E0D8', borderRadius: 10 }}
+                    maskColor="rgba(246, 245, 241,0.7)"
                   />
                 </ReactFlow>
 
@@ -517,7 +517,7 @@ export default function AutomationEditor({
                   position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
                   display: 'flex', gap: 4, alignItems: 'center',
                   background: '#fff', borderRadius: 14, padding: '6px 10px',
-                  border: '1.5px solid #E8ECF1',
+                  border: '1.5px solid #E2E0D8',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
                 }}>
                   {[
@@ -530,8 +530,8 @@ export default function AutomationEditor({
                     { type: 'chainNode',     label: 'Chain',     icon: Link2,      c: nodeColors.chain },
                   ].map((b, i) => (
                     <React.Fragment key={b.type}>
-                      {i === 2 && <div style={{ width: 1, height: 28, background: '#E8ECF1', margin: '0 4px' }} />}
-                      {i === 4 && <div style={{ width: 1, height: 28, background: '#E8ECF1', margin: '0 4px' }} />}
+                      {i === 2 && <div style={{ width: 1, height: 28, background: '#E2E0D8', margin: '0 4px' }} />}
+                      {i === 4 && <div style={{ width: 1, height: 28, background: '#E2E0D8', margin: '0 4px' }} />}
                       <button
                         onClick={() => addBlock(b.type, b.label)}
                         title={b.label}
@@ -542,7 +542,7 @@ export default function AutomationEditor({
                           fontSize: '0.6rem', fontWeight: 600,
                           fontFamily: "'Inter', sans-serif", transition: 'background 0.12s',
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#F4F5F9'}
+                        onMouseEnter={e => e.currentTarget.style.background = '#F1F0EA'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                       >
                         <b.icon size={16} />
@@ -572,22 +572,22 @@ export default function AutomationEditor({
               }}>
                 <div style={{
                   width: 72, height: 72, borderRadius: 20,
-                  background: 'rgba(108,92,231,0.08)',
+                  background: 'rgba(31, 107, 79,0.08)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Zap size={32} color="#6C5CE7" />
+                  <Zap size={32} color="#1F6B4F" />
                 </div>
-                <div style={{ fontSize: '1rem', fontWeight: 700, color: '#2D3436' }}>
+                <div style={{ fontSize: '1rem', fontWeight: 700, color: '#17201C' }}>
                   Crea la tua prima automazione
                 </div>
-                <div style={{ fontSize: '0.78rem', color: '#636E72', maxWidth: 380, textAlign: 'center', lineHeight: 1.7 }}>
+                <div style={{ fontSize: '0.78rem', color: '#5E665F', maxWidth: 380, textAlign: 'center', lineHeight: 1.7 }}>
                   Seleziona un workflow dalla lista a sinistra oppure creane uno nuovo per iniziare a costruire flussi automatici.
                 </div>
                 <button onClick={handleNew} style={{
                   padding: '10px 24px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                  background: '#6C5CE7', color: '#fff', fontWeight: 600, fontSize: '0.82rem',
+                  background: '#1F6B4F', color: '#fff', fontWeight: 600, fontSize: '0.82rem',
                   display: 'flex', alignItems: 'center', gap: 8, fontFamily: "'Inter', sans-serif",
-                  boxShadow: '0 4px 16px rgba(108,92,231,0.3)',
+                  boxShadow: '0 4px 16px rgba(31, 107, 79,0.3)',
                 }}>
                   <Plus size={16} /> Nuovo Workflow
                 </button>
@@ -597,19 +597,19 @@ export default function AutomationEditor({
             /* ── Log Tab ── */
             <div style={{ height: '100%', overflow: 'auto', padding: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#2D3436' }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#17201C' }}>
                   Log & Debug
                 </div>
                 {currentLogs.length > 0 && (
                   <button onClick={downloadLogs} style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '6px 12px', borderRadius: 8, border: '1.5px solid #E8ECF1',
-                    background: '#fff', cursor: 'pointer', color: '#6C5CE7',
+                    padding: '6px 12px', borderRadius: 8, border: '1.5px solid #E2E0D8',
+                    background: '#fff', cursor: 'pointer', color: '#1F6B4F',
                     fontSize: '0.72rem', fontWeight: 600, fontFamily: "'Inter', sans-serif",
                     transition: 'all 0.15s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(108,92,231,0.04)'; e.currentTarget.style.borderColor = '#6C5CE7'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#E8ECF1'; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(31, 107, 79,0.04)'; e.currentTarget.style.borderColor = '#1F6B4F'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#E2E0D8'; }}
                   >
                     <Save size={14} /> Scarica Log (.txt)
                   </button>
@@ -618,50 +618,50 @@ export default function AutomationEditor({
               {currentLogs.length === 0 ? (
                 <div style={{
                   padding: '40px 20px', textAlign: 'center',
-                  background: '#fff', borderRadius: 14, border: '1.5px solid #E8ECF1',
-                  color: '#B2BEC3', fontSize: '0.78rem',
+                  background: '#fff', borderRadius: 14, border: '1.5px solid #E2E0D8',
+                  color: '#98A09A', fontSize: '0.78rem',
                 }}>
                   Nessuna esecuzione registrata per questo workflow.
                 </div>
               ) : (
                 currentLogs.map(log => (
                   <div key={log.id} style={{
-                    background: '#fff', border: '1.5px solid #E8ECF1', borderRadius: 12,
+                    background: '#fff', border: '1.5px solid #E2E0D8', borderRadius: 12,
                     padding: 14, marginBottom: 8,
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{
                           width: 8, height: 8, borderRadius: '50%',
-                          background: log.status === 'completed' ? '#00B894' : log.status === 'error' ? '#E17055' : '#FDCB6E',
+                          background: log.status === 'completed' ? '#3A9A6B' : log.status === 'error' ? '#C24E36' : '#E3A93C',
                         }} />
-                        <span style={{ color: '#2D3436', fontSize: '0.78rem', fontWeight: 600 }}>
+                        <span style={{ color: '#17201C', fontSize: '0.78rem', fontWeight: 600 }}>
                           {log.status === 'completed' ? 'Completato' : log.status === 'error' ? 'Errore' : log.status === 'skipped' ? 'Saltato' : 'In corso'}
                         </span>
                       </div>
-                      <span style={{ color: '#B2BEC3', fontSize: '0.64rem' }}>
+                      <span style={{ color: '#98A09A', fontSize: '0.64rem' }}>
                         {new Date(log.startedAt).toLocaleString('it-IT')}
                       </span>
                     </div>
                     {log.triggeredBy && (
-                      <div style={{ color: '#636E72', fontSize: '0.68rem', marginBottom: 6 }}>
+                      <div style={{ color: '#5E665F', fontSize: '0.68rem', marginBottom: 6 }}>
                         Trigger: <b>{EventLabels[log.triggeredBy] || log.triggeredBy}</b>
                       </div>
                     )}
                     {log.error && (
                       <div style={{
-                        padding: '6px 10px', background: 'rgba(225,112,85,0.07)',
-                        borderRadius: 8, color: '#E17055', fontSize: '0.7rem', marginBottom: 6,
-                        border: '1px solid rgba(225,112,85,0.2)',
+                        padding: '6px 10px', background: 'rgba(194, 78, 54,0.07)',
+                        borderRadius: 8, color: '#C24E36', fontSize: '0.7rem', marginBottom: 6,
+                        border: '1px solid rgba(194, 78, 54,0.2)',
                       }}>
                         {log.error}
                       </div>
                     )}
                     {(log.steps || []).length > 0 && (
-                      <div style={{ borderLeft: '2px solid rgba(108,92,231,0.2)', paddingLeft: 10, marginLeft: 4, marginTop: 6 }}>
+                      <div style={{ borderLeft: '2px solid rgba(31, 107, 79,0.2)', paddingLeft: 10, marginLeft: 4, marginTop: 6 }}>
                         {log.steps.map((step, i) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', fontSize: '0.65rem', color: '#636E72' }}>
-                            <span style={{ fontWeight: 500, color: '#2D3436' }}>{step.label || step.nodeType}</span>
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', fontSize: '0.65rem', color: '#5E665F' }}>
+                            <span style={{ fontWeight: 500, color: '#17201C' }}>{step.label || step.nodeType}</span>
                             <span>{typeof step.result === 'object' ? step.result?.detail : step.result}</span>
                           </div>
                         ))}
@@ -678,11 +678,11 @@ export default function AutomationEditor({
         {activeTab === 'editor' && showCanvas && (
           <div style={{
             width: LIBRARY_W, background: '#fff',
-            borderLeft: '1.5px solid #E8ECF1',
+            borderLeft: '1.5px solid #E2E0D8',
             overflow: 'auto', flexShrink: 0,
             display: 'flex', flexDirection: 'column',
           }}>
-            <div style={{ padding: '14px 14px 6px', fontSize: '0.68rem', fontWeight: 700, color: '#B2BEC3', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <div style={{ padding: '14px 14px 6px', fontSize: '0.68rem', fontWeight: 700, color: '#98A09A', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Libreria
             </div>
 
@@ -696,10 +696,10 @@ export default function AutomationEditor({
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', gap: 7,
                       padding: '8px 14px', border: 'none', cursor: 'pointer',
-                      background: 'transparent', color: '#2D3436',
+                      background: 'transparent', color: '#17201C',
                       fontSize: '0.76rem', fontWeight: 600, fontFamily: "'Inter', sans-serif",
                     }}>
-                    {isExpanded ? <ChevronDown size={13} color="#B2BEC3" /> : <ChevronRight size={13} color="#B2BEC3" />}
+                    {isExpanded ? <ChevronDown size={13} color="#98A09A" /> : <ChevronRight size={13} color="#98A09A" />}
                     <CatIcon size={13} color={cat.color} />
                     {cat.category}
                   </button>
@@ -714,11 +714,11 @@ export default function AutomationEditor({
                         border: 'none', cursor: 'pointer', background: 'transparent',
                         textAlign: 'left', fontFamily: "'Inter', sans-serif", transition: 'background 0.12s',
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#F4F5F9'}
+                      onMouseEnter={e => e.currentTarget.style.background = '#F1F0EA'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      <span style={{ fontSize: '0.74rem', fontWeight: 500, color: '#2D3436' }}>{block.label}</span>
-                      <span style={{ fontSize: '0.61rem', color: '#B2BEC3', marginTop: 1 }}>{block.desc}</span>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 500, color: '#17201C' }}>{block.label}</span>
+                      <span style={{ fontSize: '0.61rem', color: '#98A09A', marginTop: 1 }}>{block.desc}</span>
                     </button>
                   ))}
                 </div>
@@ -727,14 +727,14 @@ export default function AutomationEditor({
 
             {/* Azioni workflow */}
             {selectedWorkflowId && (
-              <div style={{ padding: '14px', borderTop: '1.5px solid #E8ECF1', marginTop: 'auto' }}>
-                <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#B2BEC3', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+              <div style={{ padding: '14px', borderTop: '1.5px solid #E2E0D8', marginTop: 'auto' }}>
+                <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#98A09A', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                   Azioni
                 </div>
                 <button onClick={handleDuplicate} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 7,
-                  padding: '7px 10px', borderRadius: 8, border: '1.5px solid #E8ECF1',
-                  background: '#F4F5F9', color: '#636E72', fontSize: '0.72rem',
+                  padding: '7px 10px', borderRadius: 8, border: '1.5px solid #E2E0D8',
+                  background: '#F1F0EA', color: '#5E665F', fontSize: '0.72rem',
                   marginBottom: 6, fontFamily: "'Inter', sans-serif", cursor: 'pointer',
                 }}>
                   <Copy size={12} /> Duplica
@@ -742,8 +742,8 @@ export default function AutomationEditor({
                 <button onClick={handleDelete} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 7,
                   padding: '7px 10px', borderRadius: 8,
-                  border: '1.5px solid rgba(225,112,85,0.25)',
-                  background: 'rgba(225,112,85,0.06)', color: '#E17055',
+                  border: '1.5px solid rgba(194, 78, 54,0.25)',
+                  background: 'rgba(194, 78, 54,0.06)', color: '#C24E36',
                   fontSize: '0.72rem', fontFamily: "'Inter', sans-serif", cursor: 'pointer',
                 }}>
                   <Trash2 size={12} /> Elimina

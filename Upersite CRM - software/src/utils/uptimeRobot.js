@@ -8,9 +8,9 @@ const API_BASE = 'https://api.uptimerobot.com/v3';
 
 export const STATUS = {
   up:      { label: 'Online',      color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
-  down:    { label: 'Offline',     color: '#E17055', bg: 'rgba(225,112,85,0.12)' },
-  paused:  { label: 'In pausa',    color: '#B2BEC3', bg: 'rgba(178,190,195,0.18)' },
-  pending: { label: 'In verifica', color: '#FDCB6E', bg: 'rgba(253,203,110,0.18)' },
+  down:    { label: 'Offline',     color: '#C24E36', bg: 'rgba(194, 78, 54,0.12)' },
+  paused:  { label: 'In pausa',    color: '#98A09A', bg: 'rgba(178,190,195,0.18)' },
+  pending: { label: 'In verifica', color: '#E3A93C', bg: 'rgba(227, 169, 60,0.18)' },
 };
 
 export const monitorUrl = (id) => `${DASHBOARD_URL}/${id}`;

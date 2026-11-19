@@ -264,11 +264,11 @@ const RS_CSS = `
 .rs-head p { margin: 2px 0 0; font-size: 0.8rem; color: var(--text-tertiary); word-break: break-all; }
 .rs-head-icon { width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; background: var(--success-bg); flex-shrink: 0; }
 .rs-close { width: 36px; height: 36px; border-radius: 50%; border: none; cursor: pointer; background: var(--bg-input); color: var(--text-secondary); }
-.rs-close:hover { background: #FFE0E0; color: #E17055; }
+.rs-close:hover { background: #FFE0E0; color: #C24E36; }
 .rs-body { display: grid; grid-template-columns: 340px 1fr; min-height: 0; flex: 1; }
 .rs-days { border-right: 1px solid var(--border-light); overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
 .rs-day { padding: 10px 12px; border-radius: 14px; border: 1.5px solid transparent; }
-.rs-day.active { background: var(--primary-ghost); border-color: rgba(108,92,231,0.25); }
+.rs-day.active { background: var(--primary-ghost); border-color: rgba(31, 107, 79,0.25); }
 .rs-day-title { font-weight: 700; font-size: 0.88rem; color: var(--text-primary); }
 .rs-day-meta { font-size: 0.74rem; color: var(--text-tertiary); margin: 2px 0 6px; }
 .rs-times { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -288,7 +288,7 @@ const RS_CSS = `
 .rs-tabs button.on { background: var(--bg-card, #fff); color: var(--primary); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
 .rs-parts { display: flex; flex-direction: column; gap: 8px; }
 .rs-part { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 14px; background: var(--bg-input); border: 1.5px solid transparent; cursor: pointer; }
-.rs-part.on { border-color: rgba(108,92,231,0.25); }
+.rs-part.on { border-color: rgba(31, 107, 79,0.25); }
 .rs-part input, .rs-customer input { position: absolute; opacity: 0; pointer-events: none; }
 .rs-switch { width: 38px; height: 22px; border-radius: 999px; background: #cfd0dc; position: relative; flex-shrink: 0; transition: background 0.2s; }
 .rs-switch span { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.2s; }

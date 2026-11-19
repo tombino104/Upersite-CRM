@@ -216,9 +216,9 @@ export default function CalendarView({ customers, onClose, onSelectCustomer, ini
         .event-card input:focus { border-color: var(--primary); }
         .event-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px; }
 
-        .event-strip.global-event { border-color: #a29bfe; background: rgba(162, 155, 254, 0.1); }
-        .w-event.global-event { border-color: #a29bfe; }
-        .day-entry.global-event { border-color: #a29bfe; background: rgba(162, 155, 254, 0.05); }
+        .event-strip.global-event { border-color: #6fa88e; background: rgba(162, 155, 254, 0.1); }
+        .w-event.global-event { border-color: #6fa88e; }
+        .day-entry.global-event { border-color: #6fa88e; background: rgba(162, 155, 254, 0.05); }
       `}</style>
     </div>
   );
@@ -287,7 +287,7 @@ function MonthView({ date, events, onOpenClient }) {
         .grid-cell { background: var(--bg-card); border-radius: 20px; padding: 10px; border: 1px solid var(--border-light); 
                      display: flex; flex-direction: column; transition: transform 0.2s; }
         .grid-cell.faded { opacity: 0.25; pointer-events: none; }
-        .grid-cell.current-day { border-color: var(--primary); background: rgba(108, 92, 231, 0.05); }
+        .grid-cell.current-day { border-color: var(--primary); background: rgba(31, 107, 79, 0.05); }
         .grid-cell:not(.faded):hover { border-color: rgba(255,255,255,0.2); background: var(--bg-hover); }
         
         .cell-num { font-size: 0.85rem; font-weight: 800; color: var(--text-tertiary); margin-bottom: 6px; }
@@ -299,7 +299,7 @@ function MonthView({ date, events, onOpenClient }) {
           cursor: pointer; white-space: normal; overflow: visible; text-overflow: initial;
           border-left: 3px solid transparent; background: var(--bg-app);
         }
-        .event-strip.payment { border-color: var(--warning); background: var(--warning-bg); color: #E17055; }
+        .event-strip.payment { border-color: var(--warning); background: var(--warning-bg); color: #C24E36; }
         .event-strip.payment.paid { border-color: var(--success); background: var(--success-bg); color: var(--success); }
         .event-strip.payment.overdue { border-color: var(--danger); background: var(--danger-bg); color: var(--danger); }
         .event-strip.todo { border-color: var(--info); background: var(--info-bg); color: var(--info); }
@@ -356,7 +356,7 @@ function WeekView({ date, events, onOpenClient }) {
       <style>{`
         .week-grid-compact { display: grid; grid-template-columns: repeat(7, 1fr); gap: 15px; flex: 1; }
         .week-box { background: var(--bg-card); border-radius: 25px; border: 1px solid var(--border-light); display: flex; flex-direction: column; overflow: hidden; }
-        .week-box.today { border-color: var(--primary); background: rgba(108, 92, 231, 0.04); }
+        .week-box.today { border-color: var(--primary); background: rgba(31, 107, 79, 0.04); }
         .week-head { padding: 20px; text-align: center; border-bottom: 1px solid var(--border-light); }
         .w-label { display: block; font-size: 0.7rem; font-weight: 800; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 2px; }
         .w-date { font-size: 1.5rem; font-weight: 900; }
@@ -452,7 +452,7 @@ function YearView({ date, events, onSelectMonth }) {
         .m-dot { width: 6px; height: 6px; border-radius: 50%; opacity: 0.8; }
         .m-dot.payment { background: var(--warning); }
         .m-dot.todo { background: var(--info); }
-        .m-dot.global-event { background: #a29bfe; }
+        .m-dot.global-event { background: #6fa88e; }
       `}</style>
     </div>
   );

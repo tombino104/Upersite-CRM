@@ -106,7 +106,7 @@ const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggle
                   borderLeft: !n.readAt ? '4px solid var(--primary)' : '4px solid transparent',
                   gap: '12px',
                   cursor: 'pointer',
-                  background: !n.readAt ? 'rgba(108, 92, 231, 0.04)' : 'transparent',
+                  background: !n.readAt ? 'rgba(31, 107, 79, 0.04)' : 'transparent',
                   transition: 'all 0.2s'
                 }}>
                 <div style={{ fontSize: '1.2rem', marginTop: '2px' }}>
@@ -1301,7 +1301,7 @@ export default function App() {
         .app-search-input:focus {
           background: #fff;
           border-color: var(--primary-light);
-          box-shadow: 0 4px 20px rgba(108, 92, 231, 0.1);
+          box-shadow: 0 4px 20px rgba(31, 107, 79, 0.1);
           outline: none;
         }
 

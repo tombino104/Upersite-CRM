@@ -15,7 +15,7 @@ export const DOCK_ITEMS = [
     Icon: IconMonitor,
   },
   {
-    id: 'analytics', title: 'Panoramica Business', colors: ['#0984E3', '#0652DD'], glow: '9, 132, 227', tilt: -4,
+    id: 'analytics', title: 'Panoramica Business', colors: ['#2F6FA8', '#0652DD'], glow: '9, 132, 227', tilt: -4,
     Icon: IconAnalytics,
   },
   {
@@ -23,11 +23,11 @@ export const DOCK_ITEMS = [
     Icon: IconCalculator,
   },
   {
-    id: 'leads', title: 'Pipeline prospect', colors: ['#14B8A6', '#0F766E'], glow: '20, 184, 166', tilt: 5,
+    id: 'leads', title: 'Pipeline prospect', colors: ['#2F8F8A', '#0F766E'], glow: '20, 184, 166', tilt: 5,
     Icon: IconLeads,
   },
   {
-    id: 'archive', title: 'Archivio clienti', colors: ['#94A3B8', '#64748B'], glow: '100, 116, 139', tilt: 5,
+    id: 'archive', title: 'Archivio clienti', colors: ['#94A3B8', '#5E665F'], glow: '100, 116, 139', tilt: 5,
     Icon: IconArchive,
   },
   {

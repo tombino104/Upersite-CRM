@@ -244,7 +244,7 @@ const KanbanView = memo(({ customers, onSelectCustomer, onUpdateCustomerStatus }
           border-color: var(--primary-light);
           color: var(--primary);
           opacity: 1;
-          background: rgba(108, 92, 231, 0.04);
+          background: rgba(31, 107, 79, 0.04);
         }
 
         .kanban-card-wrapper {

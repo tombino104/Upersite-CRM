@@ -1,5 +1,5 @@
 // Upersite CRM — Pannello Configurazione Nodo v2
-// Design System: Inter, #6C5CE7 primary, radii 8/12px, light theme
+// Design System: Inter, #1F6B4F primary, radii 8/12px, light theme
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { EventLabels, EventCategories } from '../../utils/workflowEvents';
@@ -9,12 +9,12 @@ const ip = {
   width: '100%',
   padding: '8px 10px',
   borderRadius: 8,
-  border: '1.5px solid #E8ECF1',
+  border: '1.5px solid #E2E0D8',
   fontSize: '0.78rem',
   fontFamily: "'Inter', sans-serif",
   outline: 'none',
-  background: '#F4F5F9',
-  color: '#2D3436',
+  background: '#F1F0EA',
+  color: '#17201C',
   boxSizing: 'border-box',
   transition: 'border 0.15s',
 };
@@ -23,7 +23,7 @@ const lbl = {
   display: 'block',
   fontSize: '0.68rem',
   fontWeight: 600,
-  color: '#636E72',
+  color: '#5E665F',
   marginBottom: 4,
   marginTop: 12,
 };
@@ -86,7 +86,7 @@ function TaskSelect({ customerId, taskId, onTaskChange, customers, label = 'Task
 
   if (!customerId) {
     return (
-      <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(108,92,231,0.05)', borderRadius: 8, border: '1.5px solid rgba(108,92,231,0.2)', fontSize: '0.7rem', color: '#6C5CE7' }}>
+      <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(31, 107, 79,0.05)', borderRadius: 8, border: '1.5px solid rgba(31, 107, 79,0.2)', fontSize: '0.7rem', color: '#1F6B4F' }}>
         ℹ️ Utilizzerà il task (o il cliente) proveniente dal trigger. 
         <div style={{ marginTop: 4, opacity: 0.8, fontSize: '0.65rem' }}>Per scegliere un task specifico, seleziona prima un cliente sopra.</div>
       </div>
@@ -97,7 +97,7 @@ function TaskSelect({ customerId, taskId, onTaskChange, customers, label = 'Task
     <>
       <label style={lbl}>{label}</label>
       {tasks.length === 0 ? (
-        <div style={{ marginTop: 4, padding: '8px 10px', background: '#F8F9FC', borderRadius: 8, border: '1.5px solid #E8ECF1', fontSize: '0.7rem', color: '#B2BEC3' }}>
+        <div style={{ marginTop: 4, padding: '8px 10px', background: '#F6F5F1', borderRadius: 8, border: '1.5px solid #E2E0D8', fontSize: '0.7rem', color: '#98A09A' }}>
           Nessun task presente per questo cliente
         </div>
       ) : (
@@ -132,7 +132,7 @@ function TagSelect({ value, onChange, tags, label = 'Tag' }) {
         )}
         <button
           onClick={() => setCustomMode(v => !v)}
-          style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid #E8ECF1', background: '#F4F5F9', cursor: 'pointer', fontSize: '0.65rem', color: '#636E72', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap' }}
+          style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid #E2E0D8', background: '#F1F0EA', cursor: 'pointer', fontSize: '0.65rem', color: '#5E665F', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap' }}
           title={customMode ? 'Torna alla lista' : 'Scrivi manualmente'}
         >
           {customMode ? '← Lista' : 'Manuale'}
@@ -199,22 +199,22 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {Object.entries(EventCategories).map(([cat, evts]) => (
           <div key={cat}>
-            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: '#B2BEC3', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '8px 0 2px' }}>
+            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: '#98A09A', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '8px 0 2px' }}>
               {cat}
             </div>
             {evts.map(evt => (
               <label key={evt} style={{
                 display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
                 borderRadius: 8, cursor: 'pointer', fontSize: '0.74rem',
-                background: formData.eventType === evt ? 'rgba(108,92,231,0.08)' : 'transparent',
-                color: formData.eventType === evt ? '#6C5CE7' : '#636E72',
+                background: formData.eventType === evt ? 'rgba(31, 107, 79,0.08)' : 'transparent',
+                color: formData.eventType === evt ? '#1F6B4F' : '#5E665F',
                 fontWeight: formData.eventType === evt ? 600 : 400,
                 transition: 'all 0.12s',
               }}>
                 <input type="radio" name="eventType" value={evt}
                   checked={formData.eventType === evt}
                   onChange={() => { set('eventType', evt); set('eventLabel', EventLabels[evt]); }}
-                  style={{ accentColor: '#6C5CE7', margin: 0 }}
+                  style={{ accentColor: '#1F6B4F', margin: 0 }}
                 />
                 {EventLabels[evt]}
               </label>
@@ -255,7 +255,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
             <option value="ore">Ore</option>
           </select>
         </div>
-        <div style={{ marginTop: 8, padding: '7px 10px', background: 'rgba(108,92,231,0.05)', borderRadius: 8, border: '1.5px solid rgba(108,92,231,0.15)', fontSize: '0.68rem', color: '#6C5CE7' }}>
+        <div style={{ marginTop: 8, padding: '7px 10px', background: 'rgba(31, 107, 79,0.05)', borderRadius: 8, border: '1.5px solid rgba(31, 107, 79,0.15)', fontSize: '0.68rem', color: '#1F6B4F' }}>
           ⏱️ Esempio: ogni 30 minuti, ogni 2 ore. Il workflow si attiverà automaticamente all'intervallo impostato.
         </div>
       </>)}
@@ -270,11 +270,11 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
         {['AND', 'OR'].map(l => (
           <button key={l} onClick={() => set('logic', l)} style={{
             flex: 1, padding: '7px', borderRadius: 8, border: '1.5px solid',
-            borderColor: formData.logic === l ? '#6C5CE7' : '#E8ECF1',
+            borderColor: formData.logic === l ? '#1F6B4F' : '#E2E0D8',
             cursor: 'pointer', fontWeight: 600, fontSize: '0.74rem',
             fontFamily: "'Inter', sans-serif",
-            background: formData.logic === l ? 'rgba(108,92,231,0.08)' : '#fff',
-            color: formData.logic === l ? '#6C5CE7' : '#636E72',
+            background: formData.logic === l ? 'rgba(31, 107, 79,0.08)' : '#fff',
+            color: formData.logic === l ? '#1F6B4F' : '#5E665F',
             transition: 'all 0.15s',
           }}>{l}</button>
         ))}
@@ -282,7 +282,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
 
       <label style={{ ...lbl, marginTop: 14 }}>Condizioni</label>
       {(formData.conditions || []).map((cond, i) => (
-        <div key={i} style={{ padding: 10, background: '#F8F9FC', borderRadius: 10, border: '1.5px solid #E8ECF1', marginBottom: 8 }}>
+        <div key={i} style={{ padding: 10, background: '#F6F5F1', borderRadius: 10, border: '1.5px solid #E2E0D8', marginBottom: 8 }}>
           <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
             <input list="field-suggestions" placeholder="Campo (es: cliente.stato)" style={{ ...ip, flex: 2 }}
               value={cond.field || ''} onChange={e => updCond(i, 'field', e.target.value)} />
@@ -295,7 +295,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
             <input placeholder="Valore (es: prospect)" style={{ ...ip, flex: 1 }}
               value={cond.value || ''} onChange={e => updCond(i, 'value', e.target.value)} />
             <button onClick={() => setFormData(prev => ({ ...prev, conditions: prev.conditions.filter((_, j) => j !== i) }))}
-              style={{ padding: '4px 8px', border: '1.5px solid rgba(225,112,85,0.25)', background: 'rgba(225,112,85,0.07)', borderRadius: 8, color: '#E17055', cursor: 'pointer' }}>
+              style={{ padding: '4px 8px', border: '1.5px solid rgba(194, 78, 54,0.25)', background: 'rgba(194, 78, 54,0.07)', borderRadius: 8, color: '#C24E36', cursor: 'pointer' }}>
               <Trash2 size={13} />
             </button>
           </div>
@@ -306,7 +306,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
       </datalist>
       <button
         onClick={() => setFormData(prev => ({ ...prev, conditions: [...(prev.conditions || []), { field: '', operator: '=', value: '' }] }))}
-        style={{ width: '100%', padding: '7px', border: '2px dashed #E8ECF1', borderRadius: 10, background: 'transparent', cursor: 'pointer', fontSize: '0.74rem', color: '#636E72', fontFamily: "'Inter', sans-serif", marginTop: 2 }}>
+        style={{ width: '100%', padding: '7px', border: '2px dashed #E2E0D8', borderRadius: 10, background: 'transparent', cursor: 'pointer', fontSize: '0.74rem', color: '#5E665F', fontFamily: "'Inter', sans-serif", marginTop: 2 }}>
         + Aggiungi condizione
       </button>
     </>
@@ -413,7 +413,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
         </div>
         <label style={lbl}>Descrizione (supporta variabili)</label>
         <textarea style={{ ...ip, minHeight: 60, resize: 'vertical' }} value={conf.description || ''} onChange={e => setConf('description', e.target.value)} placeholder="Usa {{cliente.nome}} per variabili dinamiche" />
-        <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(108,92,231,0.05)', borderRadius: 8, border: '1.5px solid rgba(108,92,231,0.15)', fontSize: '0.68rem', color: '#6C5CE7' }}>
+        <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(31, 107, 79,0.05)', borderRadius: 8, border: '1.5px solid rgba(31, 107, 79,0.15)', fontSize: '0.68rem', color: '#1F6B4F' }}>
           🔁 Il task verrà creato sul cliente selezionato con la ricorrenza impostata. Quando viene completato, la scadenza si rinnova automaticamente.
         </div>
       </>)}
@@ -439,7 +439,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
         </div>
         <label style={lbl}>Parametri aggiuntivi (opzionale)</label>
         <textarea style={{ ...ip, minHeight: 60, resize: 'vertical' }} value={conf.extraParams || ''} onChange={e => setConf('extraParams', e.target.value)} placeholder="Parametri in formato JSON o testo libero" />
-        <div style={{ marginTop: 8, padding: '7px 10px', background: 'rgba(253,203,110,0.08)', borderRadius: 8, border: '1.5px solid rgba(253,203,110,0.4)', fontSize: '0.68rem', color: '#b7860a' }}>
+        <div style={{ marginTop: 8, padding: '7px 10px', background: 'rgba(227, 169, 60,0.08)', borderRadius: 8, border: '1.5px solid rgba(227, 169, 60,0.4)', fontSize: '0.68rem', color: '#b7860a' }}>
           ⚠️ L'azione ricorrente si combina col trigger del workflow. Usa il trigger "A intervallo fisso" per avviarla automaticamente ogni N minuti/ore.
         </div>
       </>)}
@@ -480,7 +480,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
           label="Task padre (deve esistere)"
         />
         {!conf.parentTaskId && conf.customerId && (
-          <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(253,203,110,0.1)', borderRadius: 8, border: '1.5px solid rgba(253,203,110,0.4)', fontSize: '0.68rem', color: '#b7860a' }}>
+          <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(227, 169, 60,0.1)', borderRadius: 8, border: '1.5px solid rgba(227, 169, 60,0.4)', fontSize: '0.68rem', color: '#b7860a' }}>
             ⚠️ Seleziona un task padre prima di configurare il sotto-task
           </div>
         )}
@@ -559,7 +559,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
           return (<>
             <label style={lbl}>Nota esistente</label>
             {notes.length === 0 ? (
-              <div style={{ marginTop: 4, padding: '8px 10px', background: '#F8F9FC', borderRadius: 8, border: '1.5px solid #E8ECF1', fontSize: '0.7rem', color: '#B2BEC3' }}>
+              <div style={{ marginTop: 4, padding: '8px 10px', background: '#F6F5F1', borderRadius: 8, border: '1.5px solid #E2E0D8', fontSize: '0.7rem', color: '#98A09A' }}>
                 Nessuna nota per questo cliente
               </div>
             ) : (
@@ -584,7 +584,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
     <div style={{
       position: 'absolute', right: 0, top: 0, bottom: 0, width: 350,
       background: '#fff',
-      borderLeft: '1.5px solid #E8ECF1',
+      borderLeft: '1.5px solid #E2E0D8',
       zIndex: 20,
       display: 'flex', flexDirection: 'column',
       boxShadow: '-4px 0 20px rgba(0,0,0,0.06)',
@@ -599,11 +599,11 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
           alignItems: 'center', justifyContent: 'center',
           padding: 24, textAlign: 'center',
         }}>
-          <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(253,203,110,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-            <AlertTriangle size={22} color="#FDCB6E" />
+          <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(227, 169, 60,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <AlertTriangle size={22} color="#E3A93C" />
           </div>
-          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#2D3436', marginBottom: 6 }}>Modifiche non salvate</div>
-          <div style={{ fontSize: '0.72rem', color: '#636E72', marginBottom: 20, lineHeight: 1.6 }}>
+          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#17201C', marginBottom: 6 }}>Modifiche non salvate</div>
+          <div style={{ fontSize: '0.72rem', color: '#5E665F', marginBottom: 20, lineHeight: 1.6 }}>
             Hai modificato questo blocco senza salvare.<br />Vuoi chiudere e perdere le modifiche?
           </div>
           <div style={{ display: 'flex', gap: 8, width: '100%' }}>
@@ -611,8 +611,8 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
               onClick={() => { onClose(); setShowCloseConfirm(false); }}
               style={{
                 flex: 1, padding: '9px', borderRadius: 10,
-                border: '1.5px solid rgba(225,112,85,0.3)',
-                background: 'rgba(225,112,85,0.07)', color: '#E17055',
+                border: '1.5px solid rgba(194, 78, 54,0.3)',
+                background: 'rgba(194, 78, 54,0.07)', color: '#C24E36',
                 fontWeight: 600, fontSize: '0.74rem', cursor: 'pointer',
                 fontFamily: "'Inter', sans-serif",
               }}
@@ -623,7 +623,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
               onClick={() => setShowCloseConfirm(false)}
               style={{
                 flex: 1, padding: '9px', borderRadius: 10, border: 'none',
-                background: '#6C5CE7', color: '#fff',
+                background: '#1F6B4F', color: '#fff',
                 fontWeight: 600, fontSize: '0.74rem', cursor: 'pointer',
                 fontFamily: "'Inter', sans-serif",
               }}
@@ -635,15 +635,15 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
       )}
 
       {/* Header */}
-      <div style={{ padding: '14px 16px', borderBottom: '1.5px solid #E8ECF1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1.5px solid #E2E0D8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#2D3436' }}>Configura Blocco</div>
-          <div style={{ fontSize: '0.65rem', color: '#B2BEC3', marginTop: 1 }}>{node.type?.replace('Node', '')}</div>
+          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#17201C' }}>Configura Blocco</div>
+          <div style={{ fontSize: '0.65rem', color: '#98A09A', marginTop: 1 }}>{node.type?.replace('Node', '')}</div>
         </div>
-        <button onClick={handleClose} style={{ border: 'none', background: '#F4F5F9', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex', color: '#636E72', position: 'relative' }}>
+        <button onClick={handleClose} style={{ border: 'none', background: '#F1F0EA', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex', color: '#5E665F', position: 'relative' }}>
           <X size={15} />
           {hasUnsavedChanges() && (
-            <span style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: '#FDCB6E', border: '1.5px solid #fff' }} />
+            <span style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: '#E3A93C', border: '1.5px solid #fff' }} />
           )}
         </button>
       </div>
@@ -667,7 +667,7 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
             </select>
           </div>
           {formData.delayValue && (
-            <div style={{ marginTop: 8, padding: '7px 10px', background: 'rgba(108,92,231,0.05)', borderRadius: 8, border: '1.5px solid rgba(108,92,231,0.15)', fontSize: '0.68rem', color: '#636E72' }}>
+            <div style={{ marginTop: 8, padding: '7px 10px', background: 'rgba(31, 107, 79,0.05)', borderRadius: 8, border: '1.5px solid rgba(31, 107, 79,0.15)', fontSize: '0.68rem', color: '#5E665F' }}>
               ⏳ Il workflow si fermerà per <b>{formData.delayValue} {formData.delayUnit || 'secondi'}</b> prima di procedere.
             </div>
           )}
@@ -683,19 +683,19 @@ export default function NodeConfigPanel({ node, onUpdate, onDelete, onClose, wor
       </div>
 
       {/* Footer */}
-      <div style={{ padding: '12px 16px', borderTop: '1.5px solid #E8ECF1', display: 'flex', gap: 8 }}>
+      <div style={{ padding: '12px 16px', borderTop: '1.5px solid #E2E0D8', display: 'flex', gap: 8 }}>
         <button onClick={handleSave} style={{
           flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           padding: '9px', borderRadius: 10, border: 'none',
-          background: saved ? '#00B894' : '#6C5CE7',
+          background: saved ? '#3A9A6B' : '#1F6B4F',
           color: '#fff', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer',
           transition: 'background 0.2s', fontFamily: "'Inter', sans-serif",
         }}>
           {saved ? <><Check size={14} /> Salvato</> : 'Applica'}
         </button>
         <button onClick={() => { onDelete(node.id); onClose(); }} style={{
-          padding: '9px 12px', borderRadius: 10, border: '1.5px solid rgba(225,112,85,0.25)',
-          background: 'rgba(225,112,85,0.07)', color: '#E17055',
+          padding: '9px 12px', borderRadius: 10, border: '1.5px solid rgba(194, 78, 54,0.25)',
+          background: 'rgba(194, 78, 54,0.07)', color: '#C24E36',
           cursor: 'pointer', display: 'flex', alignItems: 'center',
         }}>
           <Trash2 size={14} />

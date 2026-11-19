@@ -77,7 +77,7 @@ function csvToTableHtml(text) {
     html += '<tr>';
     cells.forEach(cell => {
       const safe = escapeHtml(cell.trim());
-      html += i === 0 ? `<th style="padding:4px 8px;background:#f4f5f9;">${safe}</th>` : `<td style="padding:4px 8px;">${safe}</td>`;
+      html += i === 0 ? `<th style="padding:4px 8px;background:#f1f0ea;">${safe}</th>` : `<td style="padding:4px 8px;">${safe}</td>`;
     });
     html += '</tr>';
   });
@@ -3674,7 +3674,7 @@ export default function RichTextEditor({ value, onChange, onDirtyChange, onInter
         }
 
         .rte-editor pre {
-          background: #f8f9fa;
+          background: #f6f5f1;
           border: 1px solid var(--border-light);
           padding: 12px;
           border-radius: 6px;

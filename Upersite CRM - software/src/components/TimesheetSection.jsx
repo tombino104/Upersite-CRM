@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import { generateId } from '../utils/storage';
 
-const PRIMARY = '#6C5CE7';
+const PRIMARY = '#1F6B4F';
 
 const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 

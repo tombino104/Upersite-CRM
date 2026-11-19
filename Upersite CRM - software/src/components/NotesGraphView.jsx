@@ -257,7 +257,7 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
 
     if (ids.length === 0) {
       ctx.restore();
-      ctx.fillStyle = '#64748b'; // Slate 500
+      ctx.fillStyle = '#5e665f'; // Slate 500
       ctx.font = '14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(
@@ -543,7 +543,7 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
       background: '#ffffff', 
       borderRadius: 20, 
       overflow: 'hidden', 
-      border: '1px solid #e2e8f0',
+      border: '1px solid #e2e0d8',
       boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05), 0 2px 8px -1px rgba(0,0,0,0.03)',
       fontFamily: '"Outfit", "Inter", system-ui, -apple-system, sans-serif'
     }}>
@@ -565,7 +565,7 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
         display: 'flex', alignItems: 'center', gap: 6,
         background: 'rgba(255, 255, 255, 0.85)',
         backdropFilter: 'blur(12px)',
-        border: '1px solid #e2e8f0',
+        border: '1px solid #e2e0d8',
         borderRadius: 12, padding: '6px 12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
         zIndex: 10,
@@ -639,9 +639,9 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
         </div>
         {!hideIsolated && (
           <div style={{
-            background: '#f8fafc', border: '1px solid #e2e8f0',
+            background: '#f6f5f1', border: '1px solid #e2e0d8',
             borderRadius: 20, padding: '4px 10px', fontSize: '0.72rem',
-            color: '#475569', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4,
+            color: '#3e4741', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4,
             boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
           }}>
             <span style={{ fontSize: '0.55rem' }}>⚪</span> {isolatedCount} isolate
@@ -659,8 +659,8 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
           display: 'flex', alignItems: 'center', gap: 8,
           background: 'rgba(255, 255, 255, 0.85)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid #e2e8f0',
-          borderRadius: 10, padding: '6px 12px', fontSize: '0.75rem', color: '#475569',
+          border: '1px solid #e2e0d8',
+          borderRadius: 10, padding: '6px 12px', fontSize: '0.75rem', color: '#3e4741',
           cursor: 'pointer', userSelect: 'none',
           boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
           transition: 'all 0.15s',
@@ -688,8 +688,8 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
           display: 'flex', gap: 12, alignItems: 'center',
           background: 'rgba(255, 255, 255, 0.85)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid #e2e8f0',
-          borderRadius: 10, padding: '6px 12px', fontSize: '0.7rem', color: '#64748b',
+          border: '1px solid #e2e0d8',
+          borderRadius: 10, padding: '6px 12px', fontSize: '0.7rem', color: '#5e665f',
           boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
         }}>
           <span>🖱️ Trascina nodi</span>
@@ -712,8 +712,8 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
               width: 34, height: 34, borderRadius: 10,
               background: 'rgba(255, 255, 255, 0.85)',
               backdropFilter: 'blur(12px)',
-              border: '1px solid #e2e8f0',
-              color: '#475569', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer',
+              border: '1px solid #e2e0d8',
+              color: '#3e4741', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
               transition: 'all 0.15s',
@@ -725,8 +725,8 @@ export default function NotesGraphView({ notes, onNoteClick, selectedNoteId }) {
             }}
             onMouseLeave={e => {
               e.currentTarget.style.background = 'rgba(255, 255, 255, 0.85)';
-              e.currentTarget.style.color = '#475569';
-              e.currentTarget.style.borderColor = '#e2e8f0';
+              e.currentTarget.style.color = '#3e4741';
+              e.currentTarget.style.borderColor = '#e2e0d8';
             }}
           >
             {btn.label}

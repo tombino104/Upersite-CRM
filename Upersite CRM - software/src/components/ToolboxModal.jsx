@@ -7,8 +7,8 @@ const ALL = '__all__';
 const FAV = '__fav__';
 
 const PALETTE = [
-  ['#6C5CE7', '#A29BFE'], ['#0984E3', '#74B9FF'], ['#00B894', '#55EFC4'], ['#E17055', '#FAB1A0'],
-  ['#F59E0B', '#FDCB6E'], ['#E84393', '#FD79A8'], ['#14B8A6', '#81ECEC'], ['#636E72', '#B2BEC3'],
+  ['#1F6B4F', '#6FA88E'], ['#2F6FA8', '#74B9FF'], ['#3A9A6B', '#55EFC4'], ['#C24E36', '#FAB1A0'],
+  ['#F59E0B', '#E3A93C'], ['#E84393', '#FD79A8'], ['#2F8F8A', '#8FC7C3'], ['#5E665F', '#98A09A'],
 ];
 
 // Aggiunge https:// se manca e restituisce un URL valido (o null)
@@ -49,13 +49,13 @@ function ToolIcon({ tool, size = 56 }) {
   const [tried, setTried] = useState({ host, n: 0 });
   const attempt = tried.host === host ? tried.n : 0;
   const setAttempt = fn => setTried({ host, n: fn(attempt) });
-  const [c1, c2] = colorsFor(tool.name);
+  const [c1] = colorsFor(tool.name);
 
   return (
     <div style={{
       width: size, height: size, borderRadius: size * 0.3, flexShrink: 0, overflow: 'hidden',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: attempt < sources.length ? 'var(--bg-input)' : `linear-gradient(135deg, ${c1}, ${c2})`,
+      background: attempt < sources.length ? 'var(--bg-input)' : c1,
       border: '1px solid var(--border-light)', boxShadow: 'var(--shadow-xs)',
     }}>
       {attempt < sources.length ? (
@@ -192,7 +192,7 @@ function ToolCard({ tool, onEdit, onDelete, onToggleFavorite }) {
 const BOARDS = {
   tools: {
     id: 'tools', label: 'Attrezzi', icon: '🧰', singular: 'attrezzo', plural: 'attrezzi',
-    gradient: 'linear-gradient(135deg, #F59E0B, #D97706)', accent: '#B45309',
+    gradient: '#D97706', accent: '#B45309',
     subtitle: n => (n === 0 ? 'I tuoi tool online, sempre a portata di mano' : `${n} ${n === 1 ? 'attrezzo' : 'attrezzi'} per lavorare sui siti`),
     emptyTitle: 'La cassetta è vuota',
     emptyText: 'Aggiungi i siti che usi di più (PageSpeed, Search Console, un contrasto colori…): l’icona viene presa dal sito.',
@@ -205,7 +205,7 @@ const BOARDS = {
   },
   docs: {
     id: 'docs', label: 'Documenti', icon: '📚', singular: 'documento', plural: 'documenti',
-    gradient: 'linear-gradient(135deg, #0984E3, #0652DD)', accent: '#0652DD',
+    gradient: '#2F6FA8', accent: '#0652DD',
     subtitle: n => (n === 0 ? 'Guide, modelli e risorse da tenere sotto mano' : `${n} ${n === 1 ? 'documento' : 'documenti'} e risorse utili`),
     emptyTitle: 'Nessun documento salvato',
     emptyText: 'Aggiungi i link a guide, modelli, documentazioni e risorse che ti servono ma non sono strumenti.',

@@ -567,11 +567,11 @@ ${JSON.stringify(dbSummary)}`;
                 .gemini-fab {
                     width: 60px; height: 60px; border-radius: 50%; background: var(--primary);
                     color: white; border: none; font-size: 1.8rem; cursor: pointer;
-                    box-shadow: 0 10px 40px rgba(108,92,231,0.4);
+                    box-shadow: 0 10px 40px rgba(31, 107, 79,0.4);
                     display: flex; align-items: center; justify-content: center;
                     transition: all 0.4s cubic-bezier(0.175,0.885,0.32,1.275);
                 }
-                .gemini-fab:hover { transform: scale(1.1) rotate(5deg); box-shadow: 0 15px 50px rgba(108,92,231,0.6); }
+                .gemini-fab:hover { transform: scale(1.1) rotate(5deg); box-shadow: 0 15px 50px rgba(31, 107, 79,0.6); }
                 .gemini-fab.active { background: var(--danger); transform: rotate(90deg); }
 
                 /* Window */
@@ -785,7 +785,7 @@ ${JSON.stringify(dbSummary)}`;
                     border: 1px solid transparent;
                 }
                 .gemini-history-item:hover { background: var(--bg-hover); }
-                .gemini-history-item.active { background: var(--primary-ghost); border-color: rgba(108,92,231,0.2); }
+                .gemini-history-item.active { background: var(--primary-ghost); border-color: rgba(31, 107, 79,0.2); }
                 .gemini-history-item-title {
                     font-size: 0.78rem; font-weight: 600; color: var(--text-primary);
                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 24px;
@@ -872,7 +872,7 @@ ${JSON.stringify(dbSummary)}`;
                 }
                 .gemini-input-area input:focus {
                     background: var(--bg-input);
-                    box-shadow: 0 0 0 2px rgba(108,92,231,0.15);
+                    box-shadow: 0 0 0 2px rgba(31, 107, 79,0.15);
                 }
                 .gemini-input-area button {
                     width: 42px; height: 42px; border-radius: 12px; border: none;

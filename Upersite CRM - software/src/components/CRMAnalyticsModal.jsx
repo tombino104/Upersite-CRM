@@ -58,8 +58,8 @@ function RadarChart({ data, size = 460 }) {
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible', display: 'block' }}>
       <defs>
         <radialGradient id="radarGrad" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(108,92,231,0.35)" />
-          <stop offset="100%" stopColor="rgba(108,92,231,0.08)" />
+          <stop offset="0%" stopColor="rgba(31, 107, 79,0.35)" />
+          <stop offset="100%" stopColor="rgba(31, 107, 79,0.08)" />
         </radialGradient>
         <filter id="glow">
           <feGaussianBlur stdDeviation="3" result="coloredBlur" />
@@ -69,8 +69,8 @@ function RadarChart({ data, size = 460 }) {
 
       {/* Griglie */}
       {grids.map((pts, lvl) => (
-        <polygon key={lvl} points={pts} fill={lvl === levels - 1 ? 'rgba(108,92,231,0.04)' : 'none'}
-          stroke="rgba(108,92,231,0.14)" strokeWidth={1} />
+        <polygon key={lvl} points={pts} fill={lvl === levels - 1 ? 'rgba(31, 107, 79,0.04)' : 'none'}
+          stroke="rgba(31, 107, 79,0.14)" strokeWidth={1} />
       ))}
 
       {/* Percentuali livello */}
@@ -83,11 +83,11 @@ function RadarChart({ data, size = 460 }) {
       {/* Assi */}
       {axisEnds.map((p, i) => (
         <line key={i} x1={cx} y1={cy} x2={p.x.toFixed(1)} y2={p.y.toFixed(1)}
-          stroke="rgba(108,92,231,0.2)" strokeWidth={1} strokeDasharray="4 3" />
+          stroke="rgba(31, 107, 79,0.2)" strokeWidth={1} strokeDasharray="4 3" />
       ))}
 
       {/* Area dati */}
-      <path d={polyPath} fill="url(#radarGrad)" stroke="rgba(108,92,231,0.9)"
+      <path d={polyPath} fill="url(#radarGrad)" stroke="rgba(31, 107, 79,0.9)"
         strokeWidth={2.5} strokeLinejoin="round" filter="url(#glow)" />
 
       {/* Punti sui vertici */}
@@ -124,12 +124,12 @@ function RadarChart({ data, size = 460 }) {
 function computeRadarData(customers, allCustomers = customers) {
   const total = customers.length;
   if (total === 0) return [
-    { label: 'Sviluppo', value: 0, color: '#6C5CE7' },
-    { label: 'Produzione', value: 0, color: '#00B894' },
-    { label: 'Liquidità', value: 0, color: '#FDCB6E' },
-    { label: 'Crediti\nAperti', value: 0, color: '#E17055' },
-    { label: 'Storico', value: 0, color: '#0984E3' },
-    { label: 'Qualità DB', value: 0, color: '#A29BFE' },
+    { label: 'Sviluppo', value: 0, color: '#1F6B4F' },
+    { label: 'Produzione', value: 0, color: '#3A9A6B' },
+    { label: 'Liquidità', value: 0, color: '#E3A93C' },
+    { label: 'Crediti\nAperti', value: 0, color: '#C24E36' },
+    { label: 'Storico', value: 0, color: '#2F6FA8' },
+    { label: 'Qualità DB', value: 0, color: '#6FA88E' },
   ];
 
   const prospects = customers.filter(c => c.status === 'prospect').length;
@@ -152,12 +152,12 @@ function computeRadarData(customers, allCustomers = customers) {
   });
 
   return [
-    { label: 'Sviluppo', value: Math.round((prospects / total) * 100), color: '#6C5CE7' },
-    { label: 'Produzione', value: Math.round((working / total) * 100), color: '#00B894' },
-    { label: 'Liquidità', value: liquidita, color: '#FDCB6E' },
-    { label: 'Crediti', value: crediti, color: '#E17055' },
-    { label: 'Storico', value: Math.round((completed / total) * 100), color: '#0984E3' },
-    { label: 'Qualità DB', value: Math.round(qSum / total), color: '#A29BFE' },
+    { label: 'Sviluppo', value: Math.round((prospects / total) * 100), color: '#1F6B4F' },
+    { label: 'Produzione', value: Math.round((working / total) * 100), color: '#3A9A6B' },
+    { label: 'Liquidità', value: liquidita, color: '#E3A93C' },
+    { label: 'Crediti', value: crediti, color: '#C24E36' },
+    { label: 'Storico', value: Math.round((completed / total) * 100), color: '#2F6FA8' },
+    { label: 'Qualità DB', value: Math.round(qSum / total), color: '#6FA88E' },
   ];
 }
 
@@ -175,32 +175,32 @@ const fmt = v => new Intl.NumberFormat('it-IT', { style: 'currency', currency: '
 /* ─── Descrizioni espandibili ─── */
 const EXPLANATIONS = [
   {
-    key: 'sviluppo', color: '#6C5CE7', label: 'Sviluppo Commerciale',
+    key: 'sviluppo', color: '#1F6B4F', label: 'Sviluppo Commerciale',
     short: 'Quota % di clienti in stato Prospect sul totale.',
     detail: 'Misura la salute della tua pipeline commerciale. Conta i contatti in stato "Prospect" e li divide per il numero totale di clienti nel CRM. Un valore alto indica che stai attivamente generando nuovi contatti. Un valore basso non è necessariamente negativo: potrebbe significare che quasi tutto il tuo portafoglio è già attivo o storico.'
   },
   {
-    key: 'produzione', color: '#00B894', label: 'Produzione',
+    key: 'produzione', color: '#3A9A6B', label: 'Produzione',
     short: 'Quota % di clienti attivi in lavorazione.',
     detail: 'Mostra il carico operativo attuale della tua agenzia. Conta i clienti in stato "In Lavorazione" rispetto al totale. Se questa percentuale è molto alta, sei in piena fase di delivery. Se è bassa, o stai acquisendo (vedi Sviluppo) o hai già completato molti lavori (vedi Storico).'
   },
   {
-    key: 'liquidita', color: '#FDCB6E', label: 'Liquidità Acquisita',
+    key: 'liquidita', color: '#E3A93C', label: 'Liquidità Acquisita',
     short: 'Percentuale di rate già incassate sul totale delle rate registrate.',
     detail: 'Calcolato come: rate con stato "Saldato" ÷ totale rate registrate nel CRM. Ogni volta che segni una rata come incassata, questo valore sale. Un punteggio alto significa che il denaro fatturato sta effettivamente entrando in cassa.'
   },
   {
-    key: 'crediti', color: '#E17055', label: 'Crediti Aperti',
+    key: 'crediti', color: '#C24E36', label: 'Crediti Aperti',
     short: 'Percentuale di rate non ancora incassate sul totale.',
     detail: 'È il complemento esatto della Liquidità: rate in sospeso ÷ totale rate. Rappresenta la quota di fatturato che non hai ancora incassato. Un valore alto è un segnale che potrebbe valere la pena dedicare del tempo al recupero crediti o a sollecitare i clienti in ritardo.'
   },
   {
-    key: 'storico', color: '#0984E3', label: 'Storico Acquisito',
+    key: 'storico', color: '#2F6FA8', label: 'Storico Acquisito',
     short: 'Quota % di clienti con stato Completato.',
     detail: 'Rappresenta la tua esperienza sul mercato in termini di progetti portati a termine. Più è alto, più hai una base storica solida di lavori completati. Questo dato cresce naturalmente nel tempo ed è un indicatore della "stazza" della tua agenzia.'
   },
   {
-    key: 'qualita', color: '#A29BFE', label: 'Qualità del Database',
+    key: 'qualita', color: '#6FA88E', label: 'Qualità del Database',
     short: 'Media di completezza delle schede clienti (Tag + Note + Link/Credenziali).',
     detail: 'Per ogni cliente vengono verificati 3 campi: Tags assegnati (+34%), Note scritte (+33%), Link o Credenziali salvati (+33%). Il risultato viene mediato su tutti i clienti. Un database ben compilato è un asset: riduce il rischio di perdere informazioni importanti e rende il CRM più utile nel tempo.'
   },
@@ -234,7 +234,7 @@ function AccordionItem({ item, open, onToggle }) {
         </div>
         <div style={{
           width: 22, height: 22, borderRadius: '50%',
-          background: open ? item.color : 'var(--bg-input, #f0f0f8)',
+          background: open ? item.color : 'var(--bg-input, #f0efe9)',
           color: open ? '#fff' : 'var(--text-tertiary)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '1rem', fontWeight: 700, flexShrink: 0,
@@ -300,10 +300,10 @@ export default function CRMAnalyticsModal({ customers = [], allCustomers = custo
   const total = customers.length;
 
   const statuses = [
-    { label: 'Prospect', count: customers.filter(c => c.status === 'prospect').length, color: '#6C5CE7' },
-    { label: 'In Lavorazione', count: customers.filter(c => c.status === 'working').length, color: '#00B894' },
-    { label: 'Sospesi', count: customers.filter(c => c.status === 'paused').length, color: '#FDCB6E' },
-    { label: 'Completati', count: customers.filter(c => c.status === 'completed').length, color: '#0984E3' },
+    { label: 'Prospect', count: customers.filter(c => c.status === 'prospect').length, color: '#1F6B4F' },
+    { label: 'In Lavorazione', count: customers.filter(c => c.status === 'working').length, color: '#3A9A6B' },
+    { label: 'Sospesi', count: customers.filter(c => c.status === 'paused').length, color: '#E3A93C' },
+    { label: 'Completati', count: customers.filter(c => c.status === 'completed').length, color: '#2F6FA8' },
   ];
 
   return (
@@ -319,7 +319,7 @@ export default function CRMAnalyticsModal({ customers = [], allCustomers = custo
     >
       <div style={{
         background: 'var(--bg-primary, #fff)', borderRadius: 28,
-        boxShadow: '0 40px 120px rgba(0,0,0,0.35), 0 0 0 1px rgba(108,92,231,0.1)',
+        boxShadow: '0 40px 120px rgba(0,0,0,0.35), 0 0 0 1px rgba(31, 107, 79,0.1)',
         width: '96vw', maxWidth: 1180, maxHeight: '93vh', overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
         animation: 'rmScaleIn 0.35s cubic-bezier(0.175,0.885,0.32,1.275)',
@@ -328,12 +328,12 @@ export default function CRMAnalyticsModal({ customers = [], allCustomers = custo
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '28px 36px 20px',
-          borderBottom: '1px solid var(--border-light, #ebebf5)',
-          background: 'linear-gradient(135deg, rgba(108,92,231,0.04) 0%, transparent 60%)',
+          borderBottom: '1px solid var(--border-light, #e8e6de)',
+          background: 'linear-gradient(135deg, rgba(31, 107, 79,0.04) 0%, transparent 60%)',
           flexShrink: 0,
         }}>
           <div>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.14em', color: 'var(--primary, #6C5CE7)', textTransform: 'uppercase', marginBottom: 6 }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.14em', color: 'var(--primary, #1F6B4F)', textTransform: 'uppercase', marginBottom: 6 }}>
               Upersite CRM · Business Intelligence
             </div>
             <h2 style={{ margin: 0, fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.15 }}>
@@ -344,12 +344,12 @@ export default function CRMAnalyticsModal({ customers = [], allCustomers = custo
             </p>
           </div>
           <button onClick={onClose} style={{
-            background: 'var(--bg-input, #f0f0f8)', border: 'none', borderRadius: '50%',
+            background: 'var(--bg-input, #f0efe9)', border: 'none', borderRadius: '50%',
             width: 40, height: 40, cursor: 'pointer', fontSize: '1rem', color: 'var(--text-secondary)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s',
           }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#FFE0E0'; e.currentTarget.style.color = '#E17055'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-input, #f0f0f8)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#FFE0E0'; e.currentTarget.style.color = '#C24E36'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-input, #f0efe9)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
           >✕</button>
         </div>
 
@@ -379,14 +379,14 @@ export default function CRMAnalyticsModal({ customers = [], allCustomers = custo
 
               {/* KPI finanziari */}
               <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                <KpiCard label="Totale Incassato" value={fmt(inc)} color="#00B894" bg="rgba(0,184,148,0.07)"
+                <KpiCard label="Totale Incassato" value={fmt(inc)} color="#3A9A6B" bg="rgba(58, 154, 107,0.07)"
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>} />
-                <KpiCard label="Da Incassare" value={fmt(da)} color="#E17055" bg="rgba(225,112,85,0.07)"
+                <KpiCard label="Da Incassare" value={fmt(da)} color="#C24E36" bg="rgba(194, 78, 54,0.07)"
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>} />
               </div>
 
               {/* Distribuzione clienti */}
-              <div style={{ background: 'var(--bg-secondary, #f8f8fc)', borderRadius: 18, padding: '20px 22px' }}>
+              <div style={{ background: 'var(--bg-secondary, #f8f7f3)', borderRadius: 18, padding: '20px 22px' }}>
                 <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 16 }}>
                   Distribuzione Clienti
                 </div>
@@ -397,13 +397,13 @@ export default function CRMAnalyticsModal({ customers = [], allCustomers = custo
 
               {/* Tassi finanziari */}
               {(inc + da) > 0 && (
-                <div style={{ background: 'rgba(108,92,231,0.05)', border: '1px solid rgba(108,92,231,0.14)', borderRadius: 18, padding: '18px 22px' }}>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.12em', color: 'var(--primary, #6C5CE7)', textTransform: 'uppercase', marginBottom: 14 }}>
+                <div style={{ background: 'rgba(31, 107, 79,0.05)', border: '1px solid rgba(31, 107, 79,0.14)', borderRadius: 18, padding: '18px 22px' }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.12em', color: 'var(--primary, #1F6B4F)', textTransform: 'uppercase', marginBottom: 14 }}>
                     Situazione Finanziaria
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <StatusRow label="Rate Incassate" count={radarData[2].value} total={100} color="#00B894" />
-                    <StatusRow label="Rate in Sospeso" count={radarData[3].value} total={100} color="#E17055" />
+                    <StatusRow label="Rate Incassate" count={radarData[2].value} total={100} color="#3A9A6B" />
+                    <StatusRow label="Rate in Sospeso" count={radarData[3].value} total={100} color="#C24E36" />
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: 10 }}>
                     Totale fatturato registrato: <strong style={{ color: 'var(--text-primary)' }}>{fmt(inc + da)}</strong>
@@ -415,30 +415,30 @@ export default function CRMAnalyticsModal({ customers = [], allCustomers = custo
 
           {/* Pipeline commerciale (lead) */}
           {leadStats.total > 0 && (
-            <div style={{ background: 'var(--bg-secondary, #f8f8fc)', borderRadius: 18, padding: '20px 22px', marginBottom: 32 }}>
+            <div style={{ background: 'var(--bg-secondary, #f8f7f3)', borderRadius: 18, padding: '20px 22px', marginBottom: 32 }}>
               <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 16 }}>
                 Pipeline Prospect
               </div>
               <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
-                <KpiCard label="Lead aperti" value={leadStats.openCount} color="#14B8A6" bg="rgba(20,184,166,0.08)"
+                <KpiCard label="Lead aperti" value={leadStats.openCount} color="#2F8F8A" bg="rgba(20,184,166,0.08)"
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>} />
-                <KpiCard label="Valore pesato" value={fmt(leadStats.weightedPipeline)} color="#0984E3" bg="rgba(9,132,227,0.07)"
+                <KpiCard label="Valore pesato" value={fmt(leadStats.weightedPipeline)} color="#2F6FA8" bg="rgba(47, 111, 168,0.07)"
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>} />
-                <KpiCard label="Tasso di chiusura" value={leadStats.closeRate === null ? '—' : `${leadStats.closeRate}%`} color="#00B894" bg="rgba(0,184,148,0.07)"
+                <KpiCard label="Tasso di chiusura" value={leadStats.closeRate === null ? '—' : `${leadStats.closeRate}%`} color="#3A9A6B" bg="rgba(58, 154, 107,0.07)"
                   icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>} />
               </div>
               <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Lead per fonte (vinti / totali)</div>
                   {Object.entries(leadStats.bySource).sort((a, b) => b[1].total - a[1].total).map(([src, v]) => (
-                    <StatusRow key={src} label={`${src} · ${v.won} vinti`} count={v.total} total={leadStats.total} color="#14B8A6" />
+                    <StatusRow key={src} label={`${src} · ${v.won} vinti`} count={v.total} total={leadStats.total} color="#2F8F8A" />
                   ))}
                 </div>
                 {leadStats.lostCount > 0 && (
                   <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Motivi di perdita</div>
                     {Object.entries(leadStats.lostReasons).sort((a, b) => b[1] - a[1]).map(([r, n]) => (
-                      <StatusRow key={r} label={r} count={n} total={leadStats.lostCount} color="#E17055" />
+                      <StatusRow key={r} label={r} count={n} total={leadStats.lostCount} color="#C24E36" />
                     ))}
                   </div>
                 )}

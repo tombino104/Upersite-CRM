@@ -124,7 +124,7 @@ export default function DataGridView({ customers, onClose }) {
                     left: 0;
                     right: 0;
                     bottom: 0;
-                    background: rgba(45, 52, 54, 0.4);
+                    background: rgba(23, 32, 28, 0.4);
                     backdrop-filter: blur(8px);
                     -webkit-backdrop-filter: blur(8px);
                     z-index: 5000;

@@ -3799,7 +3799,7 @@ const CC_CSS = `
 .cc-table tfoot td { border-bottom: none; padding: 5px 8px; color: var(--text-secondary); }
 .cc-table tfoot td:first-child { text-align: right; }
 .cc-included { color: var(--success); font-weight: 600; }
-.cc-discount td { color: #8b5cf6 !important; }
+.cc-discount td { color: #4f6d8f !important; }
 .cc-total td { font-weight: 800; color: var(--text-primary) !important; font-size: 1rem; border-top: 2px solid var(--border); }
 .cc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 14px; }
 .cc-card { background: var(--bg-input); border-radius: var(--radius-lg); padding: 12px 14px; font-size: 0.85rem; border-left: 4px solid var(--border); }
@@ -5192,7 +5192,7 @@ const FilesSection = React.memo(({ form, update, confirmDelete, filterOutQuotes,
 
                 .folder-card {
 
-                    background: rgba(108, 92, 231, 0.03);
+                    background: rgba(31, 107, 79, 0.03);
 
                     border: 1px dashed var(--primary-light);
 
@@ -5204,7 +5204,7 @@ const FilesSection = React.memo(({ form, update, confirmDelete, filterOutQuotes,
 
                 .folder-card:hover {
 
-                    background: rgba(108, 92, 231, 0.08);
+                    background: rgba(31, 107, 79, 0.08);
 
                 }
 
@@ -5591,18 +5591,18 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                         display: 'flex',
                         flexDirection: 'column',
                         overflow: 'hidden',
-                        border: '1px solid rgba(226, 232, 240, 0.8)',
+                        border: '1px solid rgba(226, 224, 216, 0.8)',
                         position: 'relative'
                     }} onClick={(e) => e.stopPropagation()}>
                         
                         {/* Modal Header */}
                         <div style={{
                             padding: '20px 28px',
-                            borderBottom: '1px solid #f1f5f9',
+                            borderBottom: '1px solid #efeee8',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            background: 'linear-gradient(to right, #f8fafc, #ffffff)',
+                            background: 'linear-gradient(to right, #f6f5f1, #ffffff)',
                             flexShrink: 0
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -5621,7 +5621,7 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                                 </div>
                                 <div>
                                     <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>Grafo delle Note</h3>
-                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#5e665f' }}>
                                         Visualizza le relazioni tra i tuoi appunti. Trascina i nodi ed esplora i collegamenti.
                                     </p>
                                 </div>
@@ -5630,7 +5630,7 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                             <button 
                                 onClick={() => setShowGraph(false)}
                                 style={{
-                                    background: '#f1f5f9',
+                                    background: '#efeee8',
                                     border: 'none',
                                     borderRadius: '50%',
                                     width: '36px',
@@ -5639,18 +5639,18 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     cursor: 'pointer',
-                                    color: '#64748b',
+                                    color: '#5e665f',
                                     fontWeight: 'bold',
                                     fontSize: '1rem',
                                     transition: 'all 0.2s ease'
                                 }}
                                 onMouseEnter={(e) => {
-                                    e.target.style.background = '#e2e8f0';
+                                    e.target.style.background = '#e2e0d8';
                                     e.target.style.color = '#0f172a';
                                 }}
                                 onMouseLeave={(e) => {
-                                    e.target.style.background = '#f1f5f9';
-                                    e.target.style.color = '#64748b';
+                                    e.target.style.background = '#efeee8';
+                                    e.target.style.color = '#5e665f';
                                 }}
                             >
                                 ✕
@@ -5674,13 +5674,13 @@ const NotesSection = React.memo(({ form, update, confirmDelete, newNote, setNewN
                         {/* Modal Footer */}
                         <div style={{
                             padding: '12px 28px',
-                            borderTop: '1px solid #f1f5f9',
+                            borderTop: '1px solid #efeee8',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            backgroundColor: '#f8fafc',
+                            backgroundColor: '#f6f5f1',
                             fontSize: '0.75rem',
-                            color: '#64748b',
+                            color: '#5e665f',
                             flexShrink: 0
                         }}>
                             <div>

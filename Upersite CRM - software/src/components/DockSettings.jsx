@@ -23,9 +23,9 @@ const css = `
 .dk-empty { text-align: center; color: var(--text-tertiary); font-size: .78rem; padding: 18px 8px; }
 `;
 
-function MiniDot({ item }) {
+function MiniDot() {
   return (
-    <span className="dk-dot" style={{ background: `linear-gradient(135deg, ${item.colors[0]}, ${item.colors[1]})` }}>
+    <span className="dk-dot" style={{ background: '#17201C' }}>
       <span><item.Icon /></span>
     </span>
   );

@@ -2,14 +2,6 @@ import { useState, useEffect, memo } from 'react';
 import logoUrl from '../assets/logo.svg';
 import { fetchAuthStatus, serverLogin, setMasterPassword } from '../utils/storage';
 
-const LoginBackground = memo(() => (
-    <>
-        <div className="login-bg-orb login-bg-orb-1" />
-        <div className="login-bg-orb login-bg-orb-2" />
-        <div className="login-bg-orb login-bg-orb-3" />
-    </>
-));
-
 const LoginCard = memo(({ 
     onLogin, isSetup, shake, triggerShake,
     showReset, setShowReset
@@ -156,7 +148,6 @@ export default function Login({ onLogin }) {
 
     return (
         <div className="login-screen">
-            <LoginBackground />
             {isSetup !== null && (
                 <LoginCard
                     onLogin={onLogin}
@@ -174,44 +165,10 @@ export default function Login({ onLogin }) {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, #F8F9FC 0%, #EDE7F6 50%, #F0F4FF 100%);
+          background: var(--bg);
           position: relative;
           overflow: hidden;
           contain: strict;
-        }
-
-        .login-bg-orb {
-          position: absolute;
-          border-radius: 50%;
-          opacity: 0.3;
-          animation: floatOrb 8s ease-in-out infinite;
-          will-change: transform;
-          pointer-events: none;
-        }
-
-        .login-bg-orb-1 {
-          width: 400px; height: 400px;
-          background: radial-gradient(circle, rgba(108, 92, 231, 0.2) 0%, rgba(108, 92, 231, 0) 70%);
-          top: -100px; right: -100px;
-          animation-delay: 0s;
-        }
-        .login-bg-orb-2 {
-          width: 300px; height: 300px;
-          background: radial-gradient(circle, rgba(0, 206, 201, 0.2) 0%, rgba(0, 206, 201, 0) 70%);
-          bottom: -80px; left: -80px;
-          animation-delay: -3s;
-        }
-        .login-bg-orb-3 {
-          width: 200px; height: 200px;
-          background: radial-gradient(circle, rgba(108, 92, 231, 0.15) 0%, rgba(108, 92, 231, 0) 70%);
-          top: 50%; left: 50%;
-          animation-delay: -5s;
-        }
-
-        @keyframes floatOrb {
-          0%, 100% { transform: translate(0, 0) scale(1) translateZ(0); }
-          33% { transform: translate(30px, -30px) scale(1.05) translateZ(0); }
-          66% { transform: translate(-20px, 20px) scale(0.95) translateZ(0); }
         }
 
         .login-card {
@@ -221,7 +178,7 @@ export default function Login({ onLogin }) {
           padding: 48px 40px;
           width: 100%;
           max-width: 420px;
-          box-shadow: 0 20px 60px rgba(108, 92, 231, 0.08), 0 1px 3px rgba(0,0,0,0.04);
+          box-shadow: 0 20px 60px rgba(31, 107, 79, 0.08), 0 1px 3px rgba(0,0,0,0.04);
           animation: fadeInScale 0.6s var(--ease-spring);
           position: relative;
           z-index: 10;
@@ -250,7 +207,7 @@ export default function Login({ onLogin }) {
           padding: 14px 16px;
           font-size: 1rem;
           border-radius: var(--radius-md);
-          background: rgba(244, 245, 249, 1);
+          background: rgba(241, 240, 234, 1);
           border: 2px solid transparent;
           transition: border-color 0.1s, background 0.1s;
           transform: translateZ(0);

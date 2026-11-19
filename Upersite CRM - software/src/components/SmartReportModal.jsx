@@ -55,7 +55,7 @@ function TextualChart({ content }) {
                         fontFamily: 'monospace',
                         fontSize: '12px',
                         lineHeight: '1.2',
-                        color: '#2D3436',
+                        color: '#17201C',
                         whiteSpace: 'pre'
                     }}>
                         {line}
@@ -68,7 +68,7 @@ function TextualChart({ content }) {
                 return (
                     <div key={index} className="chart-section-title" style={{
                         fontWeight: 'bold',
-                        color: '#6C5CE7',
+                        color: '#1F6B4F',
                         margin: '15px 0 8px 0',
                         fontSize: '14px',
                         textTransform: 'uppercase'
@@ -84,7 +84,7 @@ function TextualChart({ content }) {
                     fontFamily: 'monospace',
                     fontSize: '12px',
                     lineHeight: '1.4',
-                    color: '#2D3436',
+                    color: '#17201C',
                     whiteSpace: 'pre'
                 }}>
                     {line}
@@ -95,7 +95,7 @@ function TextualChart({ content }) {
 
     return (
         <div className="textual-chart" style={{
-            background: '#F8F9FA',
+            background: '#F6F5F1',
             border: '1px solid #E1E4E8',
             borderRadius: '8px',
             padding: '16px',
@@ -601,7 +601,7 @@ IMPORTANTE:
                         )}
                         {/* Header Report */}
                         <div style={{
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            background: 'var(--primary)',
                             color: 'white',
                             padding: '20px',
                             borderRadius: '8px',
@@ -649,7 +649,7 @@ IMPORTANTE:
                             <div style={{
                                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                                 lineHeight: '1.6',
-                                color: '#2D3436'
+                                color: '#17201C'
                             }}>
                                 {reportData.content.split('\n').map((paragraph, index) => {
                                     const trimmed = paragraph.trim();
@@ -661,7 +661,7 @@ IMPORTANTE:
                                     if (trimmed.startsWith('##')) {
                                         return (
                                             <h2 key={index} style={{
-                                                color: '#6C5CE7',
+                                                color: '#1F6B4F',
                                                 margin: '24px 0 16px 0',
                                                 fontSize: '1.5rem',
                                                 fontWeight: 'bold'
@@ -674,7 +674,7 @@ IMPORTANTE:
                                     if (trimmed.startsWith('###')) {
                                         return (
                                             <h3 key={index} style={{
-                                                color: '#2D3436',
+                                                color: '#17201C',
                                                 margin: '20px 0 12px 0',
                                                 fontSize: '1.2rem',
                                                 fontWeight: '600'
@@ -687,7 +687,7 @@ IMPORTANTE:
                                     if (trimmed.startsWith('#')) {
                                         return (
                                             <h3 key={index} style={{
-                                                color: '#2D3436',
+                                                color: '#17201C',
                                                 margin: '20px 0 12px 0',
                                                 fontSize: '1.2rem',
                                                 fontWeight: '600'
@@ -788,17 +788,17 @@ IMPORTANTE:
                             border: '1px solid #e1e4e8',
                             boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
                         }}>
-                            <h4 style={{ margin: '0 0 16px 0', color: '#2D3436', fontSize: '1.1rem' }}>
+                            <h4 style={{ margin: '0 0 16px 0', color: '#17201C', fontSize: '1.1rem' }}>
                                 ⚠️ Report non salvato
                             </h4>
-                            <p style={{ margin: '0 0 20px 0', color: '#636e72', lineHeight: '1.4' }}>
+                            <p style={{ margin: '0 0 20px 0', color: '#5e665f', lineHeight: '1.4' }}>
                                 Stai per uscire dalla vista del report. Cosa vuoi fare?
                             </p>
                             <div style={{ display: 'flex', gap: '8px', flexDirection: 'column' }}>
                                 <button
                                     className="btn btn-success"
                                     onClick={() => handleConfirmAction('save')}
-                                    style={{ width: '100%', background: '#00b894', border: '1px solid #00b894' }}
+                                    style={{ width: '100%', background: '#3a9a6b', border: '1px solid #3a9a6b' }}
                                 >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ marginRight: '8px' }}>
                                         <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -810,7 +810,7 @@ IMPORTANTE:
                                 <button
                                     className="btn btn-primary"
                                     onClick={() => handleConfirmAction('export')}
-                                    style={{ width: '100%', background: '#0984e3', border: '1px solid #0984e3' }}
+                                    style={{ width: '100%', background: '#2f6fa8', border: '1px solid #2f6fa8' }}
                                 >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ marginRight: '8px' }}>
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -823,14 +823,14 @@ IMPORTANTE:
                                     <button
                                         className="btn btn-secondary"
                                         onClick={() => handleConfirmAction('close')}
-                                        style={{ flex: 1, background: '#636e72', border: '1px solid #636e72', color: '#ffffff' }}
+                                        style={{ flex: 1, background: '#5e665f', border: '1px solid #5e665f', color: '#ffffff' }}
                                     >
                                         Uscita senza salvare
                                     </button>
                                     <button
                                         className="btn btn-ghost"
                                         onClick={() => handleConfirmAction('cancel')}
-                                        style={{ flex: 1, background: '#ffffff', border: '1px solid #dfe6e9', color: '#636e72' }}
+                                        style={{ flex: 1, background: '#ffffff', border: '1px solid #dfe6e9', color: '#5e665f' }}
                                     >
                                         Annulla
                                     </button>

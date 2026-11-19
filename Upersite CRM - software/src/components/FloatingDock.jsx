@@ -11,17 +11,17 @@ const css = `
 .dock-btn {
   position: relative; width: 60px; height: 60px; border-radius: 50%; border: none; color: #fff; cursor: pointer;
   display: flex; align-items: center; justify-content: center; padding: 0;
-  box-shadow: 0 10px 40px rgba(var(--glow), 0.4);
+  box-shadow: 0 4px 14px rgba(var(--glow), 0.25);
   transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
-.dock-btn:hover { transform: scale(1.1) rotate(var(--tilt, 5deg)); box-shadow: 0 15px 50px rgba(var(--glow), 0.6); }
+.dock-btn:hover { transform: scale(1.1) rotate(var(--tilt, 5deg)); box-shadow: 0 6px 18px rgba(var(--glow), 0.32); }
 .dock-btn:focus-visible { outline: 3px solid rgba(var(--glow), 0.55); outline-offset: 3px; }
 .dock-more { position: relative; }
 .dock-more-icon { display: flex; transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 .dock-more.open .dock-more-icon { transform: rotate(90deg); }
 .dock-count {
   position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
-  background: var(--primary, #6C5CE7); color: #fff; font-size: 0.68rem; font-weight: 700; border: 2px solid #fff;
+  background: var(--primary, #1F6B4F); color: #fff; font-size: 0.68rem; font-weight: 700; border: 2px solid #fff;
   display: flex; align-items: center; justify-content: center; transition: opacity 0.2s, transform 0.3s;
 }
 .dock-more.open .dock-count { opacity: 0; transform: scale(0.4); }
@@ -36,7 +36,7 @@ const css = `
 }
 .dock-label {
   position: absolute; left: 72px; top: 50%; transform: translateY(-50%) translateX(-6px); white-space: nowrap; pointer-events: none;
-  background: var(--bg-card, #fff); color: var(--text-primary, #2D3436); font-size: 0.78rem; font-weight: 600;
+  background: var(--bg-card, #fff); color: var(--text-primary, #17201C); font-size: 0.78rem; font-weight: 600;
   padding: 5px 11px; border-radius: 9px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14); opacity: 0;
   transition: opacity 0.2s ease, transform 0.25s ease;
 }
@@ -46,10 +46,10 @@ const css = `
 }
 `;
 
-const dockButtonStyle = item => ({
-  background: `linear-gradient(135deg, ${item.colors[0]}, ${item.colors[1]})`,
-  '--glow': item.glow,
-  '--tilt': `${item.tilt}deg`,
+const dockButtonStyle = () => ({
+  background: '#17201C',
+  '--glow': '23, 32, 28',
+  '--tilt': '0deg',
 });
 
 export default function FloatingDock({ layout, actions }) {
@@ -105,7 +105,7 @@ export default function FloatingDock({ layout, actions }) {
 
           <button
             className="dock-btn" title="Altri pulsanti" aria-label="Altri pulsanti" aria-expanded={open}
-            style={{ background: 'linear-gradient(135deg, #64748B, #334155)', '--glow': '71, 85, 105', '--tilt': '0deg' }}
+            style={{ background: '#3E4741', '--glow': '23, 32, 28', '--tilt': '0deg' }}
             onClick={() => setOpen(o => !o)}
           >
             <span className="dock-more-icon">

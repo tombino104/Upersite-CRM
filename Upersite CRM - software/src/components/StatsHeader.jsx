@@ -99,7 +99,7 @@ const StatsHeader = memo(({ customers, onOpenCharts, onOpenClients, onOpenOverdu
         <div className={`stat-icon ${stats.overdueCount > 0 ? 'stat-icon-alert' : ''}`}
           style={{
             background: stats.overdueCount > 0 ? 'var(--danger-bg)' : 'var(--warning-bg)',
-            color: stats.overdueCount > 0 ? 'var(--danger)' : '#E17055'
+            color: stats.overdueCount > 0 ? 'var(--danger)' : '#C24E36'
           }}>
           ⚠️
         </div>

@@ -170,7 +170,7 @@ export default function CustomerCard({ customer, onClick, index = 0 }) {
         .customer-card-avatar {
           width: 42px; height: 42px;
           border-radius: var(--radius-md);
-          background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+          background: var(--primary);
           color: white;
           display: flex;
           align-items: center;

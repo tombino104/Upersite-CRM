@@ -388,7 +388,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                             <button onClick={() => setShowManual(true)} style={{
                                 width: '100%', display: 'flex', alignItems: 'center', gap: '14px', textAlign: 'left', cursor: 'pointer',
                                 padding: '16px 18px', marginBottom: '28px', borderRadius: 'var(--radius-lg)', font: 'inherit',
-                                border: '1px solid rgba(108,92,231,0.18)', background: 'linear-gradient(135deg, var(--primary-ghost), rgba(245,158,11,0.06))',
+                                border: '1px solid rgba(31, 107, 79,0.18)', background: 'var(--primary-ghost)',
                             }}>
                                 <span style={{ fontSize: '1.6rem' }}>📖</span>
                                 <span style={{ flex: 1 }}>

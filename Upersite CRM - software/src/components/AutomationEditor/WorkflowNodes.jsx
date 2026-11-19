@@ -1,5 +1,5 @@
 // Upersite CRM — Nodi Custom per React Flow
-// Colori allineati al Design System: --primary #6C5CE7, --success #00B894, --danger #E17055
+// Colori allineati al Design System: --primary #1F6B4F, --success #3A9A6B, --danger #C24E36
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import {
@@ -9,13 +9,13 @@ import {
 
 // Palette dal design system dell'app
 export const nodeColors = {
-  trigger: { bg: '#6C5CE7', border: '#5A4BD1', text: '#fff', glow: 'rgba(108,92,231,0.18)' },
-  condition: { bg: '#FDCB6E', border: '#f0b429', text: '#744210', glow: 'rgba(253,203,110,0.25)' },
-  action: { bg: '#00B894', border: '#00a381', text: '#fff', glow: 'rgba(0,184,148,0.18)' },
-  ifElse: { bg: '#0984E3', border: '#0773c5', text: '#fff', glow: 'rgba(9,132,227,0.18)' },
-  delay: { bg: '#A29BFE', border: '#6C5CE7', text: '#fff', glow: 'rgba(162,155,254,0.25)' },
-  end: { bg: '#E17055', border: '#c85f45', text: '#fff', glow: 'rgba(225,112,85,0.18)' },
-  chain: { bg: '#00CEC9', border: '#00b5b0', text: '#fff', glow: 'rgba(0,206,201,0.18)' },
+  trigger: { bg: '#1F6B4F', border: '#17543F', text: '#fff', glow: 'rgba(31, 107, 79,0.18)' },
+  condition: { bg: '#E3A93C', border: '#f0b429', text: '#744210', glow: 'rgba(227, 169, 60,0.25)' },
+  action: { bg: '#3A9A6B', border: '#00a381', text: '#fff', glow: 'rgba(58, 154, 107,0.18)' },
+  ifElse: { bg: '#2F6FA8', border: '#0773c5', text: '#fff', glow: 'rgba(47, 111, 168,0.18)' },
+  delay: { bg: '#6FA88E', border: '#1F6B4F', text: '#fff', glow: 'rgba(162,155,254,0.25)' },
+  end: { bg: '#C24E36', border: '#c85f45', text: '#fff', glow: 'rgba(194, 78, 54,0.18)' },
+  chain: { bg: '#2F8F8A', border: '#00b5b0', text: '#fff', glow: 'rgba(47, 143, 138,0.18)' },
 };
 
 const triggerIcons = {
@@ -39,14 +39,14 @@ function BaseNode({ data, colors, icon: Icon, children, extraHandles, selected }
   const isRunning = data._running;
   const hasError = data._error;
 
-  let borderStyle = '1.5px solid #E8ECF1';
+  let borderStyle = '1.5px solid #E2E0D8';
   let shadowStyle = `0 2px 12px ${colors.glow}`;
   if (hasError) {
-    borderStyle = '2px solid #E17055';
-    shadowStyle = '0 0 0 3px rgba(225,112,85,0.2), 0 4px 16px rgba(225,112,85,0.2)';
+    borderStyle = '2px solid #C24E36';
+    shadowStyle = '0 0 0 3px rgba(194, 78, 54,0.2), 0 4px 16px rgba(194, 78, 54,0.2)';
   } else if (isRunning) {
-    borderStyle = '2px solid #6C5CE7';
-    shadowStyle = '0 0 0 3px rgba(108,92,231,0.15), 0 4px 16px rgba(108,92,231,0.2)';
+    borderStyle = '2px solid #1F6B4F';
+    shadowStyle = '0 0 0 3px rgba(31, 107, 79,0.15), 0 4px 16px rgba(31, 107, 79,0.2)';
   } else if (selected) {
     borderStyle = `2px solid ${colors.border}`;
     shadowStyle = `0 0 0 3px ${colors.glow}, 0 4px 16px ${colors.glow}`;
@@ -91,7 +91,7 @@ function BaseNode({ data, colors, icon: Icon, children, extraHandles, selected }
       </div>
 
       {/* Body */}
-      <div style={{ padding: '9px 12px', fontSize: '0.68rem', color: '#636E72', lineHeight: 1.5 }}>
+      <div style={{ padding: '9px 12px', fontSize: '0.68rem', color: '#5E665F', lineHeight: 1.5 }}>
         {children}
       </div>
 
@@ -99,9 +99,9 @@ function BaseNode({ data, colors, icon: Icon, children, extraHandles, selected }
       {hasError && (
         <div style={{
           padding: '5px 12px',
-          background: 'rgba(225,112,85,0.08)',
-          borderTop: '1px solid rgba(225,112,85,0.2)',
-          color: '#E17055',
+          background: 'rgba(194, 78, 54,0.08)',
+          borderTop: '1px solid rgba(194, 78, 54,0.2)',
+          color: '#C24E36',
           fontSize: '0.63rem',
           fontWeight: 500,
         }}>
@@ -127,12 +127,12 @@ export const TriggerNode = memo(({ data, selected }) => {
     <BaseNode data={data} colors={nodeColors.trigger} icon={Zap} selected={selected}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <IconComp size={12} color={nodeColors.trigger.bg} />
-        <span style={{ color: '#2D3436', fontWeight: 500 }}>{data.eventLabel || 'Seleziona evento...'}</span>
+        <span style={{ color: '#17201C', fontWeight: 500 }}>{data.eventLabel || 'Seleziona evento...'}</span>
       </div>
       {data.eventConfig && Object.values(data.eventConfig).some(Boolean) && (
-        <div style={{ marginTop: 6, padding: '4px 8px', background: '#F8F9FC', borderRadius: 6, fontSize: '0.62rem', border: '1px solid #E8ECF1' }}>
+        <div style={{ marginTop: 6, padding: '4px 8px', background: '#F6F5F1', borderRadius: 6, fontSize: '0.62rem', border: '1px solid #E2E0D8' }}>
           {Object.entries(data.eventConfig).filter(([, v]) => v).map(([k, v]) => (
-            <div key={k}><b style={{ color: '#6C5CE7' }}>{k}:</b> {v}</div>
+            <div key={k}><b style={{ color: '#1F6B4F' }}>{k}:</b> {v}</div>
           ))}
         </div>
       )}
@@ -148,23 +148,23 @@ export const ConditionNode = memo(({ data, selected }) => {
   return (
     <BaseNode data={data} colors={nodeColors.condition} icon={Filter} selected={selected}>
       {conditions.length === 0 ? (
-        <span style={{ color: '#B2BEC3', fontStyle: 'italic' }}>Nessuna condizione</span>
+        <span style={{ color: '#98A09A', fontStyle: 'italic' }}>Nessuna condizione</span>
       ) : (
         <div>
-          <div style={{ marginBottom: 4, fontWeight: 600, color: '#636E72', fontSize: '0.62rem' }}>
-            Logica: <span style={{ color: '#2D3436' }}>{data.logic || 'AND'}</span>
+          <div style={{ marginBottom: 4, fontWeight: 600, color: '#5E665F', fontSize: '0.62rem' }}>
+            Logica: <span style={{ color: '#17201C' }}>{data.logic || 'AND'}</span>
           </div>
           {conditions.slice(0, 3).map((c, i) => (
             <div key={i} style={{
-              padding: '2px 6px', margin: '2px 0', background: 'rgba(253,203,110,0.12)',
-              borderRadius: 6, fontSize: '0.61rem', border: '1px solid rgba(253,203,110,0.4)',
-              color: '#2D3436',
+              padding: '2px 6px', margin: '2px 0', background: 'rgba(227, 169, 60,0.12)',
+              borderRadius: 6, fontSize: '0.61rem', border: '1px solid rgba(227, 169, 60,0.4)',
+              color: '#17201C',
             }}>
               {c.field} <b>{c.operator}</b> "{c.value}"
             </div>
           ))}
           {conditions.length > 3 && (
-            <div style={{ fontSize: '0.59rem', color: '#B2BEC3', marginTop: 2 }}>+{conditions.length - 3} altre...</div>
+            <div style={{ fontSize: '0.59rem', color: '#98A09A', marginTop: 2 }}>+{conditions.length - 3} altre...</div>
           )}
         </div>
       )}
@@ -192,14 +192,14 @@ export const ActionNode = memo(({ data, selected }) => {
   const config = data.config || {};
   return (
     <BaseNode data={data} colors={nodeColors.action} icon={Play} selected={selected}>
-      <div style={{ fontWeight: 600, color: '#2D3436', marginBottom: 4, fontSize: '0.68rem' }}>
-        {actionLabels[data.actionType] || <span style={{ color: '#B2BEC3', fontWeight: 400 }}>Seleziona azione...</span>}
+      <div style={{ fontWeight: 600, color: '#17201C', marginBottom: 4, fontSize: '0.68rem' }}>
+        {actionLabels[data.actionType] || <span style={{ color: '#98A09A', fontWeight: 400 }}>Seleziona azione...</span>}
       </div>
       {Object.keys(config).length > 0 && (
-        <div style={{ padding: '4px 8px', background: 'rgba(0,184,148,0.06)', borderRadius: 6, fontSize: '0.61rem', border: '1px solid rgba(0,184,148,0.2)' }}>
+        <div style={{ padding: '4px 8px', background: 'rgba(58, 154, 107,0.06)', borderRadius: 6, fontSize: '0.61rem', border: '1px solid rgba(58, 154, 107,0.2)' }}>
           {Object.entries(config).filter(([, v]) => v).slice(0, 3).map(([k, v]) => (
-            <div key={k} style={{ margin: '1px 0', color: '#2D3436' }}>
-              <span style={{ color: '#00B894', fontWeight: 600 }}>{k}:</span> {String(v).substring(0, 28)}
+            <div key={k} style={{ margin: '1px 0', color: '#17201C' }}>
+              <span style={{ color: '#3A9A6B', fontWeight: 600 }}>{k}:</span> {String(v).substring(0, 28)}
             </div>
           ))}
         </div>
@@ -218,27 +218,27 @@ export const IfElseNode = memo(({ data, selected }) => {
         <>
           <Handle type="target" position={Position.Top} style={{ ...handleStyle, background: nodeColors.ifElse.bg }} />
           <Handle type="source" position={Position.Bottom} id="if"
-            style={{ ...handleStyle, background: '#00B894', left: '28%' }} />
+            style={{ ...handleStyle, background: '#3A9A6B', left: '28%' }} />
           <Handle type="source" position={Position.Bottom} id="else"
-            style={{ ...handleStyle, background: '#E17055', left: '72%' }} />
+            style={{ ...handleStyle, background: '#C24E36', left: '72%' }} />
         </>
       }
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ color: '#00B894', fontWeight: 600, fontSize: '0.62rem' }}>IF (vero)</span>
-        <span style={{ color: '#E17055', fontWeight: 600, fontSize: '0.62rem' }}>ELSE (falso)</span>
+        <span style={{ color: '#3A9A6B', fontWeight: 600, fontSize: '0.62rem' }}>IF (vero)</span>
+        <span style={{ color: '#C24E36', fontWeight: 600, fontSize: '0.62rem' }}>ELSE (falso)</span>
       </div>
       {conditions.length > 0 ? (
         conditions.slice(0, 2).map((c, i) => (
           <div key={i} style={{
-            padding: '2px 6px', margin: '2px 0', background: 'rgba(9,132,227,0.07)',
-            borderRadius: 6, fontSize: '0.61rem', border: '1px solid rgba(9,132,227,0.2)',
+            padding: '2px 6px', margin: '2px 0', background: 'rgba(47, 111, 168,0.07)',
+            borderRadius: 6, fontSize: '0.61rem', border: '1px solid rgba(47, 111, 168,0.2)',
           }}>
             {c.field} <b>{c.operator}</b> "{c.value}"
           </div>
         ))
       ) : (
-        <span style={{ color: '#B2BEC3', fontStyle: 'italic' }}>Configura condizioni...</span>
+        <span style={{ color: '#98A09A', fontStyle: 'italic' }}>Configura condizioni...</span>
       )}
     </BaseNode>
   );
@@ -248,12 +248,12 @@ IfElseNode.displayName = 'IfElseNode';
 // ─── DELAY NODE ───
 export const DelayNode = memo(({ data, selected }) => (
   <BaseNode data={data} colors={nodeColors.delay} icon={Clock} selected={selected}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, color: '#2D3436' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, color: '#17201C' }}>
       <Clock size={12} color={nodeColors.delay.bg} />
       <span>
         {data.delayValue
           ? `Attendi ${data.delayValue} ${data.delayUnit || 'secondi'}`
-          : <span style={{ color: '#B2BEC3', fontWeight: 400 }}>Configura attesa...</span>}
+          : <span style={{ color: '#98A09A', fontWeight: 400 }}>Configura attesa...</span>}
       </span>
     </div>
   </BaseNode>
@@ -263,7 +263,7 @@ DelayNode.displayName = 'DelayNode';
 // ─── END NODE ───
 export const EndNode = memo(({ data, selected }) => (
   <BaseNode data={data} colors={nodeColors.end} icon={StopCircle} selected={selected}>
-    <span style={{ color: '#2D3436', fontWeight: 500 }}>Termina il workflow</span>
+    <span style={{ color: '#17201C', fontWeight: 500 }}>Termina il workflow</span>
     <Handle type="target" position={Position.Top} style={{ ...handleStyle, background: nodeColors.end.bg }} />
   </BaseNode>
 ));
@@ -272,9 +272,9 @@ EndNode.displayName = 'EndNode';
 // ─── CHAIN NODE ───
 export const ChainNode = memo(({ data, selected }) => (
   <BaseNode data={data} colors={nodeColors.chain} icon={Link2} selected={selected}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#2D3436', fontWeight: 500 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#17201C', fontWeight: 500 }}>
       <Link2 size={12} color={nodeColors.chain.bg} />
-      <span>{data.targetWorkflowName || <span style={{ color: '#B2BEC3', fontWeight: 400 }}>Seleziona workflow...</span>}</span>
+      <span>{data.targetWorkflowName || <span style={{ color: '#98A09A', fontWeight: 400 }}>Seleziona workflow...</span>}</span>
     </div>
   </BaseNode>
 ));

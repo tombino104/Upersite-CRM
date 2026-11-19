@@ -9,7 +9,7 @@ import {
 } from '../utils/uptimeRobot';
 
 const REFRESH_MS = 60 * 1000; // piano free: max 10 richieste/minuto
-const LEVEL_COLOR = { ok: 'var(--text-secondary)', warning: '#E1A100', danger: '#E17055' };
+const LEVEL_COLOR = { ok: 'var(--text-secondary)', warning: '#E1A100', danger: '#C24E36' };
 
 const linkBtn = {
   border: '1px solid rgba(16,185,129,0.35)', background: 'rgba(16,185,129,0.08)', color: '#059669',
@@ -52,7 +52,7 @@ function DayBars({ monitor }) {
   return (
     <div style={{ display: 'flex', gap: 2, alignItems: 'stretch', height: 22, width: 150, flexShrink: 0 }} title="Uptime ultime 24 ore">
       {hist.map((b, i) => {
-        const color = b.uptime >= 99.9 ? '#10B981' : b.uptime >= 95 ? '#FDCB6E' : '#E17055';
+        const color = b.uptime >= 99.9 ? '#10B981' : b.uptime >= 95 ? '#E3A93C' : '#C24E36';
         return (
           <span key={i} title={`${b.ts ? formatDateTime(b.ts) + ' · ' : ''}${b.uptime.toFixed(2)}%`}
             style={{ flex: 1, minWidth: 2, borderRadius: 2, background: color, opacity: b.uptime >= 99.9 ? 0.75 : 1 }} />
@@ -75,7 +75,7 @@ function CustomerLink({ monitor, customers, onLink, onOpenCustomer }) {
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <button onClick={() => onOpenCustomer(linked)} title="Apri la scheda cliente"
-          style={{ ...linkBtn, border: '1px solid var(--border-light, #ebebf5)', background: 'var(--bg-secondary, #f8f8fc)', color: 'var(--text-primary)' }}>
+          style={{ ...linkBtn, border: '1px solid var(--border-light, #e8e6de)', background: 'var(--bg-secondary, #f8f7f3)', color: 'var(--text-primary)' }}>
           👤 {linked.name}
         </button>
         <button onClick={() => onLink(monitor.id, null)} title="Scollega cliente"
@@ -139,7 +139,7 @@ function MonitorRow({ monitor: m, customers, onLink, onOpenCustomer }) {
     );
   }
   (m.tags || []).forEach(t => meta.push(
-    <span key={`t${t.id ?? t.name}`} style={{ background: t.color ? `${t.color}22` : 'var(--bg-input, #f0f0f8)', color: t.color || 'inherit', padding: '1px 8px', borderRadius: 999 }}>
+    <span key={`t${t.id ?? t.name}`} style={{ background: t.color ? `${t.color}22` : 'var(--bg-input, #f0efe9)', color: t.color || 'inherit', padding: '1px 8px', borderRadius: 999 }}>
       {t.name}
     </span>
   ));
@@ -147,7 +147,7 @@ function MonitorRow({ monitor: m, customers, onLink, onOpenCustomer }) {
   return (
     <div style={{
       padding: '12px 16px', borderRadius: 14,
-      border: `1px solid ${normalizeStatus(m.status) === 'down' ? 'rgba(225,112,85,0.4)' : 'var(--border-light, #ebebf5)'}`,
+      border: `1px solid ${normalizeStatus(m.status) === 'down' ? 'rgba(194, 78, 54,0.4)' : 'var(--border-light, #e8e6de)'}`,
       background: 'var(--bg-primary, #fff)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -187,7 +187,7 @@ function MonitorRow({ monitor: m, customers, onLink, onOpenCustomer }) {
 }
 
 const statBox = (label, value, color) => (
-  <div key={label} style={{ background: 'var(--bg-secondary, #f8f8fc)', borderRadius: 16, padding: '14px 18px', flex: '1 1 140px' }}>
+  <div key={label} style={{ background: 'var(--bg-secondary, #f8f7f3)', borderRadius: 16, padding: '14px 18px', flex: '1 1 140px' }}>
     <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-secondary)' }}>{label}</div>
     <div style={{ fontSize: '1.6rem', fontWeight: 800, color: color || 'var(--text-primary)', marginTop: 4 }}>{value}</div>
   </div>
@@ -195,9 +195,9 @@ const statBox = (label, value, color) => (
 
 // error = { text, soft }: "soft" è un'attesa temporanea (limite richieste), non un guasto
 const errorBox = (error, onChangeKey) => {
-  const color = error.soft ? '#B7791F' : '#E17055';
+  const color = error.soft ? '#B7791F' : '#C24E36';
   return (
-    <div style={{ background: error.soft ? 'rgba(253,203,110,0.18)' : 'rgba(225,112,85,0.1)', color, borderRadius: 12, padding: '10px 14px', marginBottom: 16, fontSize: '0.88rem', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+    <div style={{ background: error.soft ? 'rgba(227, 169, 60,0.18)' : 'rgba(194, 78, 54,0.1)', color, borderRadius: 12, padding: '10px 14px', marginBottom: 16, fontSize: '0.88rem', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
       <span>{error.soft ? '⏳ ' : ''}{error.text}</span>
       {!error.soft && <button onClick={onChangeKey} style={{ background: 'none', border: 'none', color, fontWeight: 700, cursor: 'pointer' }}>Cambia API key</button>}
     </div>
@@ -360,7 +360,7 @@ function MonitorHistory({ apiKey, monitors, customers, onOpenCustomer, onChangeK
         {PERIODS.map(p => (
           <button key={p.id} onClick={() => changePeriod(p.id)} style={{
             border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 999, fontWeight: 700, fontSize: '0.8rem',
-            background: period === p.id ? 'var(--text-primary)' : 'var(--bg-input, #f0f0f8)',
+            background: period === p.id ? 'var(--text-primary)' : 'var(--bg-input, #f0efe9)',
             color: period === p.id ? 'var(--bg-primary, #fff)' : 'var(--text-secondary)',
           }}>{p.label}</button>
         ))}
@@ -395,14 +395,14 @@ function MonitorHistory({ apiKey, monitors, customers, onOpenCustomer, onChangeK
                 return (
                   <div key={inc.id ?? idx} style={{
                     display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px', borderRadius: 12,
-                    border: `1px solid ${ongoing ? 'rgba(225,112,85,0.4)' : 'var(--border-light, #ebebf5)'}`,
+                    border: `1px solid ${ongoing ? 'rgba(194, 78, 54,0.4)' : 'var(--border-light, #e8e6de)'}`,
                   }}>
                     <span style={{ fontSize: '1rem' }}>{ongoing ? '🔴' : '⚡'}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{name}</span>
                         {customer && (
-                          <button onClick={() => onOpenCustomer(customer)} style={{ ...linkBtn, border: '1px solid var(--border-light, #ebebf5)', background: 'var(--bg-secondary, #f8f8fc)', color: 'var(--text-primary)' }}>
+                          <button onClick={() => onOpenCustomer(customer)} style={{ ...linkBtn, border: '1px solid var(--border-light, #e8e6de)', background: 'var(--bg-secondary, #f8f7f3)', color: 'var(--text-primary)' }}>
                             👤 {customer.name}
                           </button>
                         )}
@@ -447,7 +447,7 @@ export default function MonitorModal({ apiKey, onSaveApiKey, customers = [], onL
 
 
   const headerBtn = {
-    background: 'var(--bg-input, #f0f0f8)', border: 'none', borderRadius: '50%',
+    background: 'var(--bg-input, #f0efe9)', border: 'none', borderRadius: '50%',
     width: 40, height: 40, cursor: 'pointer', fontSize: '1rem', color: 'var(--text-secondary)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s',
   };
@@ -455,7 +455,7 @@ export default function MonitorModal({ apiKey, onSaveApiKey, customers = [], onL
   const tabBtn = (id, label) => (
     <button key={id} onClick={() => setTab(id)} style={{
       border: 'none', cursor: 'pointer', padding: '7px 14px', borderRadius: 999, fontWeight: 700, fontSize: '0.82rem',
-      background: tab === id ? '#10B981' : 'var(--bg-input, #f0f0f8)',
+      background: tab === id ? '#10B981' : 'var(--bg-input, #f0efe9)',
       color: tab === id ? '#fff' : 'var(--text-secondary)',
     }}>{label}</button>
   );
@@ -485,7 +485,7 @@ export default function MonitorModal({ apiKey, onSaveApiKey, customers = [], onL
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
           padding: '18px 28px 14px',
-          borderBottom: '1px solid var(--border-light, #ebebf5)',
+          borderBottom: '1px solid var(--border-light, #e8e6de)',
           background: 'linear-gradient(135deg, rgba(16,185,129,0.05) 0%, transparent 60%)',
           flexShrink: 0,
         }}>
@@ -507,8 +507,8 @@ export default function MonitorModal({ apiKey, onSaveApiKey, customers = [], onL
             {tab === 'full' && <button title="Ricarica" onClick={() => webviewRef.current?.reload()} style={headerBtn}>⟳</button>}
             <button title="Apri su UptimeRobot" onClick={() => window.open(DASHBOARD_URL, '_blank')} style={headerBtn}>↗</button>
             <button title="Chiudi" onClick={onClose} style={headerBtn}
-              onMouseEnter={e => { e.currentTarget.style.background = '#FFE0E0'; e.currentTarget.style.color = '#E17055'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-input, #f0f0f8)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#FFE0E0'; e.currentTarget.style.color = '#C24E36'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-input, #f0efe9)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
             >✕</button>
           </div>
         </div>
