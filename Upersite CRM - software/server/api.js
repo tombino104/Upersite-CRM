@@ -5,6 +5,7 @@
 //   CRM_DATA_DIR  cartella che contiene crm_data.json e la sottocartella Dati/   (default: radice del progetto)
 //   AI_ENV_FILE   file con le chiavi AI                                         (default: <CRM_DATA_DIR>/.env.local)
 import { createAiProxy } from './aiProxy.js'
+import { createAuth } from './auth.js'
 import fs from 'fs'
 import path from 'path'
 import process from 'process'
@@ -532,6 +533,27 @@ function applyRestore({ folder, file, mode = 'all', parts = {}, customerIds = []
   return result
 }
 
+// Password master salvata nel file dati (hash). null = non ancora creata. Se il file esiste ma non si legge
+// restituisce un valore che nessuna password può soddisfare: meglio bloccare l'accesso che aprirlo.
+const UNREADABLE = 'pbkdf2$0$'
+let masterPasswordCache = { key: null, value: null }
+function readMasterPassword() {
+  if (!fs.existsSync(STORAGE_FILE)) return null
+  const st = fs.statSync(STORAGE_FILE)
+  const key = `${st.mtimeMs}-${st.size}`
+  if (masterPasswordCache.key !== key) {
+    let value
+    try { value = JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf-8')).masterPassword || null } catch { value = UNREADABLE }
+    masterPasswordCache = { key, value }
+  }
+  return masterPasswordCache.value
+}
+
+function writeMasterPassword(hashed) {
+  const data = readJsonFile(STORAGE_FILE)
+  writeFileAtomic(STORAGE_FILE, JSON.stringify({ ...data, masterPassword: hashed }, null, 2))
+}
+
 // File con le chiavi AI: lo legge e lo scrive solo il server. AI_ENV_FILE serve ai test per usare un file a parte.
 const AI_ENV_FILE = process.env.AI_ENV_FILE ? path.resolve(process.env.AI_ENV_FILE) : path.join(DATA_ROOT, '.env.local')
 
@@ -546,9 +568,25 @@ export function initApi() {
 export function createApiMiddleware() {
   // Funzioni AI: il server inoltra le richieste ai servizi (LM Studio, Ollama, Gemini...) con le chiavi di .env.local
   const aiProxy = createAiProxy({ envFile: AI_ENV_FILE, rejectForeignRequest })
+  const auth = createAuth({ readMasterPassword, writeMasterPassword })
 
   return (req, res, next) => {
-        if (req.url.startsWith('/api/') && rejectCrossSite(req, res)) return;
+        if (req.url.startsWith('/api/')) {
+          if (rejectCrossSite(req, res)) return;
+          // Login, logout e stato della sessione
+          if (req.url.startsWith('/api/auth/')) {
+            if (req.method === 'POST' && rejectForeignRequest(req, res)) return;
+            auth.handle(req, res);
+            return;
+          }
+          // Tutto il resto delle API richiede la sessione (o il primo avvio, senza password master)
+          if (!auth.isAllowed(req)) {
+            res.statusCode = 401;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Accesso richiesto' }));
+            return;
+          }
+        }
         if (req.url.startsWith('/api/ai/')) {
           aiProxy.handle(req, res);
         } else if (req.url === '/api/storage' && req.method === 'GET') {

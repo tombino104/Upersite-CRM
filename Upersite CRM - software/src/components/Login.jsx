@@ -1,5 +1,5 @@
 import { useState, useEffect, memo } from 'react';
-import { hasMasterPassword, verifyMasterPassword, setMasterPassword, syncWithFileSystem } from '../utils/storage';
+import { fetchAuthStatus, serverLogin, setMasterPassword } from '../utils/storage';
 
 const LoginBackground = memo(() => (
     <>
@@ -35,21 +35,35 @@ const LoginCard = memo(({
             }
             setBusy(true);
             try {
+                // Primo avvio: il server accetta la creazione della password, poi si entra come al solito
                 await setMasterPassword(password);
-                onLogin(password);
+                const result = await serverLogin(password);
+                if (result.ok) {
+                    onLogin(password);
+                } else {
+                    setError(result.error || 'Accesso non riuscito');
+                    triggerShake();
+                }
             } finally {
                 setBusy(false);
             }
         } else {
             setBusy(true);
-            const ok = await verifyMasterPassword(password);
+            const result = await serverLogin(password);
             setBusy(false);
-            if (ok) {
+            if (result.ok) {
                 onLogin(password);
-            } else {
+            } else if (result.status === 429) {
+                setError(`Troppi tentativi: riprova tra ${result.retryAfter || 15} secondi`);
+                triggerShake();
+                setPassword('');
+            } else if (result.status === 401) {
                 setError('Password errata');
                 triggerShake();
                 setPassword('');
+            } else {
+                setError(result.error || 'Accesso non riuscito');
+                triggerShake();
             }
         }
     };
@@ -131,7 +145,7 @@ export default function Login({ onLogin }) {
     const [isSetup, setIsSetup] = useState(null);
 
     useEffect(() => {
-        syncWithFileSystem({ adoptRevision: false }).finally(() => setIsSetup(!hasMasterPassword()));
+        fetchAuthStatus().then(status => setIsSetup(status ? status.setup : false));
     }, []);
 
     const triggerShake = () => {

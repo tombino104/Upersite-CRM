@@ -9,6 +9,58 @@ const MASTER_KEY = 'upersite_crm_master';
 // Header richiesto dal server locale per le richieste che modificano i dati (vedi vite.config.js)
 export const CRM_REQUEST_HEADERS = { 'Content-Type': 'application/json', 'X-Upersite-CRM': '1' };
 
+// ── Accesso (sessione sul server) ──
+
+// { setup: true se la password master non esiste ancora, authenticated } oppure null se il server non risponde
+export async function fetchAuthStatus() {
+    try {
+        const response = await fetch('/api/auth/status');
+        if (!response.ok) return null;
+        return await response.json();
+    } catch {
+        return null;
+    }
+}
+
+// Verifica la password sul server e apre la sessione. { ok, error, retryAfter }
+export async function serverLogin(password) {
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: CRM_REQUEST_HEADERS,
+            body: JSON.stringify({ password })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) return { ok: true };
+        return { ok: false, status: response.status, error: result.error, retryAfter: result.retryAfter };
+    } catch {
+        return { ok: false, status: 0, error: 'Il server del CRM non risponde' };
+    }
+}
+
+export async function serverLogout() {
+    try {
+        await fetch('/api/auth/logout', { method: 'POST', headers: CRM_REQUEST_HEADERS });
+    } catch { /* server non raggiungibile: la sessione scade da sola */ }
+}
+
+// Se il server risponde "accesso richiesto" (sessione scaduta o server riavviato) si torna alla schermata di login
+export function installAuthGuard() {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+        const response = await originalFetch(...args);
+        if (response.status === 401) {
+            try {
+                const url = new URL(typeof args[0] === 'string' ? args[0] : args[0].url, window.location.href);
+                if (url.origin === window.location.origin && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth/')) {
+                    window.location.reload();
+                }
+            } catch { /* URL non interpretabile: non è una chiamata alle API */ }
+        }
+        return response;
+    };
+}
+
 // Revisione del file dati caricata da questa finestra. Il server rifiuta (409) un salvataggio
 // basato su una revisione vecchia: succede se un'altra finestra/scheda ha salvato nel frattempo.
 let loadedRevision = null;

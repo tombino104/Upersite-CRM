@@ -25,7 +25,7 @@ import ToolboxModal from './components/ToolboxModal';
 import FloatingDock from './components/FloatingDock';
 import { resolveDock } from './components/dockItems.js';
 import { useCustomers, useInactivityTimeout, useSearch } from './hooks/useCustomers';
-import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder } from './utils/storage';
+import { exportData, importData, saveData, hasMasterPassword, triggerAutoBackup, SAVE_STATUS_EVENT, migrateQuotesToFolder, serverLogout } from './utils/storage';
 import { encryptPlainCredentials, clearCredentialKeys } from './utils/credentialVault';
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
 import { syncAISettings, setAIUsageListener, normalizeAISettings } from './utils/aiClient';
@@ -308,7 +308,7 @@ export default function App() {
     updateChatHistory, updateAiUsageStats, updateUserProfile,
     saveWorkflow, deleteWorkflow,
     notifyLogin, notifyLogout,
-  } = useCustomers();
+  } = useCustomers(isLoggedIn);
 
   // I clienti archiviati restano nei dati ma spariscono da viste, todo e statistiche attive
   const customers = useMemo(() => allCustomers.filter(c => !c.archivedAt), [allCustomers]);
@@ -582,15 +582,24 @@ export default function App() {
   }, [notifyLogout]);
 
   const handleEndSession = () => {
-    if (settings.backupPath) {
-      triggerAutoBackup().catch(err => console.error('Background backup failed:', err));
-    }
+    // Il backup usa la sessione: si chiude la sessione sul server solo quando ha finito
+    const backup = settings.backupPath
+      ? triggerAutoBackup().catch(err => console.error('Background backup failed:', err))
+      : Promise.resolve();
+    backup.finally(serverLogout);
     pendingVaultPassword.current = null;
     clearCredentialKeys();
     notifyLogout();
     setIsLoggedIn(false);
     setShowExportMenu(false);
   };
+
+  // Il login avvia i workflow "all'accesso" quando i dati sono stati caricati (dopo il login)
+  const notifyLoginRef = useRef(notifyLogin);
+  useEffect(() => { notifyLoginRef.current = notifyLogin; }, [notifyLogin]);
+  useEffect(() => {
+    if (isLoggedIn && hasSynced) notifyLoginRef.current();
+  }, [isLoggedIn, hasSynced]);
 
   useInactivityTimeout(settings.inactivityTimeout || 5 * 60 * 1000, handleLogout);
 
@@ -648,6 +657,10 @@ export default function App() {
     input.click();
   };
 
+  if (!isLoggedIn) {
+    return <Login onLogin={(password) => { pendingVaultPassword.current = password; setIsLoggedIn(true); }} />;
+  }
+
   if (!hasSynced) {
     return (
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-app)', color: 'var(--primary)' }}>
@@ -657,10 +670,6 @@ export default function App() {
         </div>
       </div>
     );
-  }
-
-  if (!isLoggedIn) {
-    return <Login onLogin={(password) => { pendingVaultPassword.current = password; setIsLoggedIn(true); notifyLogin(); }} />;
   }
 
   return (
@@ -905,7 +914,7 @@ export default function App() {
                   Termina sessione di lavoro
                 </button>
                 <div className="app-dropdown-divider" />
-                <button className="app-dropdown-item app-dropdown-danger" onClick={() => { clearCredentialKeys(); setIsLoggedIn(false); setShowExportMenu(false); }}>
+                <button className="app-dropdown-item app-dropdown-danger" onClick={() => { clearCredentialKeys(); serverLogout(); setIsLoggedIn(false); setShowExportMenu(false); }}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ marginRight: '8px' }}>
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>

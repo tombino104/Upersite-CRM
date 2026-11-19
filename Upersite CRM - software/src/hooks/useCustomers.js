@@ -10,7 +10,8 @@ import { customerToLead } from '../utils/leads';
 
 
 
-export function useCustomers() {
+// enabled: i dati si caricano dal server solo dopo il login (prima il server li rifiuta)
+export function useCustomers(enabled = true) {
 
     const [customers, setCustomers] = useState([]);
 
@@ -76,7 +77,13 @@ export function useCustomers() {
 
 
 
+    const initStarted = useRef(false);
+
     useEffect(() => {
+
+        if (!enabled || initStarted.current) return;
+
+        initStarted.current = true;
 
         async function init() {
 
@@ -112,7 +119,7 @@ export function useCustomers() {
 
         init();
 
-    }, []);
+    }, [enabled]);
 
 
 
