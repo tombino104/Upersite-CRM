@@ -1,0 +1,19 @@
+# Niente dati, chiavi o file inutili dentro l'immagine
+node_modules
+dist
+.git
+.vscode
+.env
+.env.*
+!.env.example
+*.local
+crm_data.json
+crm_data.json.*
+Dati
+data
+backups
+secrets
+*.log
+Dockerfile
+docker-compose*.yml
+.dockerignore

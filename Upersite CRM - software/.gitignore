@@ -25,3 +25,9 @@ dist-ssr
 
 # File di lavoro del CRM (preventivi e calcolatore dei clienti): mai su git
 Dati/
+
+# Docker: dati, backup e chiavi non vanno mai su git
+/data/
+/backups/
+/secrets/
+.env

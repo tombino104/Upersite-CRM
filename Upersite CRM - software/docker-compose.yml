@@ -1,0 +1,40 @@
+# Upersite CRM con Docker Compose
+#
+# Primo avvio:
+#   1. crea la chiave di cifratura (una sola volta, poi conservala anche nel password manager):
+#        mkdir secrets && openssl rand -base64 32 > secrets/crm_encryption_key.txt
+#   2. docker compose up -d --build
+#   3. apri http://localhost:3000
+#
+# Cartelle sul computer:
+#   ./data     crm_data.json, preventivi, calcolatore, chiavi AI  (nel CRM: nessuna impostazione da fare)
+#   ./backups  backup automatici  -> nelle Impostazioni del CRM come cartella dei salvataggi scrivi:  /backups
+services:
+  upersite-crm:
+    build: .
+    image: upersite-crm:local
+    container_name: upersite-crm
+    restart: unless-stopped
+    ports:
+      # Solo questo computer. Per raggiungerlo dalla rete cambia in "3000:3000",
+      # oppure metti davanti Tailscale / Cloudflare Tunnel (consigliato) e lascia 127.0.0.1.
+      - "127.0.0.1:3000:3000"
+    environment:
+      CRM_ENCRYPTION_KEY_FILE: /run/secrets/crm_encryption_key
+      # Dietro Tailscale o Cloudflare Tunnel metti 1: serve a limitare i tentativi di login per utente reale
+      CRM_TRUST_PROXY: "0"
+      CRM_SESSION_HOURS: "12"
+      TZ: Europe/Rome
+    volumes:
+      - ./data:/data
+      - ./backups:/backups
+    secrets:
+      - crm_encryption_key
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+secrets:
+  crm_encryption_key:
+    file: ./secrets/crm_encryption_key.txt
