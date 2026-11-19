@@ -1,7 +1,7 @@
 {
   "name": "upersite-crm",
   "private": true,
-  "version": "1.26.1-stable",
+  "version": "1.27.0-stable",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,8 @@
     "version:alpha": "npm version prerelease --preid=alpha --no-git-tag-version",
     "version:beta": "npm version prerelease --preid=beta --no-git-tag-version",
     "version:stable": "node -e \"const pkg=require('./package.json'); pkg.version=pkg.version.replace(/-.*$/, '') + '-stable'; require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2));\"",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "reset-password": "node server/reset-password.js"
   },
   "dependencies": {
     "@xyflow/react": "^12.10.2",

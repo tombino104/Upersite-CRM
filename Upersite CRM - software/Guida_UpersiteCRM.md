@@ -2,36 +2,35 @@
 
 > Il manuale aggiornato e completo è dentro il CRM: **⋯ → Impostazioni → Generale → 📖 Manuale d'uso** (con ricerca). Questa pagina è un riassunto, utile soprattutto quando il CRM non parte.
 
-Upersite CRM gira sul tuo PC per gestire clienti, pagamenti, preventivi e progetti: i dati non vanno su internet.
+Upersite CRM gira sul tuo server (con Docker) e si usa dal browser per gestire clienti, pagamenti, preventivi e progetti: i dati restano tuoi, cifrati sul tuo disco.
 
 ---
 
 ## 🚀 1. Come avviare il CRM
 
-La cartella del programma è:
-`C:\Users\loren\Desktop\Business\UPERSITE STUDIO\Upersite CRM\Upersite CRM - software - LAVORO\Upersite CRM - software`
+Il CRM è un server: lo accendi una volta e lo apri dal browser, da qualsiasi dispositivo che lo raggiunga. L'installazione completa è nel `README.md` del progetto.
 
-Dentro ci sono due file di avvio. Entrambi partono in silenzio, senza finestre del terminale:
-
-| File | Cosa apre |
-|---|---|
-| `Upersite CRM Browser.vbs` | Il CRM nel browser, su `http://localhost:5173` |
-| `Avvia CRM.vbs` | Il CRM come app desktop, in una finestra dedicata |
-
-I dati sono gli stessi in entrambi i modi. Se il CRM è già acceso, il file di avvio apre solo la finestra (o la scheda del browser) senza riavviare il server.
-
-### Avvio da terminale (se i file di avvio non bastano)
-Apri un terminale nella cartella del programma e scrivi:
+### Con Docker (consigliato)
+Dalla cartella del programma:
 ```bash
-npm run dev            # versione browser, poi apri http://localhost:5173
-npm run electron:dev   # versione desktop
+docker compose up -d --build   # avvia (o aggiorna) il CRM
+docker compose logs -f         # guarda cosa sta facendo
+docker compose down            # lo spegne (i dati restano)
 ```
-Dopo aver copiato il CRM su un altro PC (o se manca la cartella `node_modules`) esegui prima `npm install`.
+Poi apri <http://localhost:3000> (o l'indirizzo Tailscale / Cloudflare del tuo server).
+
+### Senza Docker (sviluppo)
+```bash
+npm install                  # solo la prima volta
+npm run dev                  # sviluppo: http://localhost:5173
+npm run build && npm start   # come in produzione: http://localhost:3000
+```
 
 ### Se il CRM non si apre
-- **Esce il messaggio «Il CRM non si è avviato entro 60 secondi»** o la pagina dà errore/404: probabilmente è rimasto acceso un vecchio server del CRM che occupa la porta 5173. Succede soprattutto dopo aver **spostato la cartella del programma**. Riavvia il PC, oppure apri il Task Manager e chiudi i processi **Node.js**, poi riavvia il CRM.
+- **Il container si ferma subito:** `docker compose logs`. Se dice che manca la chiave o che è errata, controlla il file `secrets/crm_encryption_key.txt`: dev'essere la stessa chiave con cui i dati sono stati cifrati.
 - **«I dati sono stati modificati da un'altra finestra»**: il CRM è aperto in due schede o finestre. Chiudine una e ricarica.
-- La copia della cartella (`... - LAVORO - Copy`) usa la stessa porta 5173: non avviare le due copie insieme.
+- **Ritorno alla schermata di login:** la sessione è scaduta (di base dopo 12 ore senza usarlo) o il server è stato riavviato. Rientra con la password.
+- **«Troppi tentativi»:** dopo 5 password sbagliate il server fa aspettare qualche secondo, poi sempre di più.
 
 ---
 
@@ -43,7 +42,7 @@ Al primo avvio crei la **password master**. È l'unica chiave del CRM e cifra an
 - **⋯ → Blocca CRM** lo blocca subito (pausa pranzo).
 - **⋯ → Termina sessione di lavoro** fa un backup completo e poi blocca: usalo a fine giornata.
 
-> **Password dimenticata:** chiudi il CRM, apri `crm_data.json`, elimina la riga `"masterPassword"` e riavvia. Ne crei una nuova e clienti e loghi restano. Le password della sezione Accessi però tornano leggibili solo se reimposti la stessa password di prima. Dalla schermata di login, "Password dimenticata?" ti ricorda questi passaggi.
+> **Password dimenticata:** dal computer dove gira il server esegui `docker exec upersite-crm node server/reset-password.js` (senza Docker: `npm run reset-password`) e riapri il CRM: ne crei una nuova e clienti e loghi restano. Le password della sezione Accessi però tornano leggibili solo se reimposti la stessa password di prima. Il file dati è cifrato: non si modifica a mano.
 
 ---
 
@@ -92,15 +91,16 @@ Imposta la **cartella dei backup** in Impostazioni → Backup e dati (es. un dis
 
 ---
 
-## 📁 6. Cosa c'è nella cartella del programma
+## 📁 6. Dove sono i dati
+
+Con Docker stanno nelle cartelle `data` e `backups` accanto al `docker-compose.yml`; senza Docker, nella cartella del programma.
 
 | Cosa | A cosa serve |
 |---|---|
-| `crm_data.json` | **Tutti i dati del CRM.** Non cancellarlo e non modificarlo a CRM acceso |
-| `Dati\Preventivi\`, `Dati\Calcolatore\` | Preventivi PDF/Word dei clienti e file del calcolatore |
+| `crm_data.json` | **Tutti i dati del CRM**, cifrati. Non cancellarlo e non modificarlo |
+| `Dati/Preventivi/`, `Dati/Calcolatore/` | Preventivi PDF/Word dei clienti (cifrati) e file del calcolatore |
 | `.env.local` | Le chiavi dei servizi AI (Gemini, Ollama Cloud, Unsloth). Si gestiscono da Impostazioni → Intelligenza artificiale |
-| `Upersite CRM Browser.vbs`, `Avvia CRM.vbs` | I due file di avvio |
-| `Guida_UpersiteCRM.md` | Questa guida |
-| Tutto il resto (`src`, `server`, `electron`, `public`, `node_modules`, `dist`, `package.json`, `vite.config.js`, ...) | Il programma: non serve toccarlo |
+| `secrets/crm_encryption_key.txt` | **La chiave di cifratura.** Senza non si riaprono i dati: tienine una copia nel password manager |
+| `backups/` | I backup con data (nelle Impostazioni la cartella è `/backups`) |
 
-I dati (`crm_data.json`, `Dati`, `.env.local`) restano solo sul tuo PC e non vanno mai su GitHub. La copia di sicurezza è nella cartella dei backup.
+Tutto questo resta sul tuo server e non va mai su GitHub. La copia di sicurezza è nella cartella dei backup.

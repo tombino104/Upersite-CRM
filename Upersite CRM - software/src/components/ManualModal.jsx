@@ -8,9 +8,7 @@ const SECTIONS = [
     {
         id: 'avvio', group: 'inizio', icon: '🚀', title: 'Avvio, accesso e sicurezza',
         text: `
-Il CRM gira sul tuo PC: i dati non vanno su internet. Si apre in due modi:
-- **Browser**: doppio clic su «Upersite CRM Browser» nella cartella del programma; si apre \`http://localhost:5173\`.
-- **App desktop**: doppio clic su «Avvia CRM» nella cartella del programma. Stessi dati, finestra dedicata.
+Il CRM gira sul tuo server e si apre dal browser: i dati restano tuoi, cifrati sul tuo disco e mai su servizi esterni (tranne il testo che invii alle funzioni AI). Apri l'indirizzo del tuo server (per esempio quello di Tailscale) e accedi con la password master. Se il server era spento o riavviato, o non lo usi da molte ore, il CRM ti chiede di nuovo la password.
 
 ### Password master
 Al primo avvio crei la **password master**. È l'unica chiave del CRM e cifra anche le password della sezione Accessi dei clienti. Non è salvata da nessuna parte in chiaro.
@@ -18,7 +16,7 @@ Al primo avvio crei la **password master**. È l'unica chiave del CRM e cifra an
 - Menu **⋯ → Blocca CRM** lo blocca subito (pausa pranzo).
 - Menu **⋯ → Termina sessione di lavoro** fa un **backup completo** e poi blocca: usalo a fine giornata.
 
-> Password dimenticata: chiudi il CRM, apri \`crm_data.json\`, elimina la riga "masterPassword" e riavvia. Ne crei una nuova e i clienti restano; le password della sezione Accessi però tornano leggibili solo reimpostando la password di prima.
+> Password dimenticata: dal computer su cui gira il server esegui \`npm run reset-password\` (con Docker: \`docker exec upersite-crm node server/reset-password.js\`) e riapri il CRM. Ne crei una nuova e i clienti restano (il file dati è cifrato: non si modifica a mano); le password della sezione Accessi però tornano leggibili solo reimpostando la password di prima.
 `,
     },
     {
@@ -151,7 +149,6 @@ Il pulsante verde mostra lo stato dei siti seguiti con **UptimeRobot**: online/o
 - Serve la **API key read-only** di UptimeRobot, inserita la prima volta.
 - Ogni monitor si collega a un cliente (anche in automatico in base al dominio): lo stato compare nella scheda del cliente.
 - Le richieste sono limitate per restare nel piano gratuito, quindi i dati si aggiornano ogni tanto e non in tempo reale.
-- Nell'app desktop c'è anche la dashboard completa di UptimeRobot.
 `,
     },
     {
@@ -392,7 +389,7 @@ Questi file restano solo sul tuo PC e non vanno mai su GitHub. La copia di sicur
 - **«I dati sono stati modificati da un'altra finestra»**: il CRM è aperto in due schede o finestre. Chiudine una e ricarica: le modifiche dell'altra non sono state salvate.
 - **«Imposta una cartella dei salvataggi valida»**: la cartella dei backup non esiste o il disco esterno non è collegato. Collegalo o cambia cartella nelle Impostazioni.
 - **Export PDF/Word del calcolatore non parte**: serve la connessione internet la prima volta che lo usi in una sessione.
-- **La pagina non si apre**: il CRM non è avviato. Usa «Upersite CRM Browser» o «Avvia CRM» nella cartella del programma. Se ancora non parte (succede dopo aver spostato la cartella), riavvia il PC o chiudi i processi Node.js dal Task Manager e riprova.
+- **La pagina non si apre**: il server del CRM non è acceso. Controlla che il container sia in funzione (\`docker compose ps\`) e guarda i messaggi con \`docker compose logs\`. Se dice che la chiave di cifratura manca o è errata, controlla il file della chiave.
 - **Ho cancellato qualcosa per sbaglio**: Impostazioni → Ripristina da un backup → Solo alcuni clienti.
 `,
     },

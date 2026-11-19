@@ -1,4 +1,5 @@
 import { useState, useEffect, memo } from 'react';
+import logoUrl from '../assets/logo.svg';
 import { fetchAuthStatus, serverLogin, setMasterPassword } from '../utils/storage';
 
 const LoginBackground = memo(() => (
@@ -71,7 +72,7 @@ const LoginCard = memo(({
     return (
         <div className={`login-card ${shake ? 'login-shake' : ''}`}>
             <div className="login-logo">
-                <div className="login-logo-icon">U</div>
+                <img className="login-logo-icon" src={logoUrl} alt="" />
                 <h1 className="login-title">Upersite CRM</h1>
                 <p className="login-subtitle">
                     {isSetup ? 'Crea la tua password master' : 'Inserisci la password per accedere'}
@@ -122,7 +123,7 @@ const LoginCard = memo(({
                 <div className="login-reset-section">
                     {showReset ? (
                         <div className="login-reset-confirm animate-fade-in-up">
-                            <p className="login-reset-warning">Per motivi di sicurezza la password non si può resettare dall'app. Chiudi il CRM, rimuovi il campo "masterPassword" dal file crm_data.json e riavvia: potrai crearne una nuova. I dati dei clienti saranno mantenuti, ma le password nella sezione Accessi, cifrate con la vecchia password, resteranno illeggibili finché non reimposterai la stessa password di prima.</p>
+                            <p className="login-reset-warning">Per motivi di sicurezza la password non si può resettare dall'app. Dal computer su cui gira il server esegui "npm run reset-password" (con Docker: docker exec upersite-crm node server/reset-password.js), poi riapri il CRM e creane una nuova. I dati dei clienti saranno mantenuti, ma le password nella sezione Accessi, cifrate con la vecchia password, resteranno illeggibili finché non reimposterai la stessa password di prima.</p>
                             <div className="login-reset-buttons">
                                 <button className="btn btn-ghost btn-sm" onClick={() => setShowReset(false)}>Chiudi</button>
                             </div>
@@ -234,14 +235,8 @@ export default function Login({ onLogin }) {
 
         .login-logo-icon {
           width: 64px; height: 64px;
-          background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-          color: white;
-          border-radius: var(--radius-lg);
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.75rem;
-          font-weight: 800;
+          display: inline-block;
+          border-radius: 15px;
           margin-bottom: 16px;
           box-shadow: 0 8px 24px rgba(108, 92, 231, 0.3);
         }

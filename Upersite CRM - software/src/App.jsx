@@ -1,3 +1,4 @@
+import logoUrl from './assets/logo.svg';
 import React, { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
 import Login from './components/Login';
 import StatsHeader from './components/StatsHeader';
@@ -693,7 +694,7 @@ export default function App() {
       <header className="app-header">
         <div className="app-header-left">
           <div className="app-logo">
-            <div className="app-logo-icon">U</div>
+            <img className="app-logo-icon" src={logoUrl} alt="" />
             <div className="app-logo-text">
               <span className="app-logo-title">Upersite CRM</span>
               <div className="app-subtitle-dropdown-wrapper">
@@ -1244,14 +1245,8 @@ export default function App() {
 
         .app-logo-icon {
           width: 36px; height: 36px;
-          background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-          color: white;
-          border-radius: var(--radius-md);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 800;
-          font-size: 1rem;
+          display: block;
+          border-radius: 9px;
           box-shadow: 0 4px 12px rgba(108, 92, 231, 0.25);
         }
 
