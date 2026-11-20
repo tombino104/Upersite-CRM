@@ -3,6 +3,8 @@
 // le credenziali salvate in crm_data.json (e nei backup) non sono leggibili.
 // Formato salvato nel campo `password`: enc:v1:<salt>:<iv>:<testo cifrato>  (base64)
 
+import { pbkdf2Sha256, aesGcmEncrypt, aesGcmDecrypt } from './cryptoCompat.js';
+
 const PREFIX = 'enc:v1:';
 const PBKDF2_ITERATIONS = 210000;
 
@@ -21,16 +23,8 @@ function base64ToBytes(b64) {
 function deriveKey(password, salt) {
     const cacheKey = `${bytesToBase64(salt)}|${password}`;
     if (!keyCache.has(cacheKey)) {
-        keyCache.set(cacheKey, (async () => {
-            const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
-            return crypto.subtle.deriveKey(
-                { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PBKDF2_ITERATIONS },
-                material,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
-        })());
+        // La chiave AES-256 sono i 32 byte di PBKDF2 (funziona anche senza crypto.subtle, vedi cryptoCompat.js)
+        keyCache.set(cacheKey, pbkdf2Sha256(password, salt, PBKDF2_ITERATIONS, 32));
     }
     return keyCache.get(cacheKey);
 }
@@ -44,7 +38,7 @@ export async function encryptSecret(plain, password) {
     if (!sessionSalt) sessionSalt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const key = await deriveKey(password, sessionSalt);
-    const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plain)));
+    const cipher = await aesGcmEncrypt(key, iv, new TextEncoder().encode(plain));
     return `${PREFIX}${bytesToBase64(sessionSalt)}:${bytesToBase64(iv)}:${bytesToBase64(cipher)}`;
 }
 
@@ -54,7 +48,7 @@ export async function decryptSecret(value, password) {
     if (!isEncrypted(value)) return value || '';
     const [saltB64, ivB64, cipherB64] = value.slice(PREFIX.length).split(':');
     const key = await deriveKey(password, base64ToBytes(saltB64));
-    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(ivB64) }, key, base64ToBytes(cipherB64));
+    const plain = await aesGcmDecrypt(key, base64ToBytes(ivB64), base64ToBytes(cipherB64));
     return new TextDecoder().decode(plain);
 }
 

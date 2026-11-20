@@ -1,9 +1,9 @@
 # Costruisce l'immagine Docker di Upersite CRM (amd64 + arm64) e la pubblica su GitHub Container Registry.
 #
 # Come si pubblica una versione:
-#   git tag v2.0.0-stable
-#   git push origin v2.0.0-stable
-# -> nasce ghcr.io/tombino104/upersite-crm con i tag  v2.0.0-stable, 2.0.0-stable e latest
+#   git tag v2.0.1-stable
+#   git push origin v2.0.1-stable
+# -> nasce ghcr.io/tombino104/upersite-crm con i tag  v2.0.1-stable, 2.0.1-stable e latest
 #
 # Sulle pull request l'immagine viene solo costruita (per controllare che il Dockerfile funzioni), non pubblicata.
 name: Immagine Docker

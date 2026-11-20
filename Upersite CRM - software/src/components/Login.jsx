@@ -37,6 +37,11 @@ const LoginCard = memo(({
                     setError(result.error || 'Accesso non riuscito');
                     triggerShake();
                 }
+            } catch (err) {
+                // Un errore imprevisto non deve lasciare la schermata ferma e senza spiegazioni
+                console.error('Creazione password non riuscita:', err);
+                setError(`Impossibile creare la password: ${err?.message || 'errore imprevisto'}`);
+                triggerShake();
             } finally {
                 setBusy(false);
             }

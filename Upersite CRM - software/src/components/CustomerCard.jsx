@@ -55,27 +55,29 @@ export default function CustomerCard({ customer, onClick, index = 0 }) {
           )}
         </div>
         <div className="customer-card-info">
-          <h3 className="customer-card-name">{customer.name || 'Senza nome'}</h3>
+          <h3 className="customer-card-name" title={customer.name || 'Senza nome'}>{customer.name || 'Senza nome'}</h3>
           {customer.company && (
             <span className="customer-card-company">{customer.company}</span>
           )}
+          <div className="customer-card-meta">
+            <span className={`badge badge-${status}`}>{STATUS_LABELS[status]}</span>
+            {totalUnread > 0 && (
+              <span style={{
+                background: 'var(--danger)',
+                color: '#fff',
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                minWidth: '18px',
+                height: '18px',
+                borderRadius: '9px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 5px',
+              }}>{totalUnread}</span>
+            )}
+          </div>
         </div>
-        <span className={`badge badge-${status}`}>{STATUS_LABELS[status]}</span>
-        {totalUnread > 0 && (
-          <span style={{
-            background: 'var(--danger)',
-            color: '#fff',
-            fontSize: '0.65rem',
-            fontWeight: 700,
-            minWidth: '18px',
-            height: '18px',
-            borderRadius: '9px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '0 5px',
-          }}>{totalUnread}</span>
-        )}
       </div>
 
       {customer.packageType && (
@@ -189,10 +191,21 @@ export default function CustomerCard({ customer, onClick, index = 0 }) {
         .customer-card-name {
           font-size: 0.9375rem;
           font-weight: 600;
+          line-height: 1.3;
           color: var(--text-primary);
-          white-space: nowrap;
+          /* Il nome va a capo (fino a 2 righe) invece di troncarsi dopo poche lettere */
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
           overflow: hidden;
-          text-overflow: ellipsis;
+          overflow-wrap: anywhere;
+        }
+        .customer-card-meta {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 6px;
         }
 
         .customer-card-company {
