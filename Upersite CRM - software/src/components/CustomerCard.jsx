@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Package, TriangleAlert } from 'lucide-react';
 
 const STATUS_LABELS = {
   prospect: 'Prospect',
@@ -79,7 +80,7 @@ export default function CustomerCard({ customer, onClick, index = 0 }) {
 
       {customer.packageType && (
         <div className="customer-card-package">
-          📦 {customer.packageType}
+          <Package size={12} strokeWidth={2} aria-hidden="true" /> {customer.packageType}
         </div>
       )}
 
@@ -109,7 +110,7 @@ export default function CustomerCard({ customer, onClick, index = 0 }) {
           </div>
           {hasOverdue && (
             <div className="customer-card-overdue">
-              ⚠ Rate scadute
+              <TriangleAlert size={12} strokeWidth={2} aria-hidden="true" /> Rate scadute
             </div>
           )}
         </div>

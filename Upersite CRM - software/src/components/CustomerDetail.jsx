@@ -21,6 +21,7 @@ import NotesGraphView from './NotesGraphView';
 import { generateId, sanitizePositiveNumber, formatBytes, saveFile, verifyMasterPassword, PACKAGES, ADDONS, uploadQuote, fetchQuoteDataUrl, deleteQuote } from '../utils/storage';
 import { encryptSecret, decryptSecret } from '../utils/credentialVault';
 import { OPEN_STAGES, ARCHIVE_KINDS, DEFAULT_LEAD_SOURCES, DEFAULT_LOST_REASONS, stageOf, stageProbability, archiveKindLabel } from '../utils/leads';
+import { Globe, User, Settings, Euro, KeyRound, Link, NotebookPen, ListChecks, Ticket, ChartColumn, Timer, Archive, Trash2 } from 'lucide-react';
 
 const STATUSES = [
 
@@ -2510,25 +2511,25 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
     const tabs = [
 
-        { id: 'general', label: 'Generale', icon: '👤' },
+        { id: 'general', label: 'Generale', icon: User },
 
-        { id: 'config', label: 'Configurazione', icon: '⚙️' },
+        { id: 'config', label: 'Configurazione', icon: Settings },
 
-        { id: 'finance', label: 'Pagamenti', icon: '💶' },
+        { id: 'finance', label: 'Pagamenti', icon: Euro },
 
-        { id: 'credentials', label: 'Accessi', icon: '🔐', unread: getUnread(form.credentials) },
+        { id: 'credentials', label: 'Accessi', icon: KeyRound, unread: getUnread(form.credentials) },
 
-        { id: 'links', label: 'Link', icon: '🔗', unread: getUnread(form.links) },
+        { id: 'links', label: 'Link', icon: Link, unread: getUnread(form.links) },
 
         // { id: 'files', label: 'File', icon: '📁' },
 
-        { id: 'notes', label: 'Note', icon: '📝', unread: getUnread(form.notes) },
+        { id: 'notes', label: 'Note', icon: NotebookPen, unread: getUnread(form.notes) },
 
-        { id: 'todo', label: 'To-Do', icon: '☑️', unread: getUnreadTodos(form.todo) },
+        { id: 'todo', label: 'To-Do', icon: ListChecks, unread: getUnreadTodos(form.todo) },
 
-        { id: 'tickets', label: 'Tickets', icon: '🎫' },
+        { id: 'tickets', label: 'Tickets', icon: Ticket },
 
-        { id: 'smartreport', label: 'SmartReport', icon: '🤖' },
+        { id: 'smartreport', label: 'SmartReport', icon: ChartColumn },
 
     ];
 
@@ -2631,7 +2632,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                         >
 
-                            ⏱️
+                            <Timer size={18} strokeWidth={1.75} aria-hidden="true" />
 
                         </button>
 
@@ -2655,7 +2656,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                             >
 
-                                🌐
+                                <Globe size={18} strokeWidth={1.75} aria-hidden="true" />
 
                             </button>
 
@@ -2683,7 +2684,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                         >
 
-                            <span className="detail-tab-icon">{tab.icon}</span>
+                            <span className="detail-tab-icon"><tab.icon size={15} strokeWidth={1.9} aria-hidden="true" /></span>
 
                             <span className="detail-tab-label">{tab.label}</span>
 
@@ -3084,7 +3085,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                         <div className="modal-content animate-scale-in" style={{ maxWidth: 420, padding: 28 }} onClick={e => e.stopPropagation()}>
 
-                            <h3 style={{ margin: '0 0 8px' }}>📦 Archivia {form.name || 'cliente'}</h3>
+                            <h3 style={{ margin: '0 0 8px' }}>Archivia {form.name || 'cliente'}</h3>
 
                             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5, margin: '0 0 12px' }}>
                                 Sparisce da Kanban, elenchi e attività, ma non viene cancellato: lo ritrovi in 📦 Archivio e puoi ripristinarlo. Le rate non pagate restano tra quelle scadute.
@@ -3138,7 +3139,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                     ) : (
 
-                        <button className="btn btn-ghost" onClick={() => { setArchiveKind(form.status === 'prospect' ? 'lost' : 'closed'); setArchiveReason(''); setShowArchive(true); }}>📦 Archivia</button>
+                        <button className="btn btn-ghost" onClick={() => { setArchiveKind(form.status === 'prospect' ? 'lost' : 'closed'); setArchiveReason(''); setShowArchive(true); }}><Archive size={16} strokeWidth={1.75} aria-hidden="true" /> Archivia</button>
 
                     ))}
 
@@ -3206,7 +3207,7 @@ export default function CustomerDetail({ customer, allTags, settings, onSave, on
 
                                     onClick={() => confirmDelete('customer', form.id)}>
 
-                                    🗑 Elimina Cliente
+                                    <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" /> Elimina cliente
 
                                 </button>
 
@@ -3317,7 +3318,7 @@ const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCo
             {form.archivedAt && (
 
                 <div style={{ background: 'var(--warning-bg)', color: 'var(--warning)', borderRadius: 10, padding: '10px 14px', fontSize: '0.82rem', marginBottom: 14 }}>
-                    📦 Archiviato il {new Date(form.archivedAt).toLocaleDateString('it-IT')} · {archiveKindLabel(form.archiveKind)}{form.archiveReason ? ` · ${form.archiveReason}` : ''}. Usa «Ripristina» in basso per riportarlo tra i clienti attivi.
+                    Archiviato il {new Date(form.archivedAt).toLocaleDateString('it-IT')} · {archiveKindLabel(form.archiveKind)}{form.archiveReason ? ` · ${form.archiveReason}` : ''}. Usa «Ripristina» in basso per riportarlo tra i clienti attivi.
                 </div>
 
             )}
@@ -3396,7 +3397,7 @@ const GeneralSection = React.memo(({ form, update, updateWith, formatPhone, onCo
 
                 <div className="detail-group">
 
-                    <label className="input-label">Sito Web 🌐</label>
+                    <label className="input-label">Sito web</label>
 
                     <DebouncedInput
 

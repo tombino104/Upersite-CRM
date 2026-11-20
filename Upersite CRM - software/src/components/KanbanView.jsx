@@ -1,11 +1,12 @@
 import { useState, useRef, memo } from 'react';
 import CustomerCard from './CustomerCard';
+import { Target, Cog, CirclePause, CircleCheck, TriangleAlert } from 'lucide-react';
 
 const COLUMNS = [
-  { id: 'prospect', label: 'Prospect', icon: '🎯', color: 'var(--kanban-prospect)' },
-  { id: 'working', label: 'In lavorazione', icon: '⚙️', color: 'var(--kanban-working)' },
-  { id: 'paused', label: 'Sospeso', icon: '⏸️', color: 'var(--kanban-paused)' },
-  { id: 'completed', label: 'Completato', icon: '✅', color: 'var(--kanban-completed)' },
+  { id: 'prospect', label: 'Prospect', icon: Target, color: 'var(--kanban-prospect)' },
+  { id: 'working', label: 'In lavorazione', icon: Cog, color: 'var(--kanban-working)' },
+  { id: 'paused', label: 'Sospeso', icon: CirclePause, color: 'var(--kanban-paused)' },
+  { id: 'completed', label: 'Completato', icon: CircleCheck, color: 'var(--kanban-completed)' },
 ];
 
 const KanbanView = memo(({ customers, onSelectCustomer, onUpdateCustomerStatus }) => {
@@ -97,7 +98,7 @@ const KanbanView = memo(({ customers, onSelectCustomer, onUpdateCustomerStatus }
         >
           <div className="kanban-column-header">
             <div className="kanban-column-indicator" style={{ background: col.color }} />
-            <span className="kanban-column-icon">{col.icon}</span>
+            <span className="kanban-column-icon"><col.icon size={15} strokeWidth={1.9} aria-hidden="true" /></span>
             <h3 className="kanban-column-title">{col.label}</h3>
             <span className="kanban-column-count">{grouped[col.id].length}</span>
           </div>
@@ -138,7 +139,7 @@ const KanbanView = memo(({ customers, onSelectCustomer, onUpdateCustomerStatus }
         return (
           <div className="modal-overlay animate-fade-in" style={{ zIndex: 2200 }} onClick={() => setPaymentWarning(null)}>
             <div className="modal-content animate-scale-in" style={{ maxWidth: '420px', padding: '32px', borderTop: '4px solid var(--danger)' }} onClick={e => e.stopPropagation()}>
-              <div style={{ fontSize: '3rem', textAlign: 'center', marginBottom: '8px' }}>⚠️</div>
+              <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--danger)', marginBottom: '8px' }}><TriangleAlert size={40} strokeWidth={1.6} aria-hidden="true" /></div>
               <h3 style={{ textAlign: 'center', color: 'var(--danger)', margin: '0 0 12px 0', fontSize: '1.1rem' }}>
                 Rate in Sospeso!
               </h3>
@@ -208,7 +209,7 @@ const KanbanView = memo(({ customers, onSelectCustomer, onUpdateCustomerStatus }
         }
 
         .kanban-column-indicator { width: 4px; height: 20px; border-radius: 2px; }
-        .kanban-column-icon { font-size: 0.875rem; }
+        .kanban-column-icon { display: inline-flex; color: var(--text-secondary); }
         .kanban-column-title { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); flex: 1; }
 
         .kanban-column-count {

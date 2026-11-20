@@ -1,4 +1,5 @@
 import { useMemo, memo } from 'react';
+import { Users, Wallet, CreditCard, TriangleAlert } from 'lucide-react';
 
 const StatsHeader = memo(({ customers, onOpenCharts, onOpenClients, onOpenOverdue, onSelectCustomer, onOpenTransactions }) => {
   const stats = useMemo(() => {
@@ -66,7 +67,7 @@ const StatsHeader = memo(({ customers, onOpenCharts, onOpenClients, onOpenOverdu
   return (
     <div className="stats-header">
       <div className="stat-card" onClick={onOpenClients} style={{ cursor: 'pointer' }} title="Vedi tutti i clienti">
-        <div className="stat-icon" style={{ background: 'var(--primary-ghost)', color: 'var(--primary)' }}>👥</div>
+        <div className="stat-icon" style={{ background: 'var(--primary-ghost)', color: 'var(--primary)' }}><Users size={20} strokeWidth={1.75} aria-hidden="true" /></div>
         <div className="stat-info">
           <span className="stat-value">{stats.customerCount}</span>
           <span className="stat-label">Clienti</span>
@@ -74,7 +75,7 @@ const StatsHeader = memo(({ customers, onOpenCharts, onOpenClients, onOpenOverdu
       </div>
 
       <div className="stat-card" onClick={() => onOpenCharts('all')} style={{ cursor: 'pointer' }} title="Vedi grafici finanziari">
-        <div className="stat-icon" style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>💰</div>
+        <div className="stat-icon" style={{ background: 'var(--success-bg)', color: 'var(--success)' }}><Wallet size={20} strokeWidth={1.75} aria-hidden="true" /></div>
         <div className="stat-info">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <span className="stat-value" style={{ fontSize: '1rem' }}>
@@ -88,7 +89,7 @@ const StatsHeader = memo(({ customers, onOpenCharts, onOpenClients, onOpenOverdu
       </div>
 
       <div className="stat-card" onClick={onOpenTransactions} style={{ cursor: 'pointer' }} title="Vedi movimenti recenti">
-        <div className="stat-icon" style={{ background: 'var(--info-bg)', color: 'var(--info)' }}>💳</div>
+        <div className="stat-icon" style={{ background: 'var(--info-bg)', color: 'var(--info)' }}><CreditCard size={20} strokeWidth={1.75} aria-hidden="true" /></div>
         <div className="stat-info">
           <span className="stat-value">{recentTransactions.length}</span>
           <span className="stat-label">Transazioni Recenti</span>
@@ -101,7 +102,7 @@ const StatsHeader = memo(({ customers, onOpenCharts, onOpenClients, onOpenOverdu
             background: stats.overdueCount > 0 ? 'var(--danger-bg)' : 'var(--warning-bg)',
             color: stats.overdueCount > 0 ? 'var(--danger)' : '#C24E36'
           }}>
-          ⚠️
+          <TriangleAlert size={20} strokeWidth={1.75} aria-hidden="true" />
         </div>
         <div className="stat-info">
           <span className="stat-value">{stats.overdueCount}</span>

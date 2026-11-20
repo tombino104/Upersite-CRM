@@ -3,6 +3,7 @@ import { generateText, normalizeAISettings, applyAISettings, describeChoice, fin
 import AIModelPicker from './AIModelPicker';
 import { buildCrmContext } from '../utils/chatContext';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
+import { X, MessageSquare } from 'lucide-react';
 
 const WELCOME_MESSAGE = {
     role: 'model',
@@ -303,7 +304,7 @@ ${JSON.stringify(dbSummary)}`;
                 onClick={() => setIsOpen(!isOpen)}
                 title="Assistente AI"
             >
-                {isOpen ? '✕' : '✨'}
+                {isOpen ? <X size={22} strokeWidth={2} aria-hidden="true" /> : <MessageSquare size={22} strokeWidth={1.9} aria-hidden="true" />}
             </button>
 
             {/* CHAT WINDOW */}
@@ -312,7 +313,7 @@ ${JSON.stringify(dbSummary)}`;
                 {/* HEADER */}
                 <div className="gemini-header">
                     <div className="gemini-header-info">
-                        <span className="gemini-avatar">🪄</span>
+                        <span className="gemini-avatar"><MessageSquare size={18} strokeWidth={1.9} aria-hidden="true" /></span>
                         <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>Upersite AI</div>
 
@@ -402,7 +403,7 @@ ${JSON.stringify(dbSummary)}`;
                 <div className="gemini-body" onClick={() => { if (showModelMenu) setShowModelMenu(false); if (showSettings) setShowSettings(false); }}>
                     {/* HISTORY PANEL */}
                     <div className={`gemini-history-panel ${showHistory ? 'visible' : ''}`}>
-                        <div className="gemini-history-title">💬 Sessioni precedenti</div>
+                        <div className="gemini-history-title">Sessioni precedenti</div>
                         {chatHistory.length === 0 ? (
                             <div className="gemini-history-empty">Nessuna chat salvata</div>
                         ) : (
@@ -432,7 +433,7 @@ ${JSON.stringify(dbSummary)}`;
 
                     {/* SETTINGS PANEL */}
                     <div className={`gemini-history-panel ${showSettings ? 'visible' : ''}`} style={{ right: '0', left: 'auto' }}>
-                        <div className="gemini-history-title">⚙️ Impostazioni e Limiti</div>
+                        <div className="gemini-history-title">Impostazioni e limiti</div>
                         
                         <div style={{ padding: '16px', fontSize: '0.78rem' }}>
                             <div style={{ marginBottom: '16px' }}>

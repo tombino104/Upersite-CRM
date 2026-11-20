@@ -31,6 +31,7 @@ import { encryptPlainCredentials, clearCredentialKeys } from './utils/credential
 import { APP_VERSION, formatVersionDisplay, copyVersionToClipboard } from './utils/version';
 import { syncAISettings, setAIUsageListener, normalizeAISettings } from './utils/aiClient';
 import { recordUsage } from './utils/aiUsage';
+import { User, SquareCheck, Euro, TriangleAlert } from 'lucide-react';
 
 /* ── Notification Component (Hoisted/Top-level) ── */
 const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggleRead, customers, setSelectedCustomer }) => {
@@ -73,7 +74,7 @@ const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggle
       {isOpen && (
         <div className="app-dropdown animate-scale-in" style={{ top: '44px', left: '-280px', width: '350px', padding: '0' }}>
           <div style={{ padding: '12px 16px', background: 'var(--bg-input)', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h4 style={{ margin: 0, fontSize: '0.85rem' }}>📢 Notifiche Aggiornate</h4>
+            <h4 style={{ margin: 0, fontSize: '0.85rem' }}>Notifiche aggiornate</h4>
             {count > 0 && (
               <span style={{ fontSize: '0.7rem', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }} onClick={() => {
                 notifications.forEach(n => {
@@ -110,7 +111,7 @@ const NotificationBell = memo(({ count, isOpen, setIsOpen, notifications, toggle
                   transition: 'all 0.2s'
                 }}>
                 <div style={{ fontSize: '1.2rem', marginTop: '2px' }}>
-                  {n.type === 'todo' ? '☑️' : '💶'}
+                  {n.type === 'todo' ? <SquareCheck size={16} strokeWidth={1.75} aria-hidden="true" /> : <Euro size={16} strokeWidth={1.75} aria-hidden="true" />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
@@ -682,7 +683,7 @@ export default function App() {
           background: 'var(--danger)', color: '#fff', padding: '12px 16px', borderRadius: 'var(--radius-md)',
           boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '0.875rem', fontWeight: 600
         }}>
-          <span style={{ flex: 1 }}>⚠️ {saveIssue.message}</span>
+          <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}><TriangleAlert size={18} strokeWidth={1.75} aria-hidden="true" /> {saveIssue.message}</span>
           {saveIssue.status === 'conflict' && (
             <button className="btn btn-sm" style={{ background: '#fff', color: 'var(--danger)', flexShrink: 0 }}
               onClick={() => window.location.reload()}>
@@ -709,7 +710,7 @@ export default function App() {
               onClick={() => setShowUserProfile(true)}
               title="Profilo Utente"
             >
-              👤
+              <User size={20} strokeWidth={1.75} aria-hidden="true" />
             </button>
             <button
               className="btn btn-ghost btn-icon-sm"
