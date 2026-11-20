@@ -11,6 +11,25 @@
 
 **Versione:** 2.0.0-stable · [Cronologia](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Pipeline dei clienti in vista Kanban, con statistiche e rate scadute" width="900">
+</p>
+
+## Come si presenta
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/cliente-pagamenti.png" alt="Scheda cliente, sezione Pagamenti con rate e preventivi"><br><sub><b>Scheda cliente</b>: pagamenti, rate, preventivi, task, note e accessi.</sub></td>
+    <td width="50%"><img src="docs/screenshots/panoramica.png" alt="Panoramica del business con grafico a radar e situazione finanziaria"><br><sub><b>Panoramica del business</b>: incassi, crediti aperti e stato dei clienti.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/screenshots/mobile.png" alt="Il CRM su telefono, con la barra di navigazione in basso" width="260"><br><sub><b>Da telefono</b>: stessa app, con la navigazione in basso.</sub></td>
+    <td width="50%" align="center"><img src="docs/screenshots/login.png" alt="Schermata di accesso con password master"><br><sub><b>Accesso</b>: password master verificata dal server.</sub></td>
+  </tr>
+</table>
+
+<sub>Le immagini mostrano dati inventati.</sub>
+
 ## Cosa fa
 
 - **Clienti** in vista Kanban (Prospect → In lavorazione → Completato → Sospeso), lista e tabella, con tag, logo e ricerca
