@@ -1177,7 +1177,7 @@ export default function App() {
         settingsOpen={showSettings}
       />
 
-      {/* Pulsanti tondi in basso a sinistra: ordine e menu ⋯ si scelgono in Impostazioni → Pulsanti */}
+      {/* Barra degli strumenti in basso: ordine e menu ⋯ si scelgono in Impostazioni → Pulsanti */}
       <FloatingDock
         layout={resolveDock(settings.dock)}
         actions={{
@@ -1369,7 +1369,7 @@ export default function App() {
         /* ── Main Content ── */
         .app-main {
           flex: 1;
-          padding: 24px;
+          padding: 24px 24px 88px;
           max-width: 1440px;
           margin: 0 auto;
           width: 100%;
@@ -1418,13 +1418,9 @@ export default function App() {
             display: none;
           }
 
-          /* Spazio in fondo per non finire sotto i pulsanti in basso */
-          .app-main {
-            padding-bottom: 96px;
-          }
 
           .app-main {
-            padding: 16px;
+            padding: 16px 16px 96px;
           }
         }
         .notification-item:hover {

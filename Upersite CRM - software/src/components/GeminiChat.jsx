@@ -579,7 +579,7 @@ ${JSON.stringify(dbSummary)}`;
 
                 /* Telefono: pulsante più piccolo, sopra la barra dei pulsanti; finestra larga quanto lo schermo */
                 @media (max-width: 768px) {
-                    .gemini-chat-root { bottom: 72px; right: 12px; }
+                    .gemini-chat-root { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); right: 12px; }
                     .gemini-fab { width: 46px; height: 46px; font-size: 1.25rem; }
                     .gemini-window { width: calc(100vw - 24px); height: min(600px, calc(100vh - 150px)); bottom: 58px; }
                 }

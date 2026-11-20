@@ -2,7 +2,7 @@ import {
   IconAutomations, IconMonitor, IconAnalytics, IconCalculator, IconLeads, IconArchive, IconToolbox,
 } from './dockIcons';
 
-// Pulsanti tondi in basso a sinistra: elenco, icone e disposizione scelta nelle Impostazioni (settings.dock).
+// Barra degli strumenti in basso: elenco, icone e disposizione scelta nelle Impostazioni (settings.dock).
 
 // L'ordine di questo elenco è la disposizione predefinita (da sinistra a destra)
 export const DOCK_ITEMS = [

@@ -35,14 +35,16 @@ Al primo avvio crei la **password master**. È l'unica chiave del CRM e cifra an
 ### Riquadri dei numeri
 Clic su **Clienti** apre la tabella dati (filtrabile); su **Incassato / Da incassare** i grafici dei guadagni; su **Transazioni recenti** gli ultimi pagamenti; su **Rate scadute** l'elenco da sollecitare.
 
-### Pulsanti tondi in basso
-- ⚡ viola: **Automazioni**
-- 🟩 verde: **Monitoraggio** dei siti (UptimeRobot)
-- 📊 blu: **Panoramica business** (liquidità, crediti aperti, produzione, qualità dei dati)
-- 🧮 arancione: **Calcolatore preventivi**
-- 🧲 verde acqua: **Pipeline prospect** (trattative in corso)
-- 📦 grigio: **Archivio clienti**
-- ✨ in basso a destra: **Assistente AI**, che conosce i tuoi clienti e risponde alle domande
+### Barra degli strumenti in basso
+Su computer è la barra in basso a sinistra; sul telefono è la barra di navigazione in fondo allo schermo (i primi 4 pulsanti, gli altri nel menu ⋯ «Altro»). Ordine e menu si scelgono in Impostazioni → Pulsanti.
+- **Automazioni**
+- **Monitoraggio** dei siti (UptimeRobot)
+- **Panoramica business** (liquidità, crediti aperti, produzione, qualità dei dati)
+- **Calcolatore preventivi**
+- **Pipeline prospect** (trattative in corso)
+- **Archivio clienti**
+- **Cassetta degli attrezzi**
+- Il fumetto in basso a destra apre l'**Assistente AI**, che conosce i tuoi clienti e risponde alle domande
 `,
     },
     {

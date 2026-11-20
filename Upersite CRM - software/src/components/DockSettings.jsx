@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { DOCK_ITEM_BY_ID, DEFAULT_DOCK, resolveDock } from './dockItems.js';
 
-// Impostazioni → Pulsanti: ordine dei pulsanti tondi in basso a sinistra e quali stanno nel menu ⋯
+// Impostazioni → Pulsanti: ordine dei pulsanti della barra in basso e quali stanno nel menu ⋯
 
 const LISTS = [
   { key: 'main', title: 'In barra', hint: 'Sempre visibili, nell’ordine da sinistra a destra' },
-  { key: 'more', title: 'Nel menu ⋯', hint: 'Escono verso l’alto cliccando il pallino con i tre puntini' },
+  { key: 'more', title: 'Nel menu ⋯', hint: 'Si aprono dal pulsante ⋯ alla fine della barra' },
 ];
 
 const css = `
@@ -65,7 +65,7 @@ export default function DockSettings({ settings, updateSettings }) {
       <style>{css}</style>
       <h3 style={{ margin: '0 0 6px' }}>Pulsanti in basso a sinistra</h3>
       <p style={{ margin: '0 0 16px', fontSize: '.85rem', color: 'var(--text-secondary)' }}>
-        Trascina i pulsanti per cambiarne l’ordine, oppure da una lista all’altra per metterli nel menu <b>⋯</b>. Quelli nel menu escono verso l’alto, uno dopo l’altro, quando clicchi il pallino con i tre puntini. Le modifiche si vedono subito.
+        Trascina i pulsanti per cambiarne l’ordine, oppure da una lista all’altra per metterli nel menu <b>⋯</b>. Quelli nel menu si aprono dal pulsante ⋯ alla fine della barra. Sul telefono la barra mostra i primi 4 pulsanti e mette gli altri nel menu. Le modifiche si vedono subito.
       </p>
 
       <div className="dk-grid">
