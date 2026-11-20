@@ -8,6 +8,7 @@ import { createAiProxy } from './aiProxy.js'
 import { createAuth } from './auth.js'
 import { isEnabled as encryptionEnabled, isEncrypted, encrypt, decryptIfNeeded, protect } from './vault.js'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import process from 'process'
 import { Buffer } from 'buffer'
@@ -599,6 +600,54 @@ function encryptExistingFiles() {
 }
 
 // Prepara le cartelle all'avvio (sposta le vecchie cartelle dei backup in Dati/)
+// ── Cartelle: backup predefinito e cartelle che si possono sfogliare dalle Impostazioni ──
+//   CRM_BACKUP_DIR    cartella dei backup usata finché non se ne sceglie un'altra (Docker: /backups)
+//   CRM_BROWSE_ROOTS  cartelle che "Sfoglia…" può mostrare, separate da ":" (";" su Windows)
+//                     (Docker: /backups e /cartelle, dove montare le cartelle di Umbrel). Default: la cartella utente.
+const DEFAULT_BACKUP_DIR = process.env.CRM_BACKUP_DIR ? path.resolve(process.env.CRM_BACKUP_DIR) : null
+
+function browseRoots() {
+  const list = process.env.CRM_BROWSE_ROOTS
+    ? process.env.CRM_BROWSE_ROOTS.split(path.delimiter)
+    : [DEFAULT_BACKUP_DIR, os.homedir()]
+  const seen = new Set()
+  return list.filter(Boolean).map(p => path.resolve(p))
+    .filter(p => !seen.has(p) && seen.add(p) && statKind(p) === 'directory')
+}
+
+function defaultBackupDir() {
+  return DEFAULT_BACKUP_DIR && statKind(DEFAULT_BACKUP_DIR) === 'directory' ? DEFAULT_BACKUP_DIR : null
+}
+
+// Cartella dentro una delle cartelle consentite, altrimenti errore
+function insideBrowseRoot(target) {
+  const full = path.resolve(String(target || ''))
+  const root = browseRoots().find(r => full === r || full.startsWith(r + path.sep))
+  if (!root) throw Object.assign(new Error('Cartella non consentita'), { status: 403 })
+  return { full, root }
+}
+
+function listDirs(target) {
+  const roots = browseRoots()
+  if (!target) return { path: null, parent: null, dirs: [], roots }
+  const { full, root } = insideBrowseRoot(target)
+  if (statKind(full) !== 'directory') throw Object.assign(new Error('La cartella non esiste'), { status: 404 })
+  const dirs = fs.readdirSync(full, { withFileTypes: true })
+    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    .map(e => e.name)
+    .sort((a, b) => a.localeCompare(b, 'it'))
+  return { path: full, parent: full === root ? null : path.dirname(full), dirs, roots }
+}
+
+function makeDir(parent, name) {
+  const { full } = insideBrowseRoot(parent)
+  const clean = safeName(name, '')
+  if (!clean) throw Object.assign(new Error('Nome della cartella non valido'), { status: 400 })
+  const target = path.join(full, clean)
+  fs.mkdirSync(target, { recursive: true })
+  return { path: target }
+}
+
 export function initApi() {
   // Se i dati sono cifrati ma la chiave manca o è sbagliata ci si ferma subito, con un messaggio chiaro
   if (fs.existsSync(STORAGE_FILE)) readStoredBuffer(STORAGE_FILE)
@@ -625,6 +674,8 @@ export function createApiMiddleware() {
           // Tutto il resto delle API richiede la sessione (o il primo avvio, senza password master)
           if (!auth.isAllowed(req)) {
             res.statusCode = 401;
+            // Distingue la sessione scaduta da altri 401 (es. chiave di un servizio AI non valida)
+            res.setHeader('X-CRM-Auth', 'required');
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: 'Accesso richiesto' }));
             return;
@@ -638,7 +689,18 @@ export function createApiMiddleware() {
             return;
           }
           const revision = getRevision();
-          const data = readStoredText(STORAGE_FILE);
+          let data = readStoredText(STORAGE_FILE);
+          // Se non è stata scelta una cartella dei backup si propone quella predefinita (Docker: /backups);
+          // l'app la salva al primo salvataggio, quindi i backup funzionano senza impostare nulla
+          const fallback = defaultBackupDir();
+          if (fallback) {
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed && typeof parsed === 'object' && !parsed.settings?.backupPath) {
+                data = JSON.stringify({ ...parsed, settings: { ...(parsed.settings || {}), backupPath: fallback } }, null, 2);
+              }
+            } catch { /* file non leggibile come JSON: si manda com'è */ }
+          }
           res.setHeader('Content-Type', 'application/json');
           res.setHeader('X-CRM-Revision', revision);
           res.end(data);
@@ -681,7 +743,8 @@ export function createApiMiddleware() {
               if (current.settings?.calcStorage) settings.calcStorage = current.settings.calcStorage;
               const changed = JSON.stringify(settings.backupPath) !== JSON.stringify(parsed.settings?.backupPath)
                 || JSON.stringify(settings.calcStorage) !== JSON.stringify(parsed.settings?.calcStorage);
-              writeStored(STORAGE_FILE, changed ? JSON.stringify({ ...parsed, settings }) : body);
+              // Sempre con a capo e indentazione, così il file (e l'export) si legge
+              writeStored(STORAGE_FILE, JSON.stringify(changed ? { ...parsed, settings } : parsed, null, 2));
               res.end(JSON.stringify({ success: true }));
             } catch {
               res.statusCode = 400;
@@ -835,6 +898,28 @@ export function createApiMiddleware() {
               sendError(res, e);
             }
           });
+        } else if (req.url.startsWith('/api/fs/dirs') && req.method === 'GET') {
+          // Elenco delle sottocartelle (solo dentro le cartelle consentite)
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            const q = new URL(req.url, 'http://localhost').searchParams;
+            res.end(JSON.stringify({ ...listDirs(q.get('path')), defaultBackup: defaultBackupDir() }));
+          } catch (e) {
+            sendError(res, e);
+          }
+        } else if (req.url === '/api/fs/mkdir' && req.method === 'POST') {
+          if (rejectForeignRequest(req, res)) return;
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', () => {
+            res.setHeader('Content-Type', 'application/json');
+            try {
+              const { path: parent, name } = JSON.parse(body || '{}');
+              res.end(JSON.stringify(makeDir(parent, name)));
+            } catch (e) {
+              sendError(res, e);
+            }
+          });
         } else if (req.url === '/api/storage' && req.method === 'POST') {
           if (rejectForeignRequest(req, res)) return;
           let body = '';
@@ -852,7 +937,8 @@ export function createApiMiddleware() {
                 res.end(JSON.stringify({ error: "Il file dati è stato modificato da un'altra finestra" }));
                 return;
               }
-              writeStored(STORAGE_FILE, body);
+              // Il browser manda il JSON compatto: si salva con a capo e indentazione, così il file (e l'export) si legge
+              writeStored(STORAGE_FILE, JSON.stringify(parsed, null, 2));
               res.end(JSON.stringify({ success: true, revision: getRevision() }));
             } catch (e) {
               res.statusCode = 400;

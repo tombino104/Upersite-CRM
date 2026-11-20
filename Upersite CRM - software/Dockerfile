@@ -16,7 +16,9 @@ LABEL org.opencontainers.image.title="Upersite CRM" \
 ENV NODE_ENV=production \
     PORT=3000 \
     HOST=0.0.0.0 \
-    CRM_DATA_DIR=/data
+    CRM_DATA_DIR=/data \
+    CRM_BACKUP_DIR=/backups \
+    CRM_BROWSE_ROOTS=/backups:/cartelle
 WORKDIR /app
 
 COPY package.json ./

@@ -46,12 +46,13 @@ export async function serverLogout() {
     } catch { /* server non raggiungibile: la sessione scade da sola */ }
 }
 
-// Se il server risponde "accesso richiesto" (sessione scaduta o server riavviato) si torna alla schermata di login
+// Se il server risponde "accesso richiesto" (sessione scaduta o server riavviato) si torna alla schermata di login.
+// Solo con l'intestazione X-CRM-Auth: un 401 di un servizio esterno (es. chiave AI non valida) non c'entra.
 export function installAuthGuard() {
     const originalFetch = window.fetch.bind(window);
     window.fetch = async (...args) => {
         const response = await originalFetch(...args);
-        if (response.status === 401) {
+        if (response.status === 401 && response.headers.get('X-CRM-Auth') === 'required') {
             try {
                 const url = new URL(typeof args[0] === 'string' ? args[0] : args[0].url, window.location.href);
                 if (url.origin === window.location.origin && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth/')) {

@@ -9,7 +9,7 @@
   Si installa con Docker sul tuo server e si usa dal browser. I dati restano tuoi, cifrati sul tuo disco.
 </p>
 
-**Versione:** 2.0.1-stable · [Cronologia](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
+**Versione:** 2.0.2-stable · [Cronologia](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="Pipeline dei clienti in vista Kanban, con statistiche e rate scadute" width="900">
@@ -88,6 +88,8 @@ Dati, backup e chiavi non finiscono mai nell'immagine né su git.
 | `CRM_SESSION_HOURS` | `12` | Ore di inattività dopo cui la sessione scade |
 | `CRM_TRUST_PROXY` | `0` | Mettilo a `1` dietro Tailscale o Cloudflare Tunnel, così il blocco dopo i tentativi sbagliati vale per chi prova davvero |
 | `AI_ENV_FILE` | `<dati>/.env.local` | File con le chiavi dei servizi AI |
+| `CRM_BACKUP_DIR` | `/backups` | Cartella dei backup usata finché non se ne sceglie un'altra nelle Impostazioni |
+| `CRM_BROWSE_ROOTS` | `/backups:/cartelle` | Cartelle che «Sfoglia…» può mostrare (separate da `:`). In `/cartelle` monti le cartelle in più |
 
 ### Aggiornare
 
@@ -111,6 +113,20 @@ ghcr.io/tombino104/upersite-crm:<versione>
 ```
 
 Nel `docker-compose.yml` di un'app Umbrel mappa `/data` e `/backups` su cartelle dell'app e passa `CRM_ENCRYPTION_KEY`.
+
+I backup vanno da soli in `/backups`. Per salvarli in una cartella di Umbrel (Home, disco esterno o di rete), su umbrelOS 2.0 aggiungi al manifest dell'app una cartella in `folderAccess` montata in `/cartelle`:
+
+```yaml
+folderAccess:
+  - id: backup-folder
+    name: Cartella dei backup
+    note: Scegli una cartella; nel CRM la trovi in /cartelle con «Sfoglia…» (Impostazioni → Backup e dati).
+    mounts:
+      - service: web
+        targetPath: /cartelle
+```
+
+Poi nelle impostazioni dell'app su Umbrel scegli la cartella, e nel CRM la selezioni con **Sfoglia…**.
 
 ## Sicurezza
 
@@ -171,8 +187,8 @@ Formato `Major.Minor.Patch-stato` (`alpha`, `beta`, `stable`). Quando cambi vers
 Per pubblicare l'immagine Docker:
 
 ```bash
-git tag v2.0.1-stable
-git push origin v2.0.1-stable
+git tag v2.0.2-stable
+git push origin v2.0.2-stable
 ```
 
-Il workflow `.github/workflows/docker-image.yml` costruisce l'immagine per amd64 e arm64 e la pubblica su `ghcr.io/tombino104/upersite-crm` con i tag `v2.0.1-stable`, `2.0.1-stable` e `latest`. Dopo la prima pubblicazione controlla su GitHub (Packages) che il pacchetto sia pubblico.
+Il workflow `.github/workflows/docker-image.yml` costruisce l'immagine per amd64 e arm64 e la pubblica su `ghcr.io/tombino104/upersite-crm` con i tag `v2.0.2-stable`, `2.0.2-stable` e `latest`. Dopo la prima pubblicazione controlla su GitHub (Packages) che il pacchetto sia pubblico.

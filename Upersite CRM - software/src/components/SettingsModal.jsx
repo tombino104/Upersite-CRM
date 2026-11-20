@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { getMasterPassword, verifyMasterPassword, setMasterPassword, exportData, importData, formatBytes, getStorageInfo } from '../utils/storage';
 import { reencryptCredentials } from '../utils/credentialVault';
+import FolderPicker from './FolderPicker';
 import { APP_VERSION, formatVersionDisplay } from '../utils/version';
 import AISettingsSection from './AISettingsSection';
 import CalculatorSettings from './CalculatorSettings';
@@ -203,6 +204,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [showFolderPicker, setShowFolderPicker] = useState(false);
     const [backupSuccess, setBackupSuccess] = useState('');
     const [importSuccess, setImportSuccess] = useState('');
     const [realSize, setRealSize] = useState(null);
@@ -512,11 +514,21 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div className="detail-group">
                                         <label className="input-label">Percorso Backup Automatico</label>
-                                        <input type="text" className="input"
-                                            value={settings.backupPath || ''}
-                                            onChange={e => updateSettings({ backupPath: e.target.value })}
-                                            placeholder="C:\Users\...\Backup" />
-                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Cartella dove verranno creati i backup datati: contiene solo le cartelle con data, ognuna con il file dati e una copia di <strong>Preventivi</strong> e <strong>Calcolatore</strong>. Gli originali di lavoro stanno nella cartella <strong>Dati</strong> del CRM.</span>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input type="text" className="input" style={{ flex: 1 }}
+                                                value={settings.backupPath || ''}
+                                                onChange={e => updateSettings({ backupPath: e.target.value })}
+                                                placeholder="/backups" />
+                                            <button type="button" className="btn btn-secondary" onClick={() => setShowFolderPicker(true)}>Sfoglia…</button>
+                                        </div>
+                                        {showFolderPicker && (
+                                            <FolderPicker
+                                                initialPath={settings.backupPath || ''}
+                                                onClose={() => setShowFolderPicker(false)}
+                                                onSelect={p => { updateSettings({ backupPath: p }); setShowFolderPicker(false); }}
+                                            />
+                                        )}
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Su Umbrel la cartella predefinita è <strong>/backups</strong>; con «Sfoglia…» puoi sceglierne un'altra, comprese le cartelle di Umbrel montate in <strong>/cartelle</strong>. Cartella dove verranno creati i backup datati: contiene solo le cartelle con data, ognuna con il file dati e una copia di <strong>Preventivi</strong> e <strong>Calcolatore</strong>. Gli originali di lavoro stanno nella cartella <strong>Dati</strong> del CRM.</span>
                                     </div>
 
                                     <button className="btn btn-primary"
