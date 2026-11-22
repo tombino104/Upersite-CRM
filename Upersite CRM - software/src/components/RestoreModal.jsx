@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CRM_REQUEST_HEADERS, verifyMasterPassword, applyBrowserPrefs, getBrowserPrefs } from '../utils/storage';
+import { analyzeFolder, uploadCandidate, discardStage } from '../utils/folderRestore';
 
 // Ripristino da un backup con data (cartella dei backup → gg-mm-aa → backup_ore_*.json + Preventivi + Calcolatore).
 // Prima di ripristinare il server salva sempre lo stato attuale in un backup "prima del ripristino".
@@ -37,6 +38,12 @@ export default function RestoreModal({ onClose }) {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [result, setResult] = useState(null);
+    // Cartella del computer caricata sul server (vedi folderRestore.js): si usa come un backup in più
+    const [imported, setImported] = useState(null);
+    const [choices, setChoices] = useState(null);
+    const [uploading, setUploading] = useState(null);
+    const [folderError, setFolderError] = useState('');
+    const folderInput = useRef(null);
 
     useEffect(() => {
         getJson('/api/restore/list')
@@ -45,8 +52,58 @@ export default function RestoreModal({ onClose }) {
                 const first = data.days[0]?.backups[0];
                 if (first) setSelected({ folder: data.days[0].folder, file: first.file });
             })
-            .catch(err => setListError(err.message));
+            .catch(err => { setListError(err.message); setList({ root: '', days: [] }); });
     }, []);
+
+    const days = useMemo(() => {
+        const saved = list?.days || [];
+        if (!imported) return saved;
+        return [{
+            folder: imported.folder, date: new Date().toISOString().slice(0, 10), imported: true,
+            quotes: imported.quotes, calc: imported.calc,
+            backups: [{ file: imported.file, time: '', size: imported.size, light: false, beforeRestore: false }],
+        }, ...saved];
+    }, [list, imported]);
+
+    const loadCandidate = async (candidate) => {
+        setChoices(null);
+        setFolderError('');
+        setUploading({ done: 0, total: candidate.files.length + 1 });
+        try {
+            if (imported) await discardStage(imported.folder).catch(() => {});
+            const staged = await uploadCandidate(candidate, (done, total) => setUploading({ done, total }));
+            setImported(staged);
+            setInfo(null);
+            setPicked([]);
+            setError('');
+            setSelected({ folder: staged.folder, file: staged.file });
+            if (staged.skipped) setFolderError(`${staged.skipped} file di programma (.exe, .bat…) non sono stati caricati: per sicurezza non vengono ripristinati.`);
+        } catch (err) {
+            setFolderError(err.message);
+        } finally {
+            setUploading(null);
+        }
+    };
+
+    const onFolderPicked = (e) => {
+        const files = e.target.files;
+        setFolderError('');
+        if (!files || !files.length) return;
+        const { candidates, total } = analyzeFolder(files);
+        e.target.value = '';
+        if (!candidates.length) {
+            setFolderError(`Nella cartella scelta (${total} file) non trovo il file dei dati: cerco crm_data.json, un backup_ore_….json o un export upersite-crm-backup-….json.`);
+        } else if (candidates.length === 1) {
+            loadCandidate(candidates[0]);
+        } else {
+            setChoices(candidates);
+        }
+    };
+
+    const close = () => {
+        if (imported && !result) discardStage(imported.folder).catch(() => {});
+        onClose();
+    };
 
     useEffect(() => {
         if (!selected) return;
@@ -58,10 +115,11 @@ export default function RestoreModal({ onClose }) {
     }, [selected]);
 
     useEffect(() => {
-        const onKey = (e) => { if (e.key === 'Escape' && !busy && !result) onClose(); };
+        const onKey = (e) => { if (e.key === 'Escape' && !busy && !uploading && !result) close(); };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [busy, result, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [busy, uploading, result, onClose, imported]);
 
     const selectBackup = (folder, file) => {
         if (selected?.folder === folder && selected?.file === file) return;
@@ -104,19 +162,20 @@ export default function RestoreModal({ onClose }) {
         }
     };
 
-    const selectedBackup = list?.days.find(d => d.folder === selected?.folder)?.backups.find(b => b.file === selected?.file);
+    const selectedBackup = days.find(d => d.folder === selected?.folder)?.backups.find(b => b.file === selected?.file);
+    const selectedDay = days.find(d => d.folder === selected?.folder);
 
     return (
-        <div className="modal-overlay" style={{ zIndex: 2100 }} onClick={e => { if (e.target === e.currentTarget && !busy && !result) onClose(); }}>
+        <div className="modal-overlay" style={{ zIndex: 2100 }} onClick={e => { if (e.target === e.currentTarget && !busy && !uploading && !result) close(); }}>
             <style>{RS_CSS}</style>
             <div className="rs-dialog animate-scale-in">
                 <div className="rs-head">
                     <span className="rs-head-icon">♻️</span>
                     <div style={{ flex: 1 }}>
                         <h3>Ripristina da un backup</h3>
-                        <p>{list ? <>Cartella dei backup: <strong>{list.root}</strong></> : 'Leggo la cartella dei backup…'}</p>
+                        <p>{list ? (list.root ? <>Cartella dei backup: <strong>{list.root}</strong></> : 'Cartella dei backup non disponibile: puoi comunque caricare una cartella dal computer.') : 'Leggo la cartella dei backup…'}</p>
                     </div>
-                    {!result && <button className="rs-close" onClick={onClose} disabled={busy}>✕</button>}
+                    {!result && <button className="rs-close" onClick={close} disabled={busy || !!uploading}>✕</button>}
                 </div>
 
                 {result ? (
@@ -136,19 +195,46 @@ export default function RestoreModal({ onClose }) {
                 ) : (
                     <div className="rs-body">
                         <div className="rs-days">
+                            <div className="rs-upload">
+                                <input ref={folderInput} type="file" webkitdirectory="" directory="" multiple hidden onChange={onFolderPicked} />
+                                <button className="btn btn-secondary" onClick={() => folderInput.current?.click()} disabled={!!uploading}
+                                    title="Scegli una cartella del tuo computer (non serve zipparla): il file dei dati con Preventivi e Calcolatore">
+                                    📂 Da una cartella del computer…
+                                </button>
+                                <span>Anche da Mac o Windows: scegli la cartella con il file .json e le cartelle Preventivi e Calcolatore (o Dati).</span>
+                                {uploading && (
+                                    <div className="rs-progress" role="status">
+                                        <div className="rs-progress-bar"><span style={{ width: `${Math.round(uploading.done / uploading.total * 100)}%` }} /></div>
+                                        Carico {uploading.done} di {uploading.total} file…
+                                    </div>
+                                )}
+                                {folderError && <div className="rs-note error">{folderError}</div>}
+                                {choices && (
+                                    <div className="rs-choices">
+                                        <strong>In quella cartella ci sono {choices.length} backup: quale usare?</strong>
+                                        {choices.slice(0, 40).map(c => (
+                                            <button key={c.key} className="rs-choice" onClick={() => loadCandidate(c)}>
+                                                <span>{c.folderLabel} · {c.dataName}</span>
+                                                <small>{c.modified ? new Date(c.modified).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) + ' · ' : ''}{c.quotes} preventivi · {c.calc} file calcolatore · {mb(c.bytes)}</small>
+                                            </button>
+                                        ))}
+                                        <button className="btn btn-ghost btn-sm" onClick={() => setChoices(null)}>Annulla</button>
+                                    </div>
+                                )}
+                            </div>
                             {listError && <div className="rs-note error">{listError}</div>}
-                            {list && list.days.length === 0 && <div className="rs-empty">Nessun backup nella cartella.</div>}
-                            {list?.days.map(day => (
+                            {list && days.length === 0 && !listError && <div className="rs-empty">Nessun backup nella cartella.</div>}
+                            {days.map(day => (
                                 <div key={day.folder} className={`rs-day ${selected?.folder === day.folder ? 'active' : ''}`}>
-                                    <div className="rs-day-title">{dayLabel(day.date)}</div>
-                                    <div className="rs-day-meta">{day.backups.length} backup · {day.quotes} preventivi · {day.calc} file calcolatore</div>
+                                    <div className="rs-day-title">{day.imported ? 'Cartella caricata dal computer' : dayLabel(day.date)}</div>
+                                    <div className="rs-day-meta">{day.imported ? '' : `${day.backups.length} backup · `}{day.quotes} preventivi · {day.calc} file calcolatore</div>
                                     <div className="rs-times">
                                         {day.backups.map(b => (
                                             <button key={b.file}
                                                 className={`rs-time ${selected?.folder === day.folder && selected?.file === b.file ? 'on' : ''} ${b.beforeRestore ? 'safety' : ''}`}
-                                                title={b.file}
+                                                title={day.imported ? 'Cartella scelta dal computer' : b.file}
                                                 onClick={() => selectBackup(day.folder, b.file)}>
-                                                {b.time.slice(0, 5)}{b.light ? ' · leggero' : ''}{b.beforeRestore ? ' · prima del ripristino' : ''}
+                                                {day.imported ? 'Usa questa cartella' : b.time.slice(0, 5)}{b.light ? ' · leggero' : ''}{b.beforeRestore ? ' · prima del ripristino' : ''}
                                             </button>
                                         ))}
                                     </div>
@@ -162,7 +248,7 @@ export default function RestoreModal({ onClose }) {
                             {info && (
                                 <>
                                     <div className="rs-detail-title">
-                                        {dayLabel(list.days.find(d => d.folder === info.folder).date)} alle {selectedBackup?.time}
+                                        {selectedDay?.imported ? 'Cartella caricata dal computer' : <>{dayLabel(selectedDay.date)} alle {selectedBackup?.time}</>}
                                         {selectedBackup && <span className="rs-size">{mb(selectedBackup.size)}</span>}
                                     </div>
                                     <div className="rs-stats">
@@ -231,7 +317,7 @@ export default function RestoreModal({ onClose }) {
                         <div className="rs-foot-actions">
                             <input type="password" className="input" placeholder="Password master" value={password}
                                 onChange={e => setPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && canRestore) restore(); }} />
-                            <button className="btn btn-secondary" onClick={onClose} disabled={busy}>Annulla</button>
+                            <button className="btn btn-secondary" onClick={close} disabled={busy || !!uploading}>Annulla</button>
                             <button className="btn btn-primary" onClick={restore} disabled={!canRestore}>
                                 {busy ? 'Ripristino…' : mode === 'all' ? 'Ripristina' : `Ripristina ${picked.length || ''} client${picked.length === 1 ? 'e' : 'i'}`}
                             </button>
@@ -307,6 +393,16 @@ const RS_CSS = `
 .rs-customer-text strong { font-size: 0.9rem; color: var(--text-primary); }
 .rs-badge { font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--warning-bg); color: var(--warning); white-space: nowrap; }
 .rs-badge.add { background: var(--success-bg); color: var(--success); }
+.rs-upload { display: flex; flex-direction: column; gap: 6px; padding: 4px 4px 10px; border-bottom: 1px solid var(--border-light); margin-bottom: 4px; }
+.rs-upload > span { font-size: 0.74rem; color: var(--text-tertiary); }
+.rs-upload .rs-note { margin: 2px 0; }
+.rs-progress { font-size: 0.78rem; color: var(--text-secondary); }
+.rs-progress-bar { height: 6px; border-radius: 999px; background: var(--bg-input); overflow: hidden; margin-bottom: 4px; }
+.rs-progress-bar span { display: block; height: 100%; background: var(--primary); transition: width 0.2s; }
+.rs-choices { display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; margin-top: 4px; max-height: 260px; overflow-y: auto; }
+.rs-choice { text-align: left; border: 1px solid var(--border); background: var(--bg-card, #fff); border-radius: 12px; padding: 8px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; color: var(--text-primary); font: inherit; }
+.rs-choice:hover { border-color: var(--primary); }
+.rs-choice small { color: var(--text-tertiary); font-size: 0.72rem; }
 .rs-hint { font-size: 0.78rem; color: var(--text-tertiary); margin-top: 8px; }
 .rs-note { border-radius: 12px; padding: 9px 12px; font-size: 0.84rem; margin: 8px 0; background: var(--bg-input); color: var(--text-secondary); }
 .rs-note.warn { background: var(--warning-bg); color: var(--warning); }

@@ -9,7 +9,7 @@
   Si installa con Docker sul tuo server e si usa dal browser. I dati restano tuoi, cifrati sul tuo disco.
 </p>
 
-**Versione:** 2.0.3-stable · [Cronologia](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
+**Versione:** 2.0.4-stable · [Cronologia](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="Pipeline dei clienti in vista Kanban, con statistiche e rate scadute" width="900">
@@ -41,7 +41,7 @@
 - **Calcolatore preventivi** integrato, con export PDF, Word ed Excel
 - **Automazioni**: editor a nodi per workflow (eventi, condizioni, azioni)
 - **AI** (facoltativa): chat, report sui clienti, riassunti delle note. Servizi locali (LM Studio, Unsloth Studio) o cloud (Ollama Cloud, Google Gemini)
-- **Backup** automatici e ripristino, anche di soli alcuni clienti
+- **Backup** con percorso reale verificato e ripristino, anche di soli alcuni clienti o da una cartella del tuo computer (non serve zipparla)
 
 ## Installazione con Docker
 
@@ -89,7 +89,8 @@ Dati, backup e chiavi non finiscono mai nell'immagine né su git.
 | `CRM_TRUST_PROXY` | `0` | Mettilo a `1` dietro Tailscale o Cloudflare Tunnel, così il blocco dopo i tentativi sbagliati vale per chi prova davvero |
 | `AI_ENV_FILE` | `<dati>/.env.local` | File con le chiavi dei servizi AI |
 | `CRM_BACKUP_DIR` | `/backups` | Cartella dei backup usata finché non se ne sceglie un'altra nelle Impostazioni |
-| `CRM_BROWSE_ROOTS` | `/backups:/cartelle` | Cartelle che «Sfoglia…» può mostrare (separate da `:`). In `/cartelle` monti le cartelle in più |
+| `CRM_BROWSE_ROOTS` | `/backups:/cartelle:/data` | Cartelle che «Sfoglia…» può mostrare (separate da `:`). In `/cartelle` monti le cartelle in più; in `/data` puoi creare una cartella tua accanto ai dati |
+| `CRM_PATH_HINTS` | _(vuoto)_ | Spiega dove si trovano le cartelle sul server, es. `/data=Apps/mia-app/data/data;/backups=Apps/mia-app/data/backups`: l'app lo mostra accanto ai percorsi |
 
 ### Aggiornare
 
@@ -187,8 +188,8 @@ Formato `Major.Minor.Patch-stato` (`alpha`, `beta`, `stable`). Quando cambi vers
 Per pubblicare l'immagine Docker:
 
 ```bash
-git tag v2.0.3-stable
-git push origin v2.0.3-stable
+git tag v2.0.4-stable
+git push origin v2.0.4-stable
 ```
 
-Il workflow `.github/workflows/docker-image.yml` costruisce l'immagine per amd64 e arm64 e la pubblica su `ghcr.io/tombino104/upersite-crm` con i tag `v2.0.3-stable`, `2.0.3-stable` e `latest`. Dopo la prima pubblicazione controlla su GitHub (Packages) che il pacchetto sia pubblico.
+Il workflow `.github/workflows/docker-image.yml` costruisce l'immagine per amd64 e arm64 e la pubblica su `ghcr.io/tombino104/upersite-crm` con i tag `v2.0.4-stable`, `2.0.4-stable` e `latest`. Dopo la prima pubblicazione controlla su GitHub (Packages) che il pacchetto sia pubblico.

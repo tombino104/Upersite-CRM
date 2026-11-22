@@ -112,6 +112,15 @@ const SETTINGS_CSS = `
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    .places-box { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-input); font-size: 0.78rem; }
+    .places-box > strong { font-size: 0.8rem; color: var(--text-primary); }
+    .place-row { display: flex; flex-direction: column; gap: 2px; }
+    .place-label { color: var(--text-tertiary); font-size: 0.72rem; }
+    .place-row code { font-size: 0.78rem; overflow-wrap: anywhere; color: var(--text-primary); }
+    .place-hint { color: var(--text-secondary); font-size: 0.74rem; }
+    .place-status { font-size: 0.74rem; font-weight: 600; }
+    .place-status.ok { color: var(--success); }
+    .place-status.ko, .places-problem { color: var(--danger); font-weight: 600; }
     .settings-subnav {
         display: flex;
         gap: 6px;
@@ -184,6 +193,18 @@ function readStoredTab() {
     }
 }
 
+function PlaceRow({ label, place, status }) {
+    if (!place) return null;
+    return (
+        <div className="place-row">
+            <span className="place-label">{label}</span>
+            <code>{place.path || '—'}</code>
+            {place.hint && <span className="place-hint">Sul server: <strong>{place.hint}</strong></span>}
+            {status && place.path && <span className={`place-status ${place.ok ? 'ok' : 'ko'}`}>{place.ok ? '✓ esiste e si può scrivere' : '✗ non utilizzabile'}</span>}
+        </div>
+    );
+}
+
 export default function SettingsModal({ settings, updateSettings, onClose, setCustomers, customers }) {
     // Scheda aperta: si ricorda l'ultima usata
     const [tab, setTab] = useState(readStoredTab);
@@ -208,6 +229,9 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
     const [backupSuccess, setBackupSuccess] = useState('');
     const [importSuccess, setImportSuccess] = useState('');
     const [realSize, setRealSize] = useState(null);
+    // Dove sono davvero i file (letto dal server) e se la cartella dei backup funziona
+    const [places, setPlaces] = useState(null);
+    const loadPlaces = () => getStorageInfo().then(info => setPlaces(info?.places || null));
 
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [showRestore, setShowRestore] = useState(false);
@@ -219,8 +243,15 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
     useEffect(() => {
         getStorageInfo().then(info => {
             if (info && info.size) setRealSize(info.size);
+            setPlaces(info?.places || null);
         });
     }, []);
+
+    // Cambiando cartella il salvataggio sul server parte dopo un attimo: poi si ricontrolla
+    useEffect(() => {
+        const timer = setTimeout(() => { getStorageInfo().then(info => setPlaces(info?.places || null)); }, 2500);
+        return () => clearTimeout(timer);
+    }, [settings.backupPath]);
 
     const handleChangePassword = async (e) => {
         e.preventDefault();
@@ -528,8 +559,20 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                                 onSelect={p => { updateSettings({ backupPath: p }); setShowFolderPicker(false); }}
                                             />
                                         )}
-                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Su Umbrel la cartella predefinita è <strong>/backups</strong>; con «Sfoglia…» puoi sceglierne un'altra, comprese le cartelle di Umbrel montate in <strong>/cartelle</strong>. Cartella dove verranno creati i backup datati: contiene solo le cartelle con data, ognuna con il file dati e una copia di <strong>Preventivi</strong> e <strong>Calcolatore</strong>. Gli originali di lavoro stanno nella cartella <strong>Dati</strong> del CRM.</span>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Con «Sfoglia…» scegli una cartella che esiste già sul server (o ne crei una nuova); su Umbrel puoi anche collegarne una tua dalle impostazioni dell'app: compare in <strong>/cartelle</strong>. Ogni backup crea una cartella con la data, con dentro il file dati e una copia di <strong>Preventivi</strong> e <strong>Calcolatore</strong>.</span>
                                     </div>
+
+                                    {places && (
+                                        <div className="places-box">
+                                            <strong>Dove si trovano i tuoi file (letto dal server)</strong>
+                                            <PlaceRow label="Dati del CRM" place={places.dataFile} />
+                                            <PlaceRow label="Preventivi e calcolatore (originali)" place={places.filesDir} />
+                                            <PlaceRow label="Cartella dei backup" place={places.backup} status />
+                                            {places.backup && !places.backup.ok && places.backup.problem && (
+                                                <div className="places-problem">⚠️ {places.backup.problem}</div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     <button className="btn btn-primary"
                                         onClick={async () => {
@@ -543,7 +586,9 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                                 const { triggerAutoBackup } = await import('../utils/storage');
                                                 const result = await triggerAutoBackup();
                                                 if (result.success) {
-                                                    setBackupSuccess(`Backup completo in ${result.folder}\\${result.file || ''}${result.dataFiles ? ` · ${result.dataFiles} file (preventivi e calcolatore)` : ''}${result.quotesMissing ? ` · ${result.quotesMissing} preventivi non trovati` : ''}`);
+                                                    const where = result.path ? `${result.path}${result.path.includes('\\') ? '\\' : '/'}${result.file || ''}` : `${result.folder}/${result.file || ''}`;
+                                                    setBackupSuccess(`Backup salvato e verificato sul disco: ${where}${result.hint ? ` (sul server: ${result.hint})` : ''}${result.dataFiles ? ` · ${result.dataFiles} file (preventivi e calcolatore)` : ''}${result.quotesMissing ? ` · ${result.quotesMissing} preventivi non trovati` : ''}`);
+                                                    loadPlaces();
                                                 } else {
                                                     setBackupError(`Errore backup: ${result.error}`);
                                                 }
@@ -558,11 +603,11 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                     {backupSuccess && <div style={{ color: 'var(--success)', fontSize: '0.8rem', fontWeight: 600, marginTop: '8px', textAlign: 'center' }}>✅ {backupSuccess}</div>}
                                     {backupError && <div style={{ color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 600, marginTop: '8px', textAlign: 'center' }}>⚠️ {backupError}</div>}
 
-                                    <button className="btn btn-secondary" onClick={() => setShowRestore(true)} disabled={!settings.backupPath} style={{ width: '100%', justifyContent: 'center' }}>
+                                    <button className="btn btn-secondary" onClick={() => setShowRestore(true)} style={{ width: '100%', justifyContent: 'center' }}>
                                         ♻️ Ripristina da un backup…
                                     </button>
                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '-8px' }}>
-                                        Tutto (dati, preventivi, calcolatore) o solo alcuni clienti. Prima di ripristinare viene salvato lo stato attuale.
+                                        Da un backup salvato qui o da una cartella del tuo computer (anche non zippata, da Mac o Windows). Tutto (dati, preventivi, calcolatore) o solo alcuni clienti. Prima di ripristinare viene salvato lo stato attuale.
                                     </span>
 
                                     <div style={{ height: '1px', background: 'var(--border-light)', margin: '8px 0' }} />

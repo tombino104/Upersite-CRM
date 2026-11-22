@@ -18,7 +18,7 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     CRM_DATA_DIR=/data \
     CRM_BACKUP_DIR=/backups \
-    CRM_BROWSE_ROOTS=/backups:/cartelle
+    CRM_BROWSE_ROOTS=/backups:/cartelle:/data
 WORKDIR /app
 
 COPY package.json ./

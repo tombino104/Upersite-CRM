@@ -7,6 +7,7 @@
 import { createAiProxy } from './aiProxy.js'
 import { createAuth } from './auth.js'
 import { isEnabled as encryptionEnabled, isEncrypted, encrypt, decryptIfNeeded, protect } from './vault.js'
+import crypto from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -352,10 +353,43 @@ function cleanPrefs(prefs) {
   return out
 }
 
-function createBackup(backupPath, { includeFiles = true, suffix = '', prefs = null } = {}) {
-  if (typeof backupPath !== 'string' || !path.isAbsolute(backupPath)) {
-    throw Object.assign(new Error('Il percorso di backup deve essere assoluto'), { status: 400 })
+// Percorsi spiegati in parole semplici: CRM_PATH_HINTS="/data=Apps/mia-app/data/data;/backups=Apps/mia-app/data/backups"
+// (percorso dentro il container = dove lo si trova sul server). Serve solo a dire all'utente dove andare a guardare.
+function pathHint(p) {
+  if (!p) return null
+  const full = path.resolve(p)
+  let best = null
+  for (const part of String(process.env.CRM_PATH_HINTS || '').split(';')) {
+    const i = part.indexOf('=')
+    if (i <= 0) continue
+    const key = path.resolve(part.slice(0, i).trim())
+    if ((full === key || full.startsWith(key + path.sep)) && (!best || key.length > best.key.length)) {
+      best = { key, text: part.slice(i + 1).trim() }
+    }
   }
+  if (!best) return null
+  const rest = path.relative(best.key, full).split(path.sep).filter(Boolean).join('/')
+  return rest ? `${best.text}/${rest}` : best.text
+}
+
+function isInside(parent, child) {
+  const rel = path.relative(path.resolve(parent), path.resolve(child))
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+}
+
+// La cartella dei backup deve esistere davvero, essere scrivibile e stare fuori da Dati (si copierebbe dentro se stessa)
+function checkBackupDir(dir) {
+  if (typeof dir !== 'string' || !dir.trim()) return { ok: false, reason: 'Nessuna cartella dei backup scelta' }
+  if (!path.isAbsolute(dir)) return { ok: false, reason: 'Il percorso di backup deve essere assoluto (es. /backups)' }
+  if (statKind(dir) !== 'directory') return { ok: false, reason: `La cartella ${dir} non esiste sul server: scegline una con «Sfoglia…» o creala` }
+  if (isInside(DATA_DIR, dir)) return { ok: false, reason: 'La cartella dei backup non può stare dentro la cartella Dati: scegline un\'altra' }
+  try { fs.accessSync(dir, fs.constants.W_OK) } catch { return { ok: false, reason: `Il CRM non può scrivere in ${dir} (permessi della cartella)` } }
+  return { ok: true }
+}
+
+function createBackup(backupPath, { includeFiles = true, suffix = '', prefs = null } = {}) {
+  const check = checkBackupDir(backupPath)
+  if (!check.ok) throw Object.assign(new Error(check.reason), { status: 400 })
   if (!fs.existsSync(STORAGE_FILE)) throw Object.assign(new Error('Nessun dato da salvare'), { status: 404 })
   migrateLegacyFolders()
 
@@ -376,6 +410,10 @@ function createBackup(backupPath, { includeFiles = true, suffix = '', prefs = nu
   let file = `backup_ore_${time}${includeFiles ? '' : '_LIGHT'}${suffix}.json`
   for (let i = 2; fs.existsSync(path.join(targetDir, file)); i++) file = file.replace(/(_\d+)?\.json$/, `_${i}.json`)
   writeStored(path.join(targetDir, file), JSON.stringify(backupData, null, 2))
+  // Controllo finale: il file deve esistere davvero sul disco, altrimenti non si dice "salvato"
+  if (statKind(path.join(targetDir, file)) !== 'file' || fs.statSync(path.join(targetDir, file)).size === 0) {
+    throw Object.assign(new Error(`Il backup non risulta scritto in ${targetDir}`), { status: 500 })
+  }
 
   let dataFiles = 0, calcCopied = false, quotesCopied = 0, quotesMissing = 0
   if (includeFiles) {
@@ -401,7 +439,7 @@ function createBackup(backupPath, { includeFiles = true, suffix = '', prefs = nu
       }
     }
   }
-  return { success: true, folder, file, dataFiles, quotesCopied, quotesMissing, calcCopied }
+  return { success: true, folder, file, dataFiles, quotesCopied, quotesMissing, calcCopied, root: backupPath, path: targetDir, hint: pathHint(targetDir) }
 }
 
 // gg-mm-aa → aaaa-mm-gg (senza passare da Date: con il fuso orario il giorno slitterebbe)
@@ -439,7 +477,72 @@ function listBackups() {
   return { root: backupPath, days }
 }
 
+// Cartella caricata dal computer per un ripristino: viene messa da parte in .import/<id> e trattata come un backup
+const STAGING_ROOT = path.join(DATA_ROOT, '.import')
+const STAGE_FOLDER_RE = /^import-[a-f0-9]{16}$/
+const STAGE_FILE = 'backup_ore_00-00-00_IMPORT.json'
+const STAGE_MAX_FILE = 100 * 1024 * 1024
+const STAGE_MAX_DATA = 400 * 1024 * 1024
+const STAGE_MAX_TOTAL = 2 * 1024 * 1024 * 1024
+const STAGE_BLOCKED = new Set(['.exe', '.bat', '.cmd', '.com', '.scr', '.ps1', '.vbs', '.js', '.msi', '.lnk', '.dll', '.sh'])
+const stageBytes = new Map()
+
+function stageDir(id) {
+  if (!/^[a-f0-9]{16}$/.test(String(id || ''))) throw Object.assign(new Error('Caricamento non valido'), { status: 400 })
+  return path.join(STAGING_ROOT, id)
+}
+
+function removeTree(dir) { fs.rmSync(dir, { recursive: true, force: true }) }
+
+// Cartelle caricate e mai usate (finestra chiusa a metà): dopo un giorno si tolgono
+function purgeOldStages() {
+  if (statKind(STAGING_ROOT) !== 'directory') return
+  for (const e of fs.readdirSync(STAGING_ROOT, { withFileTypes: true })) {
+    const full = path.join(STAGING_ROOT, e.name)
+    try { if (Date.now() - fs.statSync(full).mtimeMs > 24 * 3600 * 1000) { removeTree(full); stageBytes.delete(e.name) } } catch { /* già tolta */ }
+  }
+}
+
+function stageStart() {
+  purgeOldStages()
+  const id = crypto.randomBytes(8).toString('hex')
+  fs.mkdirSync(path.join(STAGING_ROOT, id), { recursive: true })
+  stageBytes.set(id, 0)
+  return { id, folder: `import-${id}`, file: STAGE_FILE }
+}
+
+// Un file della cartella: rel = percorso dentro il backup ("Preventivi/Mario/x.pdf"), oppure "@data" per il file dei dati
+function stageFile(id, rel, body) {
+  const dir = stageDir(id)
+  if (statKind(dir) !== 'directory') throw Object.assign(new Error('Caricamento scaduto: riparti dalla scelta della cartella'), { status: 404 })
+  const isData = rel === '@data'
+  if (body.length > (isData ? STAGE_MAX_DATA : STAGE_MAX_FILE)) throw Object.assign(new Error('File troppo grande'), { status: 413 })
+  const total = (stageBytes.get(id) || 0) + body.length
+  if (total > STAGE_MAX_TOTAL) throw Object.assign(new Error('La cartella è troppo grande (max 2 GB)'), { status: 413 })
+  if (isData) {
+    let parsed
+    try { parsed = JSON.parse(decryptIfNeeded(body).toString('utf-8')) } catch { throw Object.assign(new Error("Il file dei dati non è leggibile (JSON non valido o cifrato con un'altra chiave)"), { status: 400 }) }
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.customers)) throw Object.assign(new Error('Il file non sembra un backup del CRM (mancano i clienti)'), { status: 400 })
+    fs.writeFileSync(path.join(dir, STAGE_FILE), body)
+    stageBytes.set(id, total)
+    return { ok: true }
+  }
+  const target = calcPath(dir, rel)
+  if (target === path.resolve(dir) || path.basename(target) === STAGE_FILE) throw Object.assign(new Error('Percorso non valido'), { status: 400 })
+  if (STAGE_BLOCKED.has(path.extname(target).toLowerCase())) return { ok: true, skipped: true }
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(target, body)
+  stageBytes.set(id, total)
+  return { ok: true }
+}
+
 function backupLocation(folder, file) {
+  if (STAGE_FOLDER_RE.test(String(folder || '')) && file === STAGE_FILE) {
+    const dir = stageDir(folder.slice(7))
+    const jsonFile = path.join(dir, STAGE_FILE)
+    if (statKind(jsonFile) !== 'file') throw Object.assign(new Error('Cartella caricata non trovata: caricala di nuovo'), { status: 404 })
+    return { dir, jsonFile, staged: true }
+  }
   if (!DAY_FOLDER_RE.test(String(folder || '')) || !BACKUP_FILE_RE.test(String(file || ''))) {
     throw Object.assign(new Error('Backup non valido'), { status: 400 })
   }
@@ -488,7 +591,19 @@ function inspectBackup(folder, file) {
 
 // Ripristino: prima salva sempre lo stato attuale (backup "PRIMA-DEL-RIPRISTINO" nella cartella di oggi),
 // poi rimette dati e file. I file non vengono mai cancellati: quelli del backup vengono rimessi al loro posto.
-function applyRestore({ folder, file, mode = 'all', parts = {}, customerIds = [], prefs = null }) {
+function applyRestore(args) {
+  const { dir, staged } = backupLocation(args.folder, args.file)
+  const result = applyRestoreFrom(args)
+  if (staged) {
+    // I file arrivati dal computer sono in chiaro: si cifrano come tutti gli altri, poi si toglie la copia temporanea
+    if (encryptionEnabled()) encryptExistingFiles()
+    removeTree(dir)
+    stageBytes.delete(path.basename(dir))
+  }
+  return result
+}
+
+function applyRestoreFrom({ folder, file, mode = 'all', parts = {}, customerIds = [], prefs = null }) {
   const { dir, jsonFile } = backupLocation(folder, file)
   const backup = readJsonFile(jsonFile)
   const backupPath = getBackupRoot()
@@ -648,6 +763,24 @@ function makeDir(parent, name) {
   return { path: target }
 }
 
+// Dove sono davvero i file del CRM (percorsi letti dal server, non scritti a mano) e se la cartella dei backup funziona
+function describePlaces() {
+  let configured = null
+  try { configured = readSettings().backupPath || null } catch { /* file dati non leggibile */ }
+  const backupDir = configured || defaultBackupDir()
+  const check = backupDir ? checkBackupDir(backupDir) : { ok: false, reason: 'Nessuna cartella dei backup scelta' }
+  let calcDir = null
+  try { calcDir = getCalcRoot() } catch { /* cartella personalizzata non raggiungibile */ }
+  const place = (p) => p ? { path: p, hint: pathHint(p) } : null
+  return {
+    dataFile: place(STORAGE_FILE),
+    filesDir: place(DATA_DIR),
+    quotesDir: place(path.join(DATA_DIR, QUOTES_DIR)),
+    calcDir: place(calcDir),
+    backup: backupDir ? { ...place(backupDir), ok: check.ok, problem: check.ok ? null : check.reason } : { ok: false, problem: check.reason },
+  }
+}
+
 export function initApi() {
   // Se i dati sono cifrati ma la chiave manca o è sbagliata ci si ferma subito, con un messaggio chiaro
   if (fs.existsSync(STORAGE_FILE)) readStoredBuffer(STORAGE_FILE)
@@ -706,14 +839,15 @@ export function createApiMiddleware() {
           res.end(data);
         } else if (req.url === '/api/storage-info' && req.method === 'GET') {
           if (!fs.existsSync(STORAGE_FILE)) {
-            res.end(JSON.stringify({ size: 0 }));
+            res.end(JSON.stringify({ size: 0, places: describePlaces() }));
             return;
           }
           const stats = fs.statSync(STORAGE_FILE);
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ 
             size: stats.size,
-            lastModified: stats.mtime
+            lastModified: stats.mtime,
+            places: describePlaces()
           }));
         } else if (req.url === '/api/backup/export' && req.method === 'GET') {
           if (!fs.existsSync(STORAGE_FILE)) {
@@ -844,6 +978,34 @@ export function createApiMiddleware() {
           } catch (e) {
             sendError(res, e);
           }
+        } else if (req.url.startsWith('/api/restore/stage') && req.method === 'POST') {
+          // Cartella del computer caricata per il ripristino: start → un file alla volta → (ripristino) oppure discard
+          if (rejectForeignRequest(req, res)) return;
+          const q = new URL(req.url, 'http://localhost');
+          const chunks = [];
+          let size = 0;
+          const limit = (q.searchParams.get('path') === '@data' ? STAGE_MAX_DATA : STAGE_MAX_FILE) + 1;
+          req.on('data', chunk => { size += chunk.length; if (size <= limit) chunks.push(chunk); });
+          req.on('end', () => {
+            res.setHeader('Content-Type', 'application/json');
+            try {
+              if (q.pathname === '/api/restore/stage/start') {
+                res.end(JSON.stringify(stageStart()));
+              } else if (q.pathname === '/api/restore/stage/file') {
+                if (size >= limit) throw Object.assign(new Error('File troppo grande'), { status: 413 });
+                res.end(JSON.stringify(stageFile(q.searchParams.get('id'), q.searchParams.get('path') || '', Buffer.concat(chunks))));
+              } else if (q.pathname === '/api/restore/stage/discard') {
+                const id = q.searchParams.get('id');
+                removeTree(stageDir(id));
+                stageBytes.delete(id);
+                res.end(JSON.stringify({ success: true }));
+              } else {
+                throw Object.assign(new Error('Richiesta non valida'), { status: 404 });
+              }
+            } catch (e) {
+              sendError(res, e);
+            }
+          });
         } else if (req.url === '/api/restore/apply' && req.method === 'POST') {
           // Ripristino da un backup (dopo aver salvato lo stato attuale)
           if (rejectForeignRequest(req, res)) return;
@@ -903,7 +1065,10 @@ export function createApiMiddleware() {
           res.setHeader('Content-Type', 'application/json');
           try {
             const q = new URL(req.url, 'http://localhost').searchParams;
-            res.end(JSON.stringify({ ...listDirs(q.get('path')), defaultBackup: defaultBackupDir() }));
+            const listing = listDirs(q.get('path'));
+            const hints = {};
+            for (const r of listing.roots) { const h = pathHint(r); if (h) hints[r] = h; }
+            res.end(JSON.stringify({ ...listing, hints, defaultBackup: defaultBackupDir() }));
           } catch (e) {
             sendError(res, e);
           }

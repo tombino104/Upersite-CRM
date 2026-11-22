@@ -3,7 +3,7 @@ import { Folder, FolderPlus, ChevronLeft, HardDrive, Check, X } from 'lucide-rea
 import { CRM_REQUEST_HEADERS } from '../utils/storage';
 
 // Scelta di una cartella sul server (per i backup). Mostra solo le cartelle consentite dal server:
-// con Docker /backups e /cartelle (dove montare le cartelle di Umbrel), altrimenti la cartella utente.
+// con Docker /backups, /data e /cartelle (dove montare le cartelle di Umbrel), altrimenti la cartella utente.
 export default function FolderPicker({ initialPath, onSelect, onClose }) {
     const [view, setView] = useState({ path: null, parent: null, dirs: [], roots: [] });
     const [error, setError] = useState('');
@@ -72,7 +72,8 @@ export default function FolderPicker({ initialPath, onSelect, onClose }) {
                 <div className="fp-list">
                     {!view.path && view.roots.map(root => (
                         <button key={root} className="fp-item" onClick={() => load(root)}>
-                            <HardDrive size={18} aria-hidden="true" /> {root}
+                            <HardDrive size={18} aria-hidden="true" />
+                            <span>{root}{view.hints?.[root] && <small className="fp-hint">sul server: {view.hints[root]}</small>}</span>
                         </button>
                     ))}
                     {view.path && view.dirs.map(name => (
@@ -114,6 +115,7 @@ export default function FolderPicker({ initialPath, onSelect, onClose }) {
                         background: transparent; color: var(--text-primary); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; }
                     .fp-item svg { color: var(--text-secondary); flex-shrink: 0; }
                     .fp-item:hover { background: var(--bg-hover); }
+                    .fp-hint { display: block; font-size: 0.72rem; color: var(--text-tertiary); }
                     .fp-empty { padding: 14px; text-align: center; color: var(--text-tertiary); font-size: 0.85rem; }
                     .fp-new { display: flex; gap: 8px; }
                     .fp-new .input { flex: 1; }

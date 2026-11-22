@@ -85,6 +85,10 @@ Imposta la **cartella dei backup** in Impostazioni → Backup e dati (es. un dis
 
 **Per tornare indietro:** Impostazioni → Backup e dati → **♻️ Ripristina da un backup…**, scegli giorno e ora, poi **Ripristina tutto** oppure **Solo alcuni clienti**, scrivi la password master e ricarica. Prima del ripristino il CRM salva lo stato attuale, quindi puoi sempre annullare.
 
+**Da una cartella del tuo computer (anche Mac, non zippata):** nella stessa finestra premi **📂 Da una cartella del computer…** e scegli la cartella con il file `.json` e le cartelle Preventivi e Calcolatore (o Dati). Il CRM la carica e la tratta come un backup.
+
+**Dove sono i file:** in Impostazioni → Backup e dati il riquadro «Dove si trovano i tuoi file» mostra i percorsi reali letti dal server e se la cartella dei backup funziona. Dopo «Crea Backup Ora» il messaggio riporta il percorso completo del backup, controllato sul disco.
+
 **Su un altro PC (o dopo una formattazione):** installa il CRM (`npm install`), crea una password qualsiasi, imposta come cartella dei backup quella con le cartelle per giorno e fai **Ripristina tutto** dal backup più recente. Poi accedi con la tua password di sempre.
 
 > «Esporta Backup (JSON)» scarica solo il file dati, senza preventivi e calcolatore: va bene per una copia veloce, non per spostare tutto.

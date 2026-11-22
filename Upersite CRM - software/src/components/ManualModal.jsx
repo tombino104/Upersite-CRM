@@ -338,7 +338,9 @@ Imposta la **cartella dei backup** in Impostazioni → Backup Dati (es. \`D:\\Up
         text: `
 Impostazioni → Backup Dati → **♻️ Ripristina da un backup…**
 
-1. A sinistra scegli il **giorno** e l'**orario** del backup.
+**Hai la cartella sul computer (anche Mac), non zippata?** Premi **📂 Da una cartella del computer…** e scegli la cartella con il file dati (\`crm_data.json\` o \`backup_ore_….json\`) e le cartelle **Preventivi** e **Calcolatore** (o **Dati**, che le contiene). Il CRM le carica e le tratta come un backup: da lì i passaggi sono gli stessi. Se nella cartella ci sono più backup ti chiede quale usare.
+
+1. A sinistra scegli il **giorno** e l'**orario** del backup (oppure la cartella caricata dal computer).
 2. A destra controlli cosa contiene: clienti, preventivi, file del calcolatore, automazioni.
 3. Scegli **Ripristina tutto** oppure **Solo alcuni clienti**.
 4. Scrivi la **password master** e premi Ripristina.
