@@ -9,7 +9,7 @@
   Si installa con Docker sul tuo server e si usa dal browser. I dati restano tuoi, cifrati sul tuo disco.
 </p>
 
-**Versione:** 2.0.4-stable · [Cronologia](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
+**Versione:** 2.0.5-stable · [Cronologia](Versioning.txt) · [Guida all'uso](Upersite%20CRM%20-%20software/Guida_UpersiteCRM.md)
 
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="Pipeline dei clienti in vista Kanban, con statistiche e rate scadute" width="900">
@@ -188,8 +188,8 @@ Formato `Major.Minor.Patch-stato` (`alpha`, `beta`, `stable`). Quando cambi vers
 Per pubblicare l'immagine Docker:
 
 ```bash
-git tag v2.0.4-stable
-git push origin v2.0.4-stable
+git tag v2.0.5-stable
+git push origin v2.0.5-stable
 ```
 
-Il workflow `.github/workflows/docker-image.yml` costruisce l'immagine per amd64 e arm64 e la pubblica su `ghcr.io/tombino104/upersite-crm` con i tag `v2.0.4-stable`, `2.0.4-stable` e `latest`. Dopo la prima pubblicazione controlla su GitHub (Packages) che il pacchetto sia pubblico.
+Il workflow `.github/workflows/docker-image.yml` costruisce l'immagine per amd64 e arm64 e la pubblica su `ghcr.io/tombino104/upersite-crm` con i tag `v2.0.5-stable`, `2.0.5-stable` e `latest`. Dopo la prima pubblicazione controlla su GitHub (Packages) che il pacchetto sia pubblico.

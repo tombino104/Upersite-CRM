@@ -559,7 +559,7 @@ export default function SettingsModal({ settings, updateSettings, onClose, setCu
                                                 onSelect={p => { updateSettings({ backupPath: p }); setShowFolderPicker(false); }}
                                             />
                                         )}
-                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Con «Sfoglia…» scegli una cartella che esiste già sul server (o ne crei una nuova); su Umbrel puoi anche collegarne una tua dalle impostazioni dell'app: compare in <strong>/cartelle</strong>. Ogni backup crea una cartella con la data, con dentro il file dati e una copia di <strong>Preventivi</strong> e <strong>Calcolatore</strong>.</span>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Con «Sfoglia…» scegli una cartella che esiste già sul server (o ne crei una nuova); su Umbrel puoi anche collegarne una tua dalle impostazioni dell'app: compare in <strong>/cartelle</strong>. Ogni backup crea la sua cartella (data e ora), con dentro il file dati e una copia di <strong>Preventivi</strong> e <strong>Calcolatore</strong>.</span>
                                     </div>
 
                                     {places && (

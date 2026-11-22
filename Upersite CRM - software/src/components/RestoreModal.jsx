@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CRM_REQUEST_HEADERS, verifyMasterPassword, applyBrowserPrefs, getBrowserPrefs } from '../utils/storage';
 import { analyzeFolder, uploadCandidate, discardStage } from '../utils/folderRestore';
 
-// Ripristino da un backup con data (cartella dei backup → gg-mm-aa → backup_ore_*.json + Preventivi + Calcolatore).
+// Ripristino da un backup con data (cartella dei backup → gg-mm-aa → hh-mm-ss → backup_ore_*.json + Preventivi + Calcolatore; fino alla 2.0.4 il file stava direttamente in gg-mm-aa).
 // Prima di ripristinare il server salva sempre lo stato attuale in un backup "prima del ripristino".
 
 const money = (n) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(Number(n) || 0);
@@ -50,7 +50,7 @@ export default function RestoreModal({ onClose }) {
             .then(data => {
                 setList(data);
                 const first = data.days[0]?.backups[0];
-                if (first) setSelected({ folder: data.days[0].folder, file: first.file });
+                if (first) setSelected({ folder: first.folder, file: first.file });
             })
             .catch(err => { setListError(err.message); setList({ root: '', days: [] }); });
     }, []);
@@ -61,7 +61,7 @@ export default function RestoreModal({ onClose }) {
         return [{
             folder: imported.folder, date: new Date().toISOString().slice(0, 10), imported: true,
             quotes: imported.quotes, calc: imported.calc,
-            backups: [{ file: imported.file, time: '', size: imported.size, light: false, beforeRestore: false }],
+            backups: [{ folder: imported.folder, file: imported.file, time: '', size: imported.size, light: false, beforeRestore: false }],
         }, ...saved];
     }, [list, imported]);
 
@@ -162,8 +162,8 @@ export default function RestoreModal({ onClose }) {
         }
     };
 
-    const selectedBackup = days.find(d => d.folder === selected?.folder)?.backups.find(b => b.file === selected?.file);
-    const selectedDay = days.find(d => d.folder === selected?.folder);
+    const selectedBackup = days.flatMap(d => d.backups).find(b => b.folder === selected?.folder && b.file === selected?.file);
+    const selectedDay = days.find(d => d.backups.includes(selectedBackup));
 
     return (
         <div className="modal-overlay" style={{ zIndex: 2100 }} onClick={e => { if (e.target === e.currentTarget && !busy && !uploading && !result) close(); }}>
@@ -184,7 +184,7 @@ export default function RestoreModal({ onClose }) {
                         <h3>Ripristino completato</h3>
                         <ul>{result.restored.map((r, i) => <li key={i}>Rimessi: {r}</li>)}</ul>
                         <div className="rs-note">
-                            Lo stato di prima è salvato in <strong>{result.safety.folder}\{result.safety.file}</strong>:
+                            Lo stato di prima è salvato in <strong>{result.safety.folder}/{result.safety.file}</strong>:
                             se serve, puoi ripristinare quello per tornare indietro.
                         </div>
                         {mode === 'all' && parts.data && info && !info.samePassword && (
@@ -225,16 +225,16 @@ export default function RestoreModal({ onClose }) {
                             {listError && <div className="rs-note error">{listError}</div>}
                             {list && days.length === 0 && !listError && <div className="rs-empty">Nessun backup nella cartella.</div>}
                             {days.map(day => (
-                                <div key={day.folder} className={`rs-day ${selected?.folder === day.folder ? 'active' : ''}`}>
+                                <div key={day.folder} className={`rs-day ${day.backups.some(b => b.folder === selected?.folder && b.file === selected?.file) ? 'active' : ''}`}>
                                     <div className="rs-day-title">{day.imported ? 'Cartella caricata dal computer' : dayLabel(day.date)}</div>
-                                    <div className="rs-day-meta">{day.imported ? '' : `${day.backups.length} backup · `}{day.quotes} preventivi · {day.calc} file calcolatore</div>
+                                    <div className="rs-day-meta">{day.imported ? `${day.quotes} preventivi · ${day.calc} file calcolatore` : `${day.backups.length} backup`}</div>
                                     <div className="rs-times">
                                         {day.backups.map(b => (
-                                            <button key={b.file}
-                                                className={`rs-time ${selected?.folder === day.folder && selected?.file === b.file ? 'on' : ''} ${b.beforeRestore ? 'safety' : ''}`}
-                                                title={day.imported ? 'Cartella scelta dal computer' : b.file}
-                                                onClick={() => selectBackup(day.folder, b.file)}>
-                                                {day.imported ? 'Usa questa cartella' : b.time.slice(0, 5)}{b.light ? ' · leggero' : ''}{b.beforeRestore ? ' · prima del ripristino' : ''}
+                                            <button key={b.folder + b.file}
+                                                className={`rs-time ${selected?.folder === b.folder && selected?.file === b.file ? 'on' : ''} ${b.beforeRestore ? 'safety' : ''}`}
+                                                title={day.imported ? 'Cartella scelta dal computer' : `${b.folder} · ${b.quotes} preventivi · ${b.calc} file calcolatore`}
+                                                onClick={() => selectBackup(b.folder, b.file)}>
+                                                {day.imported ? 'Usa questa cartella' : b.time}{b.light ? ' · leggero' : ''}{b.beforeRestore ? ' · prima del ripristino' : ''}
                                             </button>
                                         ))}
                                     </div>

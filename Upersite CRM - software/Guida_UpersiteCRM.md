@@ -79,7 +79,7 @@ Clic su un cliente per aprire la scheda. I campi si salvano con **Salva** (se ch
 
 ## 💾 5. Backup e ripristino
 
-Imposta la **cartella dei backup** in Impostazioni → Backup e dati (es. un disco esterno). Il CRM ci crea **una cartella per giorno** (`gg-mm-aa`) con il file dati di quell'ora, i Preventivi, il Calcolatore e le altre cartelle di `Dati`.
+Imposta la **cartella dei backup** in Impostazioni → Backup e dati (es. un disco esterno). Il CRM ci crea **una cartella per giorno** (`gg-mm-aa`) e dentro **una cartella per ogni backup** (`hh-mm-ss`), con il file dati di quell'ora, i Preventivi, il Calcolatore e le altre cartelle di `Dati`. Più backup nello stesso giorno non si mescolano: ognuno ha il suo file e le sue copie.
 
 **Quando si fa un backup:** con **💾 Crea Backup Ora** nelle Impostazioni, con **⋯ → Termina sessione di lavoro**, da un'automazione, e sempre prima di un ripristino.
 

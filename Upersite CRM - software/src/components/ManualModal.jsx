@@ -313,10 +313,10 @@ Oppure scegli voce per voce (clienti, rate, task, ticket, note, link, eventi). L
     {
         id: 'backup', group: 'dati', icon: '💾', title: 'Backup: cosa salva e quando',
         text: `
-Imposta la **cartella dei backup** in Impostazioni → Backup Dati (es. \`D:\\Upersite CRM BACKUPS\\Backup\\Salvataggi\`). Lì dentro il CRM crea **una cartella per giorno** (\`gg-mm-aa\`) e non scrive nient'altro.
+Imposta la **cartella dei backup** in Impostazioni → Backup Dati (es. \`D:\\Upersite CRM BACKUPS\\Backup\\Salvataggi\`). Lì dentro il CRM crea **una cartella per giorno** (\`gg-mm-aa\`) e, dentro, **una cartella per ogni backup** (\`hh-mm-ss\`): più backup nello stesso giorno non si mescolano. Non scrive nient'altro.
 
-### Cosa c'è nella cartella del giorno
-- \`backup_ore_HH-MM-SS.json\`: **tutti i dati** del CRM in quel momento (clienti con note, todo, rate, ticket, accessi cifrati, file e loghi, impostazioni, listino e costi del calcolatore, eventi, automazioni, cronologia AI, profilo) più le **preferenze del browser**. Uno per ogni backup fatto in quel giorno.
+### Cosa c'è nella cartella di un backup
+- \`backup_ore_HH-MM-SS.json\`: **tutti i dati** del CRM in quel momento (clienti con note, todo, rate, ticket, accessi cifrati, file e loghi, impostazioni, listino e costi del calcolatore, eventi, automazioni, cronologia AI, profilo) più le **preferenze del browser**. Uno solo per cartella.
 - \`Preventivi\\\`: tutti i preventivi dei clienti.
 - \`Calcolatore\\\`: configurazioni salvate, pacchetti completi e backup delle impostazioni del calcolatore.
 - Qualunque altra cartella che il CRM tiene in \`Dati\\\`.

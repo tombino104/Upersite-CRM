@@ -318,11 +318,16 @@ function importCalcConfigs(from) {
 }
 
 // ── Backup completo e ripristino ──
-// Un backup scrive TUTTO nella cartella del giorno (<cartella backup>\gg-mm-aa): file dati (con le preferenze
+// Un backup scrive TUTTO nella sua cartella (<cartella backup>\gg-mm-aa\hh-mm-ss): file dati (con le preferenze
 // del browser), cartella Dati (Preventivi, Calcolatore e ogni altra sottocartella) e, se è in una cartella
 // scelta a mano, anche la cartella del calcolatore. Il ripristino legge solo da lì.
 
 const DAY_FOLDER_RE = /^\d{2}-\d{2}-\d{2}$/
+// Ogni backup ha la sua cartella con l'ora dentro quella del giorno: <backup>/gg-mm-aa/hh-mm-ss. Così più backup
+// nello stesso giorno non si mescolano (ognuno ha il suo file dati con i suoi Preventivi e Calcolatore).
+// Fino alla 2.0.4 il file stava direttamente nella cartella del giorno: si leggono ancora.
+const TIME_FOLDER_RE = /^\d{2}-\d{2}-\d{2}(_\d+)?$/
+const BACKUP_FOLDER_RE = /^\d{2}-\d{2}-\d{2}(\/\d{2}-\d{2}-\d{2}(_\d+)?)?$/
 const BACKUP_FILE_RE = /^backup_ore_\d{2}-\d{2}-\d{2}(_[A-Z0-9-]+)*\.json$/
 
 function pad2(n) { return String(n).padStart(2, '0') }
@@ -404,9 +409,12 @@ function createBackup(backupPath, { includeFiles = true, suffix = '', prefs = nu
 
   const now = new Date()
   const folder = `${pad2(now.getDate())}-${pad2(now.getMonth() + 1)}-${String(now.getFullYear()).slice(-2)}`
-  const targetDir = path.join(backupPath, folder)
-  fs.mkdirSync(targetDir, { recursive: true })
   const time = `${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}`
+  // Una cartella nuova per ogni backup (se nello stesso secondo ce n'è già una si aggiunge _2, _3…)
+  let timeFolder = time
+  for (let i = 2; fs.existsSync(path.join(backupPath, folder, timeFolder)); i++) timeFolder = `${time}_${i}`
+  const targetDir = path.join(backupPath, folder, timeFolder)
+  fs.mkdirSync(targetDir, { recursive: true })
   let file = `backup_ore_${time}${includeFiles ? '' : '_LIGHT'}${suffix}.json`
   for (let i = 2; fs.existsSync(path.join(targetDir, file)); i++) file = file.replace(/(_\d+)?\.json$/, `_${i}.json`)
   writeStored(path.join(targetDir, file), JSON.stringify(backupData, null, 2))
@@ -439,7 +447,7 @@ function createBackup(backupPath, { includeFiles = true, suffix = '', prefs = nu
       }
     }
   }
-  return { success: true, folder, file, dataFiles, quotesCopied, quotesMissing, calcCopied, root: backupPath, path: targetDir, hint: pathHint(targetDir) }
+  return { success: true, folder: `${folder}/${timeFolder}`, file, dataFiles, quotesCopied, quotesMissing, calcCopied, root: backupPath, path: targetDir, hint: pathHint(targetDir) }
 }
 
 // gg-mm-aa → aaaa-mm-gg (senza passare da Date: con il fuso orario il giorno slitterebbe)
@@ -448,29 +456,35 @@ function dayFolderIso(name) {
   return `20${y}-${m}-${d}`
 }
 
+function backupEntries(dir, folder) {
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter(f => f.isFile() && BACKUP_FILE_RE.test(f.name))
+    .map(f => ({
+      folder,
+      file: f.name,
+      time: f.name.slice(11, 19).replace(/-/g, ':'),
+      light: f.name.includes('_LIGHT'),
+      beforeRestore: f.name.includes('PRIMA-DEL-RIPRISTINO'),
+      size: fs.statSync(path.join(dir, f.name)).size,
+      quotes: countFiles(path.join(dir, QUOTES_DIR)),
+      calc: countFiles(path.join(dir, CALC_DIR)),
+    }))
+}
+
 function listBackups() {
   const backupPath = getBackupRoot()
   const days = fs.readdirSync(backupPath, { withFileTypes: true })
     .filter(e => e.isDirectory() && DAY_FOLDER_RE.test(e.name))
     .map(e => {
       const dir = path.join(backupPath, e.name)
-      const backups = fs.readdirSync(dir, { withFileTypes: true })
-        .filter(f => f.isFile() && BACKUP_FILE_RE.test(f.name))
-        .map(f => ({
-          file: f.name,
-          time: f.name.slice(11, 19).replace(/-/g, ':'),
-          light: f.name.includes('_LIGHT'),
-          beforeRestore: f.name.includes('PRIMA-DEL-RIPRISTINO'),
-          size: fs.statSync(path.join(dir, f.name)).size,
-        }))
-        .sort((a, b) => b.file.localeCompare(a.file))
-      return {
-        folder: e.name,
-        date: dayFolderIso(e.name),
-        backups,
-        quotes: countFiles(path.join(dir, QUOTES_DIR)),
-        calc: countFiles(path.join(dir, CALC_DIR)),
-      }
+      // Formato attuale: una sottocartella per backup. Formato vecchio: i file direttamente nella cartella del giorno.
+      const backups = [
+        ...backupEntries(dir, e.name),
+        ...fs.readdirSync(dir, { withFileTypes: true })
+          .filter(f => f.isDirectory() && TIME_FOLDER_RE.test(f.name))
+          .flatMap(f => backupEntries(path.join(dir, f.name), `${e.name}/${f.name}`)),
+      ].sort((a, b) => (b.time + b.folder + b.file).localeCompare(a.time + a.folder + a.file))
+      return { folder: e.name, date: dayFolderIso(e.name), backups }
     })
     .filter(d => d.backups.length)
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -543,10 +557,10 @@ function backupLocation(folder, file) {
     if (statKind(jsonFile) !== 'file') throw Object.assign(new Error('Cartella caricata non trovata: caricala di nuovo'), { status: 404 })
     return { dir, jsonFile, staged: true }
   }
-  if (!DAY_FOLDER_RE.test(String(folder || '')) || !BACKUP_FILE_RE.test(String(file || ''))) {
+  if (!BACKUP_FOLDER_RE.test(String(folder || '')) || !BACKUP_FILE_RE.test(String(file || ''))) {
     throw Object.assign(new Error('Backup non valido'), { status: 400 })
   }
-  const dir = path.join(getBackupRoot(), folder)
+  const dir = path.join(getBackupRoot(), ...folder.split('/'))
   const jsonFile = path.join(dir, file)
   if (statKind(jsonFile) !== 'file') throw Object.assign(new Error('Backup non trovato'), { status: 404 })
   return { dir, jsonFile }
@@ -585,7 +599,7 @@ function inspectBackup(folder, file) {
     quotes: countFiles(path.join(dir, QUOTES_DIR)),
     calc: countFiles(path.join(dir, CALC_DIR)),
     other: fs.readdirSync(dir, { withFileTypes: true })
-      .filter(e => e.isDirectory() && e.name !== QUOTES_DIR && e.name !== CALC_DIR).map(e => e.name),
+      .filter(e => e.isDirectory() && e.name !== QUOTES_DIR && e.name !== CALC_DIR && !TIME_FOLDER_RE.test(e.name)).map(e => e.name),
   }
 }
 
@@ -654,7 +668,7 @@ function applyRestoreFrom({ folder, file, mode = 'all', parts = {}, customerIds 
   }
   if (parts.altro !== false) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!e.isDirectory() || e.name === QUOTES_DIR || e.name === CALC_DIR) continue
+      if (!e.isDirectory() || e.name === QUOTES_DIR || e.name === CALC_DIR || TIME_FOLDER_RE.test(e.name)) continue
       const n = copyTree(path.join(dir, e.name), path.join(DATA_DIR, e.name))
       if (n) result.restored.push(`${n} file in ${e.name}`)
     }
