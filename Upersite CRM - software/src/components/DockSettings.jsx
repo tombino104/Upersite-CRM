@@ -23,7 +23,9 @@ const css = `
 .dk-empty { text-align: center; color: var(--text-tertiary); font-size: .78rem; padding: 18px 8px; }
 `;
 
-function MiniDot() {
+// `item` si usa come <item.Icon />: il linter non lo conta come uso, ma serve (senza, la scheda Pulsanti va in errore)
+// eslint-disable-next-line no-unused-vars
+function MiniDot({ item }) {
   return (
     <span className="dk-dot" style={{ background: '#17201C' }}>
       <span><item.Icon /></span>
