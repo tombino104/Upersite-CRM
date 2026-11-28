@@ -372,7 +372,7 @@ Le Impostazioni (menu **⋯ → Impostazioni**) sono divise in schede, elencate 
 - **Generale**: questo manuale, minuti di inattività prima del blocco, numero di rate predefinito, cursore personalizzato, versione del CRM.
 - **Sicurezza**: cambio della password master (le credenziali dei clienti vengono ricifrate da sole).
 - **Backup e dati**: cartella dei backup, backup immediato, ripristino, export/import JSON, cancellazione totale (con password).
-- **Calcolatore**: dove salva (cartella dati del CRM o una a scelta), import delle configurazioni del vecchio calcolatore, listino prezzi.
+- **Calcolatore**: dove salva (cartella dati del CRM o una a scelta), import delle configurazioni del vecchio calcolatore, listini prezzi (lista di listini con uno in uso; **Standard** non si modifica; nuovo, duplica, rinomina, elimina, import ed export in JSON). Ogni preventivo salvato si riapre con i suoi prezzi, e nel calcolatore puoi aggiornarlo al listino in uso.
 - **Intelligenza artificiale**: Quale IA per cosa, Servizi e chiavi, Modelli locali, Dati inviati alla chat, Consumo e costi. Tutto spiegato nella sezione «Intelligenza artificiale» di questo manuale.
 `,
     },

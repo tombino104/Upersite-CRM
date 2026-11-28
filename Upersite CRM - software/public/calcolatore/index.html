@@ -1171,6 +1171,10 @@
         word-break: break-word;
     }
 
+    .config-status[hidden] {
+        display: none;
+    }
+
     .config-status.dirty {
         background: #fff9db;
         color: #946800;
@@ -3092,6 +3096,11 @@
 
                 <div class="config-status" id="configStatus">Nuova configurazione</div>
 
+                <div class="config-status dirty" id="listinoBox" style="white-space: normal" hidden>
+                    <span id="listinoText"></span>
+                    <button type="button" class="btn-link" id="listinoUpdate">Aggiorna al listino in uso</button>
+                </div>
+
                 <button type="button" class="btn-download" id="crmAttach" hidden>➕ Aggiungi al cliente CRM</button>
                 <button type="button" class="btn-download" id="configSave">💾 Salva configurazione</button>
 
@@ -3238,30 +3247,41 @@
 <script>
     (function () {
 
-        // [CRM-BRIDGE] Listino prezzi: default identici al calcolatore originale; dentro il CRM
-        // arrivano le modifiche fatte nelle Impostazioni (window.__CALC_LISTINO, solo le voci cambiate).
-        // "_m" = valore di mercato. Le automazioni si identificano col livello (70/130/300), non col prezzo.
-        var LISTINO = (function () {
-            var d = {
-                pkg_base: 400, pkg_base_m: 690, pkg_pro: 650, pkg_pro_m: 1380, pkg_premium: 1250, pkg_premium_m: 2300,
-                seo: 140, seo_m: 207, social: 30, social_m: 104,
-                uiux: 50, uiux_large: 100, uiux_m: 184,
-                user_area: 60, user_area_m: 518, blog: 70, blog_m: 173, forum: 65, forum_m: 138,
-                events: 90, events_m: 207, appointments: 90, appointments_m: 207,
-                chatbot: 300, chatbot_m: 800, newsletter: 130, newsletter_m: 311,
-                auto_70: 70, auto_70_m: 374, auto_130: 130, auto_130_m: 748, auto_300: 300, auto_300_m: 1093,
-                discount_130: 30, discount_300: 50,
-                lang_first: 40, lang_next: 60, lang_m: 288,
-                page_first: 50, page_next: 70, page_m: 138, seo_extra_page: 25,
-                anim_s: 30, anim_m: 50, anim_l: 90, anim_xl: 150,
-                revision: 30
-            };
-            var o = window.__CALC_LISTINO || {};
-            Object.keys(d).forEach(function (k) {
-                if (typeof o[k] === 'number' && isFinite(o[k]) && o[k] >= 0) d[k] = o[k];
+        // [CRM-BRIDGE] Listini: i prezzi arrivano dal CRM (unica fonte: src/utils/calcListino.js).
+        // activeListino = quello in uso nelle Impostazioni; frozenListino = i prezzi salvati dentro la
+        // configurazione aperta, che valgono finché non si aggiorna. "_m" = valore di mercato.
+        // Le automazioni si identificano col livello (70/130/300), non col prezzo.
+        var activeListino = window.__CALC_LISTINO;
+        if (!activeListino) {
+            document.body.innerHTML = '<p style="font-family:sans-serif;padding:32px">Apri il calcolatore da Upersite CRM: i prezzi arrivano dal listino scelto nelle Impostazioni.</p>';
+            return;
+        }
+        var frozenListino = null;
+        var priceDirty = false; // prezzi aggiornati al listino in uso ma non ancora salvati
+
+        function copyListino(l) {
+            return { id: l.id, nome: l.nome, prezzi: Object.assign({}, l.prezzi) };
+        }
+
+        // Listino salvato in una configurazione (null se assente o non valido); le voci mancanti vengono da quello in uso
+        function readSavedListino(l) {
+            if (!l || typeof l.prezzi !== 'object' || !l.prezzi) return null;
+            var out = copyListino(activeListino), found = false;
+            Object.keys(out.prezzi).forEach(function (k) {
+                var v = l.prezzi[k];
+                if (typeof v === 'number' && isFinite(v) && v >= 0) { out.prezzi[k] = v; found = true; }
             });
-            return d;
-        })();
+            if (!found) return null;
+            out.id = String(l.id || '');
+            out.nome = String(l.nome || 'salvato');
+            return out;
+        }
+
+        function pricesDiffer(a, b) {
+            return Object.keys(b.prezzi).some(function (k) { return a.prezzi[k] !== b.prezzi[k]; });
+        }
+
+        var LISTINO = Object.assign({}, activeListino.prezzi);
 
         // Come le etichette originali: €1.250 (toLocaleString in it-IT non separa le migliaia sotto 10.000)
         function euroLabel(n) {
@@ -3314,6 +3334,15 @@
         }
 
         applyListino();
+
+        // Cambia i prezzi della pagina aperta; le scelte vanno poi riapplicate con applyConfigState
+        function usePrices(prices) {
+            Object.assign(LISTINO, prices);
+            applyListino();
+            ['s', 'm', 'l', 'xl'].forEach(function (size) { ANIM_CUSTOM_PRICES[size] = LISTINO['anim_' + size]; });
+            REVISION_PRICE = LISTINO.revision;
+            Object.keys(PKG_INFO).forEach(function (k) { PKG_INFO[k].price = LISTINO['pkg_' + k]; });
+        }
 
         var checkboxes = document.querySelectorAll('.option-checkbox');
         var totalPriceEl = document.getElementById('totalPrice');
@@ -5399,6 +5428,9 @@
         var configPickFolderBtn = document.getElementById('configPickFolder');
         var configSearchInput = document.getElementById('configSearch');
         var configImportInput = document.getElementById('configImportInput');
+        var listinoBox = document.getElementById('listinoBox');
+        var listinoText = document.getElementById('listinoText');
+        document.getElementById('listinoUpdate').addEventListener('click', updateToActiveListino);
 
         var configDirHandle = null;   // cartella scelta (handle File System Access)
         var currentConfigName = null; // file .json aperto/salvato in questa sessione
@@ -5442,7 +5474,9 @@
                 version: CONFIG_VERSION,
                 savedAt: new Date().toISOString(),
                 state: getConfigState(),
-                // Solo informativo (per l'elenco): alla riapertura tutto viene ricalcolato
+                // Prezzi usati: alla riapertura valgono questi, anche se il listino cambia o viene eliminato
+                listino: copyListino(frozenListino || activeListino),
+                // Solo informativo (per l'elenco): alla riapertura il totale viene ricalcolato
                 summary: {
                     packageName: pkg ? PKG_INFO[pkg].name : null,
                     total: items.length ? Math.round(getQuoteTotals(items).total * 100) / 100 : 0,
@@ -5551,7 +5585,7 @@
         }
 
         function hasUnsavedChanges() {
-            if (currentConfigName) return snapshot() !== savedSnapshot;
+            if (currentConfigName) return priceDirty || snapshot() !== savedSnapshot;
             return !!getPackageType();
         }
 
@@ -5561,13 +5595,18 @@
 
         function refreshConfigStatus() {
             configStatusEl.classList.remove('dirty', 'saved');
+            var oldPrices = !!frozenListino && pricesDiffer(frozenListino, activeListino);
+            listinoBox.hidden = !oldPrices;
+            if (oldPrices) {
+                listinoText.textContent = 'Prezzi salvati con il preventivo (listino «' + frozenListino.nome + '»), diversi da quelli del listino in uso «' + activeListino.nome + '».';
+            }
             if (!currentConfigName) {
                 configStatusEl.textContent = getPackageType() ? 'Nuova configurazione (non salvata)' : 'Nuova configurazione';
                 if (getPackageType()) configStatusEl.classList.add('dirty');
                 configSaveAsNewBtn.hidden = true;
                 return;
             }
-            var dirty = snapshot() !== savedSnapshot;
+            var dirty = priceDirty || snapshot() !== savedSnapshot;
             configStatusEl.textContent = '📄 ' + currentConfigName + (dirty ? ' — modifiche non salvate' : ' — salvata')
                 + (openNotice ? '\n' + openNotice : '');
             configStatusEl.classList.add(dirty || openNotice ? 'dirty' : 'saved');
@@ -5741,6 +5780,8 @@
                         return writeJson(dir, name, data).then(function () {
                             currentConfigName = name;
                             savedSnapshot = JSON.stringify(data.state);
+                            frozenListino = copyListino(data.listino);
+                            priceDirty = false;
                             openNotice = '';
                             refreshConfigStatus();
                             if (!localSettingsMissing) backupSettings(false);
@@ -5775,11 +5816,14 @@
         }
 
         function openConfigData(data, name) {
+            // Le configurazioni salvate prima dei listini non hanno i prezzi: usano il listino in uso
+            frozenListino = readSavedListino(data.listino);
+            priceDirty = false;
+            usePrices((frozenListino || activeListino).prezzi);
             applyConfigState(data.state);
             currentConfigName = name;
             savedSnapshot = name ? snapshot() : null;
-            // Il file salva le scelte, non i prezzi: se nel frattempo sono cambiati listino o costi fissi
-            // il totale ricalcolato può differire da quello salvato, e va detto
+            // Senza prezzi salvati il totale ricalcolato può differire da quello salvato, e va detto
             var savedTotal = data.summary && typeof data.summary.total === 'number' ? data.summary.total : null;
             var items = getQuoteItems();
             var nowTotal = items.length ? Math.round(getQuoteTotals(items).total * 100) / 100 : 0;
@@ -5789,7 +5833,20 @@
             refreshConfigStatus();
         }
 
+        function updateToActiveListino() {
+            var state = getConfigState();
+            frozenListino = null;
+            priceDirty = true;
+            openNotice = '';
+            usePrices(activeListino.prezzi);
+            applyConfigState(state);
+            refreshConfigStatus();
+        }
+
         function resetCalculator() {
+            frozenListino = null;
+            priceDirty = false;
+            usePrices(activeListino.prezzi);
             applyConfigState({ package: null, quote: { date: todayIso(), terms: DEFAULT_TERMS } });
             currentConfigName = null;
             savedSnapshot = null;
@@ -6352,6 +6409,7 @@
                 config: buildConfigFile(),
                 configName: currentConfigName,
                 unsaved: hasUnsavedChanges(),
+                pricesFrozen: !!frozenListino,
                 quote: {
                     client: q.client, contact: q.contact, date: q.dateIso, terms: q.terms,
                     items: q.items.map(function (i) { return { key: i.key, desc: i.desc, qty: i.qty, amount: i.amount }; }),

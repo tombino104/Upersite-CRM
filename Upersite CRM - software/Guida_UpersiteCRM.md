@@ -69,7 +69,7 @@ Clic su un cliente per aprire la scheda. I campi si salvano con **Salva** (se ch
 7. **Stato dei preventivi:** per ogni preventivo scegli *In attesa*, *Accettato* o *Rifiutato*.
 8. **Fogli ore (⏱️):** tabella delle ore lavorate con grafici, filtro per periodo, export CSV/PDF e **guadagno €/ora**. Se c'è una configurazione del calcolatore mostra anche le ore stimate e quelle residue (o lo sforamento).
 
-> **Calcolatore preventivi (🧮):** con **➕ Aggiungi al cliente CRM** scegli il cliente: la configurazione va nella scheda Configurazione, l'importo del preventivo si aggiorna (te lo chiede) e puoi allegare il PDF/Word tra i preventivi del cliente. I prezzi del listino si cambiano in Impostazioni → Calcolatore.
+> **Calcolatore preventivi (🧮):** con **➕ Aggiungi al cliente CRM** scegli il cliente: la configurazione va nella scheda Configurazione, l'importo del preventivo si aggiorna (te lo chiede) e puoi allegare il PDF/Word tra i preventivi del cliente. I listini prezzi si gestiscono in Impostazioni → Calcolatore (più listini, uno in uso, import ed export in JSON). Ogni preventivo salvato mantiene i prezzi usati.
 
 > **Cassetta degli attrezzi (🔧):** link ai tool online (🧰 Attrezzi) e a guide e risorse (📚 Documenti), con categorie, note e ⭐ per tenerli in alto. Finiscono in ogni backup.
 

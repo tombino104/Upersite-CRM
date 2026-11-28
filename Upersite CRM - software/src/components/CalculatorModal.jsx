@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { generateId, uploadQuote } from '../utils/storage';
-import { cleanListinoOverrides, CALC_PACKAGE_NAMES } from '../utils/calcListino';
+import { getActiveListino, CALC_PACKAGE_NAMES } from '../utils/calcListino';
 
 // Calcolatore prezzi dentro il CRM: la pagina public/calcolatore (copia del calcolatore originale)
 // gira in un iframe sullo stesso origin e chiama window.UpersiteCalcHost per listino, impostazioni
@@ -34,17 +34,16 @@ export default function CalculatorModal({ open, onClose, customers, settings, up
 
     // Il listino (e le impostazioni importate) entrano nella pagina solo all'avvio: se cambiano la si ricarica,
     // riaprendo la configurazione su cui stavi lavorando
-    const reloadKey = useMemo(
-        () => JSON.stringify([cleanListinoOverrides(settings.calcListino), settings.calcEpoch || 0]),
-        [settings.calcListino, settings.calcEpoch]
-    );
+    const reloadKey = JSON.stringify([getActiveListino(settings), settings.calcEpoch || 0]);
     const loadedKeyRef = useRef(reloadKey);
     useEffect(() => {
         // Con le Impostazioni aperte sopra si aspetta la chiusura (non si ricarica a ogni prezzo modificato)
         if (!mounted || !open || settingsOpen || loadedKeyRef.current === reloadKey) return;
         loadedKeyRef.current = reloadKey;
         const payload = apiRef.current?.getPayload();
-        pendingStateRef.current = payload ? { config: payload.config, name: payload.configName } : null;
+        // Un lavoro senza prezzi salvati segue il nuovo listino in uso; uno salvato mantiene i suoi
+        const config = payload && (payload.pricesFrozen ? payload.config : { ...payload.config, listino: undefined });
+        pendingStateRef.current = payload ? { config, name: payload.configName } : null;
         apiRef.current = null;
         iframeRef.current?.contentWindow?.location.reload();
     }, [reloadKey, mounted, open, settingsOpen]);
@@ -58,7 +57,7 @@ export default function CalculatorModal({ open, onClose, customers, settings, up
     // Host chiamato dalla pagina del calcolatore (prima che l'iframe parta: useLayoutEffect)
     useLayoutEffect(() => {
         window.UpersiteCalcHost = {
-            getListino: () => cleanListinoOverrides(settingsRef.current.calcListino),
+            getListino: () => getActiveListino(settingsRef.current),
             getCalcSettings: () => ({ ...(settingsRef.current.calc || {}), ...(pendingCalcRef.current || {}) }),
             // Salvataggio con debounce: all'avvio la pagina riscrive più volte gli stessi valori
             saveCalcSettings: (key, value) => {

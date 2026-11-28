@@ -3706,6 +3706,7 @@ const ConfigSection = React.memo(({ form, onOpenInCalculator }) => {
                     <div className="cc-meta">
                         Dal calcolatore il {new Date(cc.attachedAt).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })}
                         {cc.configName ? ` · ${cc.configName}` : ' · configurazione non salvata in cartella'}
+                        {cc.config?.listino?.nome ? ` · listino «${cc.config.listino.nome}»` : ''}
                     </div>
                 </div>
                 <div className="cc-actions">
